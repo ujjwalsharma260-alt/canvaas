@@ -469,7 +469,7 @@
                         Width="800"
                         Height="1120"
                         Margin="20"
-                        MouseLeftButtonDown="PageBorder_MouseLeftButtonDown"
+                        MouseLeftButtonDown="PageBorder_MouseDown"
                         MouseMove="PageBorder_MouseMove"
                         MouseLeftButtonUp="PageBorder_MouseLeftButtonUp"
                         LostMouseCapture="PageBorder_LostMouseCapture">
