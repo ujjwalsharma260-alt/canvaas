@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private const double InfiniteSize = 6000;
     private const double MinZoom = 0.05;
     private const double MaxZoom = 6.00;
+    private const double ExportMaxDim = 3000;
 
     private static readonly double[] ZoomLevels =
     {
@@ -114,8 +115,6 @@ public partial class MainWindow : Window
     private double _penSize = 2.5;
     private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
 
-    // Pan state — uses a fast RenderTransform during pan, and only commits
-    // the ScrollViewer offset on pen-up.
     private bool _panning;
     private Point _panStart;
     private double _panStartTfX, _panStartTfY;
@@ -128,15 +127,21 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // Initial drawing attributes — will be overwritten by ApplyPenAttributes().
-        InkArea.DefaultDrawingAttributes = new DrawingAttributes
+        // If the slider or the combo fire during InitializeComponent, this flag
+        // keeps their handlers from touching controls that don't exist yet.
+        _uiReady = true;
+
+        if (InkArea is not null)
         {
-            Color = _penColor,
-            Width = _penSize,
-            Height = _penSize,
-            FitToCurve = false,
-            IgnorePressure = false
-        };
+            InkArea.DefaultDrawingAttributes = new DrawingAttributes
+            {
+                Color = _penColor,
+                Width = _penSize,
+                Height = _penSize,
+                FitToCurve = false,
+                IgnorePressure = false
+            };
+        }
 
         Loaded += (s, e) => WindowState = WindowState.Maximized;
 
@@ -165,24 +170,29 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
     }
 
+    // Guards handlers that can fire during XAML parsing.
+    private bool _uiReady;
+
     // =====================================================================
-    // Pen attributes (shared by pen and highlighter)
+    // Pen attributes
     // =====================================================================
 
     private void ApplyPenAttributes()
     {
+        if (!_uiReady || InkArea is null) return;
+
         var da = InkArea.DefaultDrawingAttributes;
+        if (da is null) return;
 
         if (_tool == ToolMode.Highlighter)
         {
-            // Highlighter: same colour, semi-transparent, much thicker.
             da.Color = Color.FromArgb(110, _penColor.R, _penColor.G, _penColor.B);
             double highlightSize = Math.Max(14, _penSize * 6);
             da.Width = highlightSize;
             da.Height = highlightSize;
             da.IsHighlighter = true;
             da.FitToCurve = false;
-            da.IgnorePressure = true;  // highlighter is flat
+            da.IgnorePressure = true;
         }
         else
         {
@@ -196,24 +206,15 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Cursor management
+    // Cursor
     // =====================================================================
 
     private void UpdateCursor()
     {
         if (PageBorder is null) return;
 
-        if (_panning)
-        {
-            PageBorder.Cursor = Cursors.SizeAll;
-            return;
-        }
-
-        if (_tool == ToolMode.Hand)
-        {
-            PageBorder.Cursor = Cursors.Hand;
-            return;
-        }
+        if (_panning) { PageBorder.Cursor = Cursors.SizeAll; return; }
+        if (_tool == ToolMode.Hand) { PageBorder.Cursor = Cursors.Hand; return; }
 
         PageBorder.Cursor = _cursorStyle switch
         {
@@ -323,6 +324,8 @@ public partial class MainWindow : Window
 
     private void LoadCurrentPageIntoCanvas()
     {
+        if (InkArea is null) return;
+
         InkArea.Strokes.StrokesChanged -= Strokes_Changed;
         InkArea.Strokes = CurrentPage.Strokes;
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
@@ -373,7 +376,7 @@ public partial class MainWindow : Window
         CurrentPage.Mode = CurrentPage.Mode == CanvasMode.Page ? CanvasMode.Infinite : CanvasMode.Page;
         ApplyCanvasMode();
         StatusText.Text = CurrentPage.Mode == CanvasMode.Infinite
-            ? "Infinite canvas mode. Use the Hand tool to pan around."
+            ? "Infinite canvas mode. Middle-mouse drag or 2-finger scroll to pan."
             : "Fixed page mode.";
         MarkDirty();
         ScheduleThumbnailRefresh();
@@ -526,17 +529,111 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Panning (Hand tool)
-    //
-    // During pan, we shift the whole page with a RenderTransform (very fast —
-    // no layout). On pen-up we bake that shift into the ScrollViewer offset
-    // once and reset the transform to zero. This avoids the per-frame layout
-    // that was making the pan feel jittery on low-end hardware.
+    // Export as PNG
     // =====================================================================
 
-    private void PageBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    private void ExportCurrentPagePng_Click(object sender, RoutedEventArgs e)
     {
-        if (_tool != ToolMode.Hand || PageScroller is null || PageBorder is null || PanTransform is null) return;
+        var dlg = new SaveFileDialog
+        {
+            Filter = "PNG image (*.png)|*.png",
+            DefaultExt = ".png",
+            AddExtension = true,
+            FileName = "Page " + (_currentPageIndex + 1),
+            Title = "Export current page as PNG"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        try
+        {
+            ExportPageToPng(CurrentPage, dlg.FileName);
+            StatusText.Text = "Exported: " + dlg.FileName;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not export image.\n\n" + ex.Message,
+                "Export failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportAllPagesPng_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SaveFileDialog
+        {
+            Filter = "PNG image (*.png)|*.png",
+            DefaultExt = ".png",
+            AddExtension = true,
+            FileName = "Page.png",
+            Title = "Choose a base name — each page becomes Page_01.png, Page_02.png, ..."
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        try
+        {
+            string dir = System.IO.Path.GetDirectoryName(dlg.FileName) ?? "";
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
+
+            for (int i = 0; i < _pages.Count; i++)
+            {
+                string name = System.IO.Path.Combine(dir, $"{baseName}_{i + 1:D2}.png");
+                ExportPageToPng(_pages[i], name);
+            }
+            StatusText.Text = $"Exported {_pages.Count} page(s) to {dir}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not export images.\n\n" + ex.Message,
+                "Export failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportPageToPng(NotebookPage page, string path)
+    {
+        double pageW = page.Mode == CanvasMode.Infinite ? InfiniteSize : PageWidthDefault;
+        double pageH = page.Mode == CanvasMode.Infinite ? InfiniteSize : PageHeightDefault;
+
+        double scale = 1.0;
+        if (pageW > ExportMaxDim) scale = ExportMaxDim / pageW;
+        if (pageH * scale > ExportMaxDim) scale = ExportMaxDim / pageH;
+
+        int pxW = Math.Max(1, (int)Math.Round(pageW * scale));
+        int pxH = Math.Max(1, (int)Math.Round(pageH * scale));
+
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.PushTransform(new ScaleTransform(scale, scale));
+
+            var bg = BuildPageBrush(page.BackgroundColor, page.Template, page.Spacing);
+            dc.DrawRectangle(bg, null, new Rect(0, 0, pageW, pageH));
+
+            foreach (var s in page.Strokes)
+                s.Draw(dc);
+
+            dc.Pop();
+        }
+
+        var rtb = new RenderTargetBitmap(pxW, pxH, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+
+        var enc = new PngBitmapEncoder();
+        enc.Frames.Add(BitmapFrame.Create(rtb));
+        using var fs = File.Create(path);
+        enc.Save(fs);
+    }
+
+    // =====================================================================
+    // Panning
+    // =====================================================================
+
+    private void PageBorder_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
+        bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
+
+        if (!middleDrag && !handDrag) return;
+        if (PageScroller is null || PageBorder is null || PanTransform is null) return;
+
         _panning = true;
         _panStart = e.GetPosition(PageScroller);
         _panStartTfX = PanTransform.X;
@@ -579,7 +676,6 @@ public partial class MainWindow : Window
         if (PageBorder is not null && PageBorder.IsMouseCaptured)
             PageBorder.ReleaseMouseCapture();
 
-        // Bake the transform into the ScrollViewer offset, then zero the transform.
         if (PageScroller is not null && PanTransform is not null)
         {
             double tx = PanTransform.X;
@@ -589,7 +685,6 @@ public partial class MainWindow : Window
             {
                 PageScroller.ScrollToHorizontalOffset(PageScroller.HorizontalOffset - tx);
                 PageScroller.ScrollToVerticalOffset(PageScroller.VerticalOffset - ty);
-                // Force layout so the new offsets are applied before we clear the transform.
                 PageScroller.UpdateLayout();
                 PanTransform.X = 0;
                 PanTransform.Y = 0;
@@ -714,7 +809,7 @@ public partial class MainWindow : Window
 
     private void SpacingCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (PageBackground is null) return;
+        if (!_uiReady || PageBackground is null) return;
         if (SpacingCombo.SelectedItem is ComboBoxItem item
             && double.TryParse(item.Content?.ToString(), out var s))
         {
@@ -726,6 +821,7 @@ public partial class MainWindow : Window
 
     private void UpdatePageBackground()
     {
+        if (PageBackground is null) return;
         PageBackground.Fill = BuildPageBrush(CurrentPage.BackgroundColor, CurrentPage.Template, CurrentPage.Spacing);
     }
 
@@ -790,12 +886,15 @@ public partial class MainWindow : Window
 
     private void SyncUIWithSettings()
     {
+        if (!_uiReady) return;
+
         string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
 
         RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack };
         bool matched = false;
         foreach (var rb in swatches)
         {
+            if (rb is null) continue;
             if (rb.Tag is string s && string.Equals(s, hex, StringComparison.OrdinalIgnoreCase))
             {
                 rb.IsChecked = true;
@@ -803,24 +902,30 @@ public partial class MainWindow : Window
                 break;
             }
         }
-        if (!matched) ColorWhite.IsChecked = true;
+        if (!matched && ColorWhite is not null) ColorWhite.IsChecked = true;
 
-        RadioButton templateBtn = CurrentPage.Template switch
+        if (TemplateBlank is not null && TemplateRuled is not null && TemplateGrid is not null && TemplateDot is not null)
         {
-            PageTemplate.Blank => TemplateBlank,
-            PageTemplate.Ruled => TemplateRuled,
-            PageTemplate.Grid => TemplateGrid,
-            PageTemplate.Dot => TemplateDot,
-            _ => TemplateBlank
-        };
-        templateBtn.IsChecked = true;
-
-        foreach (ComboBoxItem item in SpacingCombo.Items)
-        {
-            if (item.Content?.ToString() == ((int)CurrentPage.Spacing).ToString())
+            RadioButton templateBtn = CurrentPage.Template switch
             {
-                SpacingCombo.SelectedItem = item;
-                break;
+                PageTemplate.Blank => TemplateBlank,
+                PageTemplate.Ruled => TemplateRuled,
+                PageTemplate.Grid => TemplateGrid,
+                PageTemplate.Dot => TemplateDot,
+                _ => TemplateBlank
+            };
+            templateBtn.IsChecked = true;
+        }
+
+        if (SpacingCombo is not null)
+        {
+            foreach (ComboBoxItem item in SpacingCombo.Items)
+            {
+                if (item.Content?.ToString() == ((int)CurrentPage.Spacing).ToString())
+                {
+                    SpacingCombo.SelectedItem = item;
+                    break;
+                }
             }
         }
 
@@ -835,44 +940,54 @@ public partial class MainWindow : Window
     {
         _tool = ToolMode.Pen;
         EndPan();
-        InkArea.IsHitTestVisible = true;
-        InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        if (InkArea is not null)
+        {
+            InkArea.IsHitTestVisible = true;
+            InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        }
         ApplyPenAttributes();
         UpdateCursor();
-        StatusText.Text = "Pen selected.";
+        if (StatusText is not null) StatusText.Text = "Pen selected.";
     }
 
     private void HighlighterButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Highlighter;
         EndPan();
-        InkArea.IsHitTestVisible = true;
-        InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        if (InkArea is not null)
+        {
+            InkArea.IsHitTestVisible = true;
+            InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        }
         ApplyPenAttributes();
         UpdateCursor();
-        StatusText.Text = "Highlighter selected.";
+        if (StatusText is not null) StatusText.Text = "Highlighter selected.";
     }
 
     private void EraserButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Eraser;
         EndPan();
-        InkArea.IsHitTestVisible = true;
-        InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke;
+        if (InkArea is not null)
+        {
+            InkArea.IsHitTestVisible = true;
+            InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke;
+        }
         UpdateCursor();
-        StatusText.Text = "Eraser selected: touch a stroke to remove it.";
+        if (StatusText is not null) StatusText.Text = "Eraser selected: touch a stroke to remove it.";
     }
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Hand;
-        InkArea.IsHitTestVisible = false;
+        if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
-        StatusText.Text = "Hand tool: drag over the page to move around.";
+        if (StatusText is not null) StatusText.Text = "Hand tool: drag over the page to move around.";
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
+        if (InkArea is null) return;
         if (InkArea.Strokes.Count == 0)
         {
             StatusText.Text = "The page is already empty.";
@@ -909,7 +1024,6 @@ public partial class MainWindow : Window
 
         StatusText.Text = $"Last stroke: {points.Count} points, pressure {min:0.00} to {max:0.00} - {verdict}.";
 
-        // Don't run the spline smoothing on highlighter strokes — it makes them lumpy.
         if (!e.Stroke.DrawingAttributes.IsHighlighter)
             SmoothCompletedStroke(e.Stroke);
 
@@ -1059,6 +1173,8 @@ public partial class MainWindow : Window
 
     private void ApplyChange(StrokeChange change, bool reverse)
     {
+        if (InkArea is null) return;
+
         var toRemove = reverse ? change.Added : change.Removed;
         var toAdd = reverse ? change.Removed : change.Added;
 
