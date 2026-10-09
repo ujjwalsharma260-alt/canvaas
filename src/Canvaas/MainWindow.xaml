@@ -9,9 +9,64 @@
         Closing="Window_Closing">
 
     <Window.Resources>
-        <Style TargetType="Button">
-            <Setter Property="Padding" Value="14,6"/>
-            <Setter Property="Margin" Value="3"/>
+        <!-- Icon button style for tool buttons that stay "pressed" (pen, eraser). -->
+        <Style x:Key="ToolIconRadio" TargetType="RadioButton">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#DCE9F9"/>
+                                <Setter Property="Foreground" Value="#1A73E8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Icon button style for regular action buttons (undo, redo, clear, menus). -->
+        <Style x:Key="ToolIconButton" TargetType="Button">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#BBBBBB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
@@ -27,28 +82,74 @@
     <DockPanel>
 
         <!-- Top toolbar -->
-        <Border DockPanel.Dock="Top" Background="#F7F7F7" BorderBrush="#C8C8C8" BorderThickness="0,0,0,1">
-            <WrapPanel Margin="6,4">
-                <Button Content="New" Command="ApplicationCommands.New" ToolTip="New blank note (Ctrl+N)"/>
-                <Button Content="Open" Command="ApplicationCommands.Open" ToolTip="Open a note (Ctrl+O)"/>
-                <Button Content="Save" Command="ApplicationCommands.Save" ToolTip="Save (Ctrl+S)"/>
-                <Button Content="Save As" Command="ApplicationCommands.SaveAs" ToolTip="Save as a new file"/>
+        <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+            <DockPanel Margin="8,6">
 
-                <RadioButton x:Name="PenButton" Content="Pen" GroupName="Tools"
-                             Style="{StaticResource {x:Type ToggleButton}}"
-                             Padding="14,6" Margin="18,3,3,3"
-                             ToolTip="Draw with pen or mouse"
-                             Click="PenButton_Click"/>
-                <RadioButton x:Name="EraserButton" Content="Eraser" GroupName="Tools"
-                             Style="{StaticResource {x:Type ToggleButton}}"
-                             Padding="14,6" Margin="3"
-                             ToolTip="Erase a whole stroke by touching it"
-                             Click="EraserButton_Click"/>
+                <!-- Right side: menu buttons -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="AddMenuButton"
+                            Style="{StaticResource ToolIconButton}"
+                            Content="&#xE710;"
+                            ToolTip="Add"
+                            Click="MenuButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Add Text" Click="AddText_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button x:Name="SaveMenuButton"
+                            Style="{StaticResource ToolIconButton}"
+                            Content="&#xE700;"
+                            ToolTip="File menu"
+                            Click="MenuButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="New" Command="ApplicationCommands.New"/>
+                                <MenuItem Header="Open..." Command="ApplicationCommands.Open"/>
+                                <Separator/>
+                                <MenuItem Header="Save" Command="ApplicationCommands.Save"/>
+                                <MenuItem Header="Save As..." Command="ApplicationCommands.SaveAs"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                </StackPanel>
 
-                <Button Content="Undo" Command="ApplicationCommands.Undo" Margin="18,3,3,3" ToolTip="Undo (Ctrl+Z)"/>
-                <Button Content="Redo" Command="ApplicationCommands.Redo" ToolTip="Redo (Ctrl+Y)"/>
-                <Button Content="Clear page" Click="ClearButton_Click" ToolTip="Remove everything on the page"/>
-            </WrapPanel>
+                <!-- Left side: tools -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <RadioButton x:Name="PenButton"
+                                 Style="{StaticResource ToolIconRadio}"
+                                 GroupName="Tools"
+                                 Content="&#xE70F;"
+                                 ToolTip="Pen (draw with pen or mouse)"
+                                 Click="PenButton_Click"/>
+                    <RadioButton x:Name="EraserButton"
+                                 Style="{StaticResource ToolIconRadio}"
+                                 GroupName="Tools"
+                                 Content="&#xE75C;"
+                                 ToolTip="Eraser (touch a stroke to remove it)"
+                                 Click="EraserButton_Click"/>
+                    <Button x:Name="ClearButton"
+                            Style="{StaticResource ToolIconButton}"
+                            Content="&#xE74D;"
+                            ToolTip="Clear page"
+                            Click="ClearButton_Click"/>
+
+                    <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
+
+                    <Button x:Name="UndoButton"
+                            Style="{StaticResource ToolIconButton}"
+                            Content="&#xE7A7;"
+                            ToolTip="Undo (Ctrl+Z)"
+                            Command="ApplicationCommands.Undo"/>
+                    <Button x:Name="RedoButton"
+                            Style="{StaticResource ToolIconButton}"
+                            Content="&#xE7A6;"
+                            ToolTip="Redo (Ctrl+Y)"
+                            Command="ApplicationCommands.Redo"/>
+                </StackPanel>
+
+            </DockPanel>
         </Border>
 
         <!-- Bottom status bar -->
