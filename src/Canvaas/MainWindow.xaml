@@ -315,6 +315,7 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
+                    <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter" Click="HighlighterButton_Click"/>
                     <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser" Click="EraserButton_Click"/>
                     <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (drag to move around)" Click="HandButton_Click"/>
                     <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
@@ -458,6 +459,9 @@
                       PreviewMouseWheel="PageScroller_PreviewMouseWheel"
                       Background="#E6E6E6">
             <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E6E6E6">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="PanTransform" X="0" Y="0"/>
+                </Grid.RenderTransform>
                 <Border x:Name="PageBorder"
                         Background="White"
                         BorderBrush="#B0B0B0"

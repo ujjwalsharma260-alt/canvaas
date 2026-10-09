@@ -77,6 +77,7 @@ public partial class MainWindow : Window
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
     private enum PenCursorStyle { Arrow, Cross, Hidden }
+    private enum ToolMode { Pen, Highlighter, Eraser, Hand }
 
     private sealed class NotebookPage
     {
@@ -106,17 +107,18 @@ public partial class MainWindow : Window
 
     private double _zoom = 1.0;
     private bool _suppressPageListChange;
-    private bool _handToolActive;
     private bool _fullscreenMode;
 
-    // Shared ink attributes — these apply to new strokes, and are global to the app
+    private ToolMode _tool = ToolMode.Pen;
     private Color _penColor = Colors.Black;
     private double _penSize = 2.5;
     private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
 
+    // Pan state — uses a fast RenderTransform during pan, and only commits
+    // the ScrollViewer offset on pen-up.
     private bool _panning;
     private Point _panStart;
-    private double _panStartH, _panStartV;
+    private double _panStartTfX, _panStartTfY;
 
     private DispatcherTimer? _thumbnailTimer;
 
@@ -126,6 +128,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // Initial drawing attributes — will be overwritten by ApplyPenAttributes().
         InkArea.DefaultDrawingAttributes = new DrawingAttributes
         {
             Color = _penColor,
@@ -150,21 +153,50 @@ public partial class MainWindow : Window
         PenColorBlack.IsChecked = true;
         CursorCombo.SelectedIndex = 0;
 
+        ApplyPenAttributes();
+        UpdateCursor();
+
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
         ApplyZoom();
         UpdateTitle();
-        UpdateCursor();
 
         Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
     }
 
     // =====================================================================
+    // Pen attributes (shared by pen and highlighter)
+    // =====================================================================
+
+    private void ApplyPenAttributes()
+    {
+        var da = InkArea.DefaultDrawingAttributes;
+
+        if (_tool == ToolMode.Highlighter)
+        {
+            // Highlighter: same colour, semi-transparent, much thicker.
+            da.Color = Color.FromArgb(110, _penColor.R, _penColor.G, _penColor.B);
+            double highlightSize = Math.Max(14, _penSize * 6);
+            da.Width = highlightSize;
+            da.Height = highlightSize;
+            da.IsHighlighter = true;
+            da.FitToCurve = false;
+            da.IgnorePressure = true;  // highlighter is flat
+        }
+        else
+        {
+            da.Color = _penColor;
+            da.Width = _penSize;
+            da.Height = _penSize;
+            da.IsHighlighter = false;
+            da.FitToCurve = false;
+            da.IgnorePressure = false;
+        }
+    }
+
+    // =====================================================================
     // Cursor management
-    //
-    // Cursor is set on PageBorder, and WPF inherits it into the page.
-    // Result: hand only shows over the page, arrow elsewhere.
     // =====================================================================
 
     private void UpdateCursor()
@@ -177,7 +209,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_handToolActive)
+        if (_tool == ToolMode.Hand)
         {
             PageBorder.Cursor = Cursors.Hand;
             return;
@@ -495,15 +527,20 @@ public partial class MainWindow : Window
 
     // =====================================================================
     // Panning (Hand tool)
+    //
+    // During pan, we shift the whole page with a RenderTransform (very fast —
+    // no layout). On pen-up we bake that shift into the ScrollViewer offset
+    // once and reset the transform to zero. This avoids the per-frame layout
+    // that was making the pan feel jittery on low-end hardware.
     // =====================================================================
 
     private void PageBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!_handToolActive || PageScroller is null || PageBorder is null) return;
+        if (_tool != ToolMode.Hand || PageScroller is null || PageBorder is null || PanTransform is null) return;
         _panning = true;
         _panStart = e.GetPosition(PageScroller);
-        _panStartH = PageScroller.HorizontalOffset;
-        _panStartV = PageScroller.VerticalOffset;
+        _panStartTfX = PanTransform.X;
+        _panStartTfY = PanTransform.Y;
         PageBorder.CaptureMouse();
         UpdateCursor();
         e.Handled = true;
@@ -511,10 +548,11 @@ public partial class MainWindow : Window
 
     private void PageBorder_MouseMove(object sender, MouseEventArgs e)
     {
-        if (!_panning || PageScroller is null) return;
+        if (!_panning || PageScroller is null || PanTransform is null) return;
         var p = e.GetPosition(PageScroller);
-        PageScroller.ScrollToHorizontalOffset(_panStartH - (p.X - _panStart.X));
-        PageScroller.ScrollToVerticalOffset(_panStartV - (p.Y - _panStart.Y));
+        PanTransform.X = _panStartTfX + (p.X - _panStart.X);
+        PanTransform.Y = _panStartTfY + (p.Y - _panStart.Y);
+        e.Handled = true;
     }
 
     private void PageBorder_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -525,11 +563,9 @@ public partial class MainWindow : Window
 
     private void PageBorder_LostMouseCapture(object sender, MouseEventArgs e)
     {
-        if (_panning) _panning = false;
-        UpdateCursor();
+        if (_panning) EndPan();
     }
 
-    // Safety net — if the pen leaves the surface anywhere, always end the pan.
     private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_panning) EndPan();
@@ -537,9 +573,29 @@ public partial class MainWindow : Window
 
     private void EndPan()
     {
+        if (!_panning) return;
         _panning = false;
+
         if (PageBorder is not null && PageBorder.IsMouseCaptured)
             PageBorder.ReleaseMouseCapture();
+
+        // Bake the transform into the ScrollViewer offset, then zero the transform.
+        if (PageScroller is not null && PanTransform is not null)
+        {
+            double tx = PanTransform.X;
+            double ty = PanTransform.Y;
+
+            if (Math.Abs(tx) > 0.01 || Math.Abs(ty) > 0.01)
+            {
+                PageScroller.ScrollToHorizontalOffset(PageScroller.HorizontalOffset - tx);
+                PageScroller.ScrollToVerticalOffset(PageScroller.VerticalOffset - ty);
+                // Force layout so the new offsets are applied before we clear the transform.
+                PageScroller.UpdateLayout();
+                PanTransform.X = 0;
+                PanTransform.Y = 0;
+            }
+        }
+
         UpdateCursor();
     }
 
@@ -602,7 +658,7 @@ public partial class MainWindow : Window
         if (sender is RadioButton rb && rb.Tag is string hex)
         {
             _penColor = ParseHexColor(hex, Colors.Black);
-            InkArea.DefaultDrawingAttributes.Color = _penColor;
+            ApplyPenAttributes();
             StatusText.Text = $"Pen colour: {rb.ToolTip}";
         }
     }
@@ -610,11 +666,7 @@ public partial class MainWindow : Window
     private void PenSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         _penSize = e.NewValue;
-        if (InkArea is not null)
-        {
-            InkArea.DefaultDrawingAttributes.Width = _penSize;
-            InkArea.DefaultDrawingAttributes.Height = _penSize;
-        }
+        ApplyPenAttributes();
         if (PenSizeText is not null)
             PenSizeText.Text = _penSize.ToString("0.#");
     }
@@ -781,17 +833,29 @@ public partial class MainWindow : Window
 
     private void PenButton_Click(object sender, RoutedEventArgs e)
     {
-        _handToolActive = false;
+        _tool = ToolMode.Pen;
         EndPan();
         InkArea.IsHitTestVisible = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        ApplyPenAttributes();
         UpdateCursor();
         StatusText.Text = "Pen selected.";
     }
 
+    private void HighlighterButton_Click(object sender, RoutedEventArgs e)
+    {
+        _tool = ToolMode.Highlighter;
+        EndPan();
+        InkArea.IsHitTestVisible = true;
+        InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        ApplyPenAttributes();
+        UpdateCursor();
+        StatusText.Text = "Highlighter selected.";
+    }
+
     private void EraserButton_Click(object sender, RoutedEventArgs e)
     {
-        _handToolActive = false;
+        _tool = ToolMode.Eraser;
         EndPan();
         InkArea.IsHitTestVisible = true;
         InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke;
@@ -801,7 +865,7 @@ public partial class MainWindow : Window
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
     {
-        _handToolActive = true;
+        _tool = ToolMode.Hand;
         InkArea.IsHitTestVisible = false;
         UpdateCursor();
         StatusText.Text = "Hand tool: drag over the page to move around.";
@@ -845,7 +909,10 @@ public partial class MainWindow : Window
 
         StatusText.Text = $"Last stroke: {points.Count} points, pressure {min:0.00} to {max:0.00} - {verdict}.";
 
-        SmoothCompletedStroke(e.Stroke);
+        // Don't run the spline smoothing on highlighter strokes — it makes them lumpy.
+        if (!e.Stroke.DrawingAttributes.IsHighlighter)
+            SmoothCompletedStroke(e.Stroke);
+
         ScheduleThumbnailRefresh();
     }
 
