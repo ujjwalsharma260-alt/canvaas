@@ -493,6 +493,7 @@
                                        Background="Transparent"
                                        Stylus.IsPressAndHoldEnabled="False"
                                        Stylus.IsFlicksEnabled="False"
+                                                  StylusOutOfRange="InkArea_StylusOutOfRange"
                                        StrokeCollected="InkArea_StrokeCollected"/>
                         </Grid>
                     </Border>

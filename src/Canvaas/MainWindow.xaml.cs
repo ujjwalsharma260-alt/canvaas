@@ -77,7 +77,7 @@ public partial class MainWindow : Window
 
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
-    private enum PenCursorStyle { Arrow, Cross, Dot }
+    private enum PenCursorStyle { Arrow, Cross, YellowArrow, YellowDot, Hidden }
     private enum ToolMode { Pen, Highlighter, Eraser, Hand }
 
     private sealed class NotebookPage
@@ -124,7 +124,8 @@ public partial class MainWindow : Window
     private bool _pressureEnabled = true;
     private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
 
-    private Cursor? _dotCursor;
+    private Cursor? _yellowArrowCursor;
+    private Cursor? _yellowDotCursor;
 
     private bool _panning;
     private Point _panStart;
@@ -152,9 +153,9 @@ public partial class MainWindow : Window
 
         _uiReady = true;
 
-        _dotCursor = CreateDotCursor();
+        _yellowArrowCursor = CreateYellowArrowCursor();
+        _yellowDotCursor = CreateYellowDotCursor();
 
-        // Set maximize in code, after WindowChrome has initialized.
         Loaded += (s, e) =>
         {
             Dispatcher.BeginInvoke(new Action(() =>
@@ -190,6 +191,138 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
+    // Custom cursors
+    // =====================================================================
+
+    private static Cursor CreateYellowArrowCursor()
+    {
+        try
+        {
+            const int size = 32;
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
+                var blackPen = new Pen(Brushes.Black, 1.4);
+
+                var geo = new StreamGeometry();
+                using (var gc = geo.Open())
+                {
+                    gc.BeginFigure(new Point(3, 2), true, true);
+                    gc.LineTo(new Point(3, 24), true, false);
+                    gc.LineTo(new Point(9, 18), true, false);
+                    gc.LineTo(new Point(13, 28), true, false);
+                    gc.LineTo(new Point(17, 26), true, false);
+                    gc.LineTo(new Point(13, 16), true, false);
+                    gc.LineTo(new Point(21, 16), true, false);
+                    gc.LineTo(new Point(3, 2), true, false);
+                }
+                geo.Freeze();
+
+                dc.DrawGeometry(yellow, blackPen, geo);
+            }
+
+            var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+
+            return CreateCursorFromBitmap(rtb, 3, 2);
+        }
+        catch
+        {
+            return Cursors.Arrow;
+        }
+    }
+
+    private static Cursor CreateYellowDotCursor()
+    {
+        try
+        {
+            const int size = 32;
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
+                var blackPen = new Pen(Brushes.Black, 1.5);
+                dc.DrawEllipse(yellow, blackPen, new Point(16, 16), 7, 7);
+                dc.DrawEllipse(Brushes.Black, null, new Point(16, 16), 1.8, 1.8);
+            }
+            var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            return CreateCursorFromBitmap(rtb, 16, 16);
+        }
+        catch
+        {
+            return Cursors.Cross;
+        }
+    }
+
+    private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
+    {
+        int width = bmp.PixelWidth;
+        int height = bmp.PixelHeight;
+
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+
+        bw.Write((short)0);
+        bw.Write((short)2);
+        bw.Write((short)1);
+
+        bw.Write((byte)width);
+        bw.Write((byte)height);
+        bw.Write((byte)0);
+        bw.Write((byte)0);
+        bw.Write((short)hotX);
+        bw.Write((short)hotY);
+        bw.Write(width * height * 4 + 40);
+        bw.Write(22);
+
+        bw.Write(40);
+        bw.Write(width);
+        bw.Write(height * 2);
+        bw.Write((short)1);
+        bw.Write((short)32);
+        bw.Write(0);
+        bw.Write(width * height * 4);
+        bw.Write(0);
+        bw.Write(0);
+        bw.Write(0);
+        bw.Write(0);
+
+        int stride = width * 4;
+        var pixels = new byte[stride * height];
+        bmp.CopyPixels(pixels, stride, 0);
+        for (int y = height - 1; y >= 0; y--)
+            bw.Write(pixels, y * stride, stride);
+
+        ms.Position = 0;
+        return new Cursor(ms);
+    }
+
+    // =====================================================================
+    // Stylus release — fixes "trackpad stops working after pen use"
+    // =====================================================================
+
+    private void InkArea_StylusOutOfRange(object sender, StylusEventArgs e)
+    {
+        ReleaseAllCaptures();
+    }
+
+    private void ReleaseAllCaptures()
+    {
+        if (_panning) EndPan();
+
+        try
+        {
+            if (Mouse.Captured is not null && Mouse.Captured != this)
+                Mouse.Capture(null);
+        }
+        catch { }
+
+        try { Stylus.Capture(null); } catch { }
+    }
+
+    // =====================================================================
     // Colour palette for the tool popup
     // =====================================================================
 
@@ -199,28 +332,24 @@ public partial class MainWindow : Window
 
         var items = new List<PopupColorItem>
         {
-            // Neutrals
             MakeColor("#111111", "Black"),
             MakeColor("#555555", "Dark grey"),
             MakeColor("#999999", "Grey"),
             MakeColor("#CCCCCC", "Light grey"),
             MakeColor("#FFFFFF", "White"),
             MakeColor("#FAF6E3", "Cream"),
-            // Warm
             MakeColor("#C62828", "Red"),
             MakeColor("#EF6C00", "Orange"),
             MakeColor("#FBC02D", "Yellow"),
             MakeColor("#B8860B", "Gold"),
             MakeColor("#A1887F", "Tan"),
             MakeColor("#4E342E", "Brown"),
-            // Cool
             MakeColor("#00ACC1", "Cyan"),
             MakeColor("#4FC3F7", "Sky"),
             MakeColor("#1565C0", "Blue"),
             MakeColor("#1A237E", "Navy"),
             MakeColor("#6A1B9A", "Purple"),
             MakeColor("#AD1457", "Magenta"),
-            // Nature
             MakeColor("#AED581", "Light green"),
             MakeColor("#43A047", "Green"),
             MakeColor("#1B5E20", "Dark green"),
@@ -308,77 +437,6 @@ public partial class MainWindow : Window
     // Cursor
     // =====================================================================
 
-    private static Cursor CreateDotCursor()
-    {
-        try
-        {
-            const int size = 32;
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen())
-            {
-                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
-                var blackPen = new Pen(Brushes.Black, 1.5);
-                dc.DrawEllipse(yellow, blackPen, new Point(16, 16), 7, 7);
-                dc.DrawEllipse(Brushes.Black, null, new Point(16, 16), 1.8, 1.8);
-            }
-            var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
-            rtb.Render(visual);
-
-            return CreateCursorFromBitmap(rtb, 16, 16);
-        }
-        catch
-        {
-            return Cursors.Cross;
-        }
-    }
-
-    private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
-    {
-        int width = bmp.PixelWidth;
-        int height = bmp.PixelHeight;
-
-        using var ms = new MemoryStream();
-        using var bw = new BinaryWriter(ms);
-
-        // ICONDIR
-        bw.Write((short)0);
-        bw.Write((short)2);
-        bw.Write((short)1);
-
-        // ICONDIRENTRY
-        bw.Write((byte)width);
-        bw.Write((byte)height);
-        bw.Write((byte)0);
-        bw.Write((byte)0);
-        bw.Write((short)hotX);
-        bw.Write((short)hotY);
-        bw.Write(width * height * 4 + 40);
-        bw.Write(22);
-
-        // BITMAPINFOHEADER
-        bw.Write(40);
-        bw.Write(width);
-        bw.Write(height * 2);
-        bw.Write((short)1);
-        bw.Write((short)32);
-        bw.Write(0);
-        bw.Write(width * height * 4);
-        bw.Write(0);
-        bw.Write(0);
-        bw.Write(0);
-        bw.Write(0);
-
-        // Pixels (bottom-up BGRA)
-        int stride = width * 4;
-        var pixels = new byte[stride * height];
-        bmp.CopyPixels(pixels, stride, 0);
-        for (int y = height - 1; y >= 0; y--)
-            bw.Write(pixels, y * stride, stride);
-
-        ms.Position = 0;
-        return new Cursor(ms);
-    }
-
     private void UpdateCursor()
     {
         if (PageBorder is null) return;
@@ -391,7 +449,9 @@ public partial class MainWindow : Window
             c = _cursorStyle switch
             {
                 PenCursorStyle.Cross => Cursors.Cross,
-                PenCursorStyle.Dot => _dotCursor ?? Cursors.Cross,
+                PenCursorStyle.YellowArrow => _yellowArrowCursor ?? Cursors.Arrow,
+                PenCursorStyle.YellowDot => _yellowDotCursor ?? Cursors.Cross,
+                PenCursorStyle.Hidden => Cursors.None,
                 _ => Cursors.Arrow
             };
         }
@@ -997,7 +1057,9 @@ public partial class MainWindow : Window
         _cursorStyle = CursorCombo.SelectedIndex switch
         {
             1 => PenCursorStyle.Cross,
-            2 => PenCursorStyle.Dot,
+            2 => PenCursorStyle.YellowArrow,
+            3 => PenCursorStyle.YellowDot,
+            4 => PenCursorStyle.Hidden,
             _ => PenCursorStyle.Arrow
         };
         UpdateCursor();
