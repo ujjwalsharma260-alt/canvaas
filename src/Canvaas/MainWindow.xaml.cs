@@ -1285,9 +1285,7 @@ public partial class MainWindow : Window
             if (LassoButton is not null) LassoButton.IsChecked = true;
             InkArea.EditingMode = InkCanvasEditingMode.Select;
         }
-        InkArea.SelectedStrokes.Clear();
-        foreach (var s in InkArea.Strokes)
-            InkArea.SelectedStrokes.Add(s);
+        InkArea.Select(InkArea.Strokes);
         e.Handled = true;
     }
 
