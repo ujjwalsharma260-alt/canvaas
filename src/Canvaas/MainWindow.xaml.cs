@@ -66,12 +66,15 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
+        // FitToCurve = false is deliberate. It makes ink appear under the pen tip
+        // immediately, instead of waiting to smooth the stroke into a Bezier curve.
+        // This is the single biggest change for low-latency handwriting.
         InkArea.DefaultDrawingAttributes = new DrawingAttributes
         {
             Color = Colors.Black,
             Width = 2.5,
             Height = 2.5,
-            FitToCurve = true,
+            FitToCurve = false,
             IgnorePressure = false   // use pen pressure when the pen provides it
         };
 
