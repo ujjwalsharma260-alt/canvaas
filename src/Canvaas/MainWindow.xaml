@@ -11,7 +11,8 @@
         WindowState="Maximized"
         WindowStyle="None"
         Background="#E6E6E6"
-        Closing="Window_Closing">
+        Closing="Window_Closing"
+        PreviewMouseUp="Window_PreviewMouseUp">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -249,10 +250,6 @@
         <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute"/>
     </Window.CommandBindings>
 
-    <Window.InputBindings>
-        <KeyBinding Key="OemPlus" Modifiers="Control" Command="{x:Static ApplicationCommands.NotACommand}"/>
-    </Window.InputBindings>
-
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#7B2FBE" Height="36">
             <DockPanel>
@@ -310,14 +307,14 @@
                 Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
             <DockPanel>
                 <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
-                    <TextBlock Text="Pages" FontWeight="SemiBold" FontSize="12" Margin="12,8" Foreground="#333333"/>
+                    <DockPanel Margin="6,4">
+                        <Button x:Name="SidebarAddPageButton" DockPanel.Dock="Right"
+                                Style="{StaticResource SmallIconButton}"
+                                Content="&#xE710;" ToolTip="Add page" Click="AddPageButton_Click"/>
+                        <TextBlock Text="Pages" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="#333333" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </DockPanel>
                 </Border>
-                <Button DockPanel.Dock="Bottom" x:Name="SidebarAddPageButton"
-                        Margin="8" Padding="6,4" Click="AddPageButton_Click">
-                    <TextBlock>
-                        <Run Text="&#xE710;" FontFamily="Segoe MDL2 Assets"/><Run Text="  Add page"/>
-                    </TextBlock>
-                </Button>
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <ListBox x:Name="PageListBox" Background="Transparent" BorderThickness="0"
                              SelectionChanged="PageListBox_SelectionChanged"
@@ -385,8 +382,12 @@
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
                     <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
                     <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE1A3;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="8,2" Margin="4,0" MinWidth="52">
-                        <TextBlock x:Name="ZoomText" Text="100%" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="12" Foreground="#333333"/>
+                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="58">
+                        <TextBox x:Name="ZoomText" Text="100%"
+                                 Width="46" BorderThickness="0" Background="Transparent"
+                                 Padding="0" FontSize="12" Foreground="#333333"
+                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                 KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
                     </Border>
                     <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
                     <Rectangle Width="1" Margin="8,4" Fill="#CCCCCC"/>
@@ -416,7 +417,8 @@
                         Margin="20"
                         MouseLeftButtonDown="PageBorder_MouseLeftButtonDown"
                         MouseMove="PageBorder_MouseMove"
-                        MouseLeftButtonUp="PageBorder_MouseLeftButtonUp">
+                        MouseLeftButtonUp="PageBorder_MouseLeftButtonUp"
+                        LostMouseCapture="PageBorder_LostMouseCapture">
                     <Border.LayoutTransform>
                         <ScaleTransform x:Name="PageScale" ScaleX="1" ScaleY="1"/>
                     </Border.LayoutTransform>
