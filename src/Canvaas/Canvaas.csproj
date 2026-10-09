@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>Canvaas</AssemblyName>
     <RootNamespace>Canvaas</RootNamespace>
-    <Version>0.0.1</Version>
+    <Version>0.1.0</Version>
     <Product>Canvaas</Product>
     <Company>Canvaas</Company>
   </PropertyGroup>

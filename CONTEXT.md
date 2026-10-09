@@ -1,7 +1,7 @@
 # CANVAAS — FULL PROJECT CONTEXT (READ THIS FIRST)
 
 > **For any AI coding assistant:** this file is the single source of truth for the Canvaas project. Read all of it before changing anything. Keep it up to date: every ZIP/patch you deliver MUST include an updated copy of this file (sections 4, 5, 6, 10, 11 especially).
-> **Last updated:** 2026-10-09 by Claude (Phase 0 rewrite). Update this line every time.
+> **Last updated:** 2026-10-09 by Claude (Phase 1 handwriting prototype). Update this line every time.
 
 ---
 
@@ -63,10 +63,10 @@ Known trade-offs / risks to keep in mind:
 
 ## 5. Current status (UPDATE THIS)
 
-- **Phase 0 package delivered** (clean restart; the old scaffold is replaced, not reused).
-- **Real GitHub Actions result: NOT YET CONFIRMED.** The author of this package had no Windows machine and no .NET SDK, so only static checks were done (XAML/XML valid, handler/class matching via `tools/check_files.py`, workflow YAML parses). Update this section after the user reports the first Actions run.
-- Implemented features: **none** beyond a window titled "Canvaas" showing the version number.
-- NOT implemented (do not assume they exist): inking, erasers, undo/redo, save/open, notebooks, pages, templates, infinite canvas, settings, autosave, export, backup, installer.
+- **Phase 0: DONE and CONFIRMED.** GitHub Actions run #1 was green (52 s) and the user downloaded and opened `Canvaas.exe` (window showed "Canvaas ... Version 0.0.1"). Repo was recreated fresh and is public.
+- **Phase 1 (v0.1.0): code delivered, NOT YET CONFIRMED.** Written without access to Windows or a .NET SDK, so only static checks were done (`tools/check_files.py`: XAML valid, handlers exist, classes match). The user must push it and report the Actions result, then test the app by hand. Do not call Phase 1 working until both are confirmed.
+- Phase 1 features in the code: white writing page (InkCanvas); Pen and Eraser (erase whole stroke) tools; mouse works as fallback; Undo/Redo (Ctrl+Z / Ctrl+Y); Clear page with confirmation (undoable); New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As; `.canvaas` file format v1 (see `docs/FILE_FORMAT.md`); safe save via temp file; friendly error messages on open/save failure; unsaved-changes prompt on New/Open/close; status bar shows pressure info for the last stroke (to test the Deco tablet).
+- NOT implemented (do not assume they exist): notebooks/pages/templates, infinite canvas, pen colour/thickness settings, point eraser, autosave/crash recovery, settings file, export (PNG/PDF), backup, installer.
 
 ### History of the first (failed) attempt — lessons
 1. `CS0103: 'InkCanvasEditingMode' does not exist` — missing `using System.Windows.Controls;`.
@@ -82,13 +82,15 @@ canvaas/
 ├─ CONTEXT.md                     This file. Keep current.
 ├─ README.md                      Short intro + how to download the app.
 ├─ CHANGELOG.md                   Version history, newest first.
+├─ docs/
+│  └─ FILE_FORMAT.md              Documented .canvaas save format (versioned). Update when the format changes.
 ├─ .gitignore                     Ignores bin/, obj/, publish/, .vs/ etc.
 ├─ .github/workflows/
 │  └─ windows-build.yml           CI: build + publish single .exe + upload artifact "Canvaas-windows-x64".
 ├─ src/Canvaas/
-│  ├─ Canvaas.csproj              WPF project, net10.0-windows, assembly name Canvaas, version 0.0.1.
+│  ├─ Canvaas.csproj              WPF project, net10.0-windows, assembly name Canvaas, version 0.1.0.
 │  ├─ App.xaml / App.xaml.cs      Application entry; StartupUri = MainWindow.xaml.
-│  └─ MainWindow.xaml / .xaml.cs  Main window. Phase 0: shows name + version (VersionText).
+│  └─ MainWindow.xaml / .xaml.cs  Main window: toolbar, InkCanvas (InkArea), status bar. Holds tools, undo/redo history (stack of StrokeChange), save/open (ZIP: manifest.json + ink.isf), dirty tracking.
 └─ tools/
    └─ check_files.py              Static checks for AI assistants (XML validity, event handlers exist, class names match).
 ```
@@ -99,9 +101,9 @@ Possible leftovers from the old attempt (safe to ignore or delete with the user'
 
 ## 7. Roadmap (build one phase at a time; confirm green CI before moving on)
 
-**Phase 0 — Verified foundation** *(current)*: minimal app compiles; automated Windows build; downloadable artifact. Done when: user confirms a green Actions run, downloads `Canvaas.exe`, and sees the window.
+**Phase 0 — Verified foundation** *(DONE, confirmed 2026-10-09)*.
 
-**Phase 1 — Usable handwriting prototype:** blank white canvas; pen input + mouse fallback; pen and stroke-eraser modes; undo/redo; clear page with confirmation; save/reopen in a documented local format; clear file-error messages.
+**Phase 1 — Usable handwriting prototype** *(current: code delivered, awaiting build + hand test)*: blank white canvas; pen input + mouse fallback; pen and stroke-eraser modes; undo/redo; clear page with confirmation; save/reopen in a documented local format; clear file-error messages.
 
 **Phase 2 — Fixed notebook pages:** create/open notebooks; add/rename/reorder/delete pages safely; navigation; blank/ruled/grid/dot-grid templates; autosave + crash recovery; stable file format with version number and migration plan.
 
@@ -146,7 +148,7 @@ If a build fails: ask the user for a screenshot of the failing step (the red ✗
 - C# with `Nullable` and `ImplicitUsings` enabled. WPF still needs explicit `using System.Windows;` (and `System.Windows.Controls`, `System.Windows.Ink`, `System.Windows.Input` when used).
 - Root namespace `Canvaas`. One class per file; XAML code-behind named `<Name>.xaml.cs`.
 - Keep UI logic in code-behind for early phases; when notebooks/settings arrive, put data in separate plain classes (model) so it can be tested and saved.
-- Planned save format (Phase 1+): a documented, versioned container (e.g. a folder or ZIP holding `manifest.json` with `formatVersion`, plus ink data in WPF's ISF format). Decide and record in section 11.
+- Save format: see `docs/FILE_FORMAT.md` (implemented in Phase 1).
 - Planned settings location: `%APPDATA%\Canvaas\settings.json`. Planned autosave/recovery: `%APPDATA%\Canvaas\recovery\`.
 
 ---
@@ -155,9 +157,11 @@ If a build fails: ask the user for a screenshot of the failing step (the red ✗
 
 - 2026-10-09 — Restarted from scratch rather than reuse the failed scaffold. WPF + .NET 10 chosen (see section 4).
 - 2026-10-09 — No `.sln` in Phase 0; CI builds the `.csproj` directly.
+- 2026-10-09 — Phase 0 confirmed working. Repo recreated fresh (old one deleted by user).
+- 2026-10-09 — Save format v1: ZIP with `manifest.json` + optional `ink.isf` (ISF = Microsoft's built-in ink format). Chosen because it is simple, inspectable, versionable, and extendable to multi-page in Phase 2.
+- 2026-10-09 — Undo/redo built by hand (InkCanvas has none): StrokesChanged records added/removed strokes; a flag stops undo/redo from recording itself.
 - OPEN — Does the user's Deco tablet deliver pressure through Windows Ink in WPF? Test in Phase 1/4 and record here.
 - OPEN — Infinite canvas approach (see section 4 risk). Prototype before committing.
-- OPEN — Save format details (see section 10).
 - OPEN — Whether to keep the repo public; installer choice; code signing (probably not, to stay free).
 
 ---

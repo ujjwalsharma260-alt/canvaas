@@ -21,7 +21,7 @@ for f in list(root.rglob("*.xaml")) + list(root.rglob("*.csproj")):
     except ET.ParseError as e:
         errors.append(f"INVALID XML: {f.relative_to(root)}: {e}")
 
-handler_attrs = re.compile(r'\b(?:Click|Checked|Unchecked|Loaded|Closing|Closed|SelectionChanged|TextChanged|ValueChanged|MouseDown|MouseUp|MouseMove|MouseWheel|KeyDown|KeyUp|StrokeCollected|StrokeErasing|PreviewMouseDown|StylusDown|StylusMove|StylusUp)="([A-Za-z_][A-Za-z0-9_]*)"')
+handler_attrs = re.compile(r'\b(?:Click|Checked|Unchecked|Loaded|Closing|Closed|SelectionChanged|TextChanged|ValueChanged|MouseDown|MouseUp|MouseMove|MouseWheel|KeyDown|KeyUp|StrokeCollected|StrokeErasing|Executed|CanExecute|PreviewMouseDown|StylusDown|StylusMove|StylusUp)="([A-Za-z_][A-Za-z0-9_]*)"')
 for xaml in root.rglob("*.xaml"):
     if any(p in xaml.parts for p in ("bin", "obj")):
         continue

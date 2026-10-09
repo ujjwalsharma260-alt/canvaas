@@ -2,7 +2,7 @@
 
 A free, local-first Windows handwriting and study-notes app, built for pen tablets.
 
-**Status: Phase 0 (foundation).** The app only opens a window that says "Canvaas". Handwriting, notebooks and the infinite canvas are not built yet.
+**Status: Phase 1 (handwriting prototype).** You can write with a pen or mouse, erase, undo/redo, clear, and save/open `.canvaas` notes. Notebook pages and the infinite canvas are not built yet.
 
 - Full project description, rules and roadmap for developers and AI assistants: see [`CONTEXT.md`](CONTEXT.md)
 - Version history: see [`CHANGELOG.md`](CHANGELOG.md)
