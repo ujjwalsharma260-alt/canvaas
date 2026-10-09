@@ -8,6 +8,7 @@
         MinWidth="720"
         MinHeight="480"
         WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
         WindowStyle="None"
         Background="#E6E6E6"
         Closing="Window_Closing">
