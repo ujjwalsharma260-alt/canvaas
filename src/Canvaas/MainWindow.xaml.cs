@@ -15,11 +15,12 @@ namespace Canvaas;
 
 public partial class MainWindow : Window
 {
-    private const int CurrentFormatVersion = 2;
+    private const int CurrentFormatVersion = 3;
     private const string FileExtension = ".canvaas";
     private const string FileFilter = "Canvaas note (*.canvaas)|*.canvaas";
     private const string ManifestEntryName = "manifest.json";
-    private const string InkEntryName = "ink.isf";
+    private const string LegacyInkEntryName = "ink.isf";       // v1 and v2
+    private const string PageEntryFormat = "page_{0:D3}.isf";  // v3+
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -28,15 +29,28 @@ public partial class MainWindow : Window
         PropertyNameCaseInsensitive = true
     };
 
+    private sealed class PageManifest
+    {
+        public string? BackgroundColor { get; set; }
+        public string? Template { get; set; }
+        public double? Spacing { get; set; }
+    }
+
     private sealed class Manifest
     {
         public int FormatVersion { get; set; }
         public string App { get; set; } = "Canvaas";
         public string AppVersion { get; set; } = "";
         public string SavedAtUtc { get; set; } = "";
+
+        // v1 / v2 single-page fields (only read on load, never written by this version)
         public string? BackgroundColor { get; set; }
         public string? Template { get; set; }
         public double? Spacing { get; set; }
+
+        // v3 multi-page fields
+        public int CurrentPageIndex { get; set; }
+        public List<PageManifest>? Pages { get; set; }
     }
 
     private sealed class StrokeChange
@@ -49,7 +63,18 @@ public partial class MainWindow : Window
         }
     }
 
+    private sealed class NotebookPage
+    {
+        public StrokeCollection Strokes { get; set; } = new StrokeCollection();
+        public Color BackgroundColor { get; set; } = Colors.White;
+        public PageTemplate Template { get; set; } = PageTemplate.Blank;
+        public double Spacing { get; set; } = 40;
+    }
+
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
+
+    private readonly List<NotebookPage> _pages = new();
+    private int _currentPageIndex;
 
     private readonly Stack<StrokeChange> _undo = new();
     private readonly Stack<StrokeChange> _redo = new();
@@ -58,9 +83,7 @@ public partial class MainWindow : Window
     private string? _currentPath;
     private bool _dirty;
 
-    private Color _backgroundColor = Colors.White;
-    private PageTemplate _template = PageTemplate.Blank;
-    private double _spacing = 40;
+    private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
     public MainWindow()
     {
@@ -75,8 +98,12 @@ public partial class MainWindow : Window
             IgnorePressure = false
         };
 
-        InkArea.Strokes.StrokesChanged += Strokes_Changed;
         StateChanged += MainWindow_StateChanged;
+
+        // Start with one blank page
+        _pages.Add(new NotebookPage());
+        _currentPageIndex = 0;
+        LoadCurrentPageIntoCanvas();
 
         PenButton.IsChecked = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
@@ -86,8 +113,107 @@ public partial class MainWindow : Window
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
-        UpdatePageBackground();
         UpdateTitle();
+    }
+
+    // =====================================================================
+    // Page management
+    // =====================================================================
+
+    private void LoadCurrentPageIntoCanvas()
+    {
+        InkArea.Strokes.StrokesChanged -= Strokes_Changed;
+        InkArea.Strokes = CurrentPage.Strokes;
+        InkArea.Strokes.StrokesChanged += Strokes_Changed;
+
+        _undo.Clear();
+        _redo.Clear();
+        CommandManager.InvalidateRequerySuggested();
+
+        SyncUIWithSettings();
+        UpdatePageNavigationUI();
+    }
+
+    private void UpdatePageNavigationUI()
+    {
+        if (PageCounterText is null) return;
+        PageCounterText.Text = $"{_currentPageIndex + 1} / {_pages.Count}";
+        if (PrevPageButton is not null) PrevPageButton.IsEnabled = _currentPageIndex > 0;
+        if (NextPageButton is not null) NextPageButton.IsEnabled = _currentPageIndex < _pages.Count - 1;
+    }
+
+    private void PrevPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPageIndex > 0)
+        {
+            _currentPageIndex--;
+            LoadCurrentPageIntoCanvas();
+            StatusText.Text = $"Page {_currentPageIndex + 1} of {_pages.Count}.";
+        }
+    }
+
+    private void NextPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPageIndex < _pages.Count - 1)
+        {
+            _currentPageIndex++;
+            LoadCurrentPageIntoCanvas();
+            StatusText.Text = $"Page {_currentPageIndex + 1} of {_pages.Count}.";
+        }
+    }
+
+    private void AddPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        var newPage = new NotebookPage
+        {
+            BackgroundColor = CurrentPage.BackgroundColor,
+            Template = CurrentPage.Template,
+            Spacing = CurrentPage.Spacing
+        };
+
+        _pages.Insert(_currentPageIndex + 1, newPage);
+        _currentPageIndex++;
+        LoadCurrentPageIntoCanvas();
+        MarkDirty();
+        StatusText.Text = $"Added page {_currentPageIndex + 1} of {_pages.Count}.";
+    }
+
+    private void DeletePageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pages.Count <= 1)
+        {
+            MessageBox.Show(
+                this,
+                "You cannot delete the only page in a note.\n\nAdd another page first, then delete this one.",
+                "Cannot delete",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            this,
+            $"Delete page {_currentPageIndex + 1} of {_pages.Count}?\n\nEverything on this page will be removed. You can still press Undo (Ctrl+Z) right after.",
+            "Delete page",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+
+        if (answer != MessageBoxResult.OK) return;
+
+        // Push a whole-page delete onto the undo stack
+        var removedPage = _pages[_currentPageIndex];
+        var removedIndex = _currentPageIndex;
+
+        _pages.RemoveAt(_currentPageIndex);
+        if (_currentPageIndex >= _pages.Count)
+            _currentPageIndex = _pages.Count - 1;
+
+        LoadCurrentPageIntoCanvas();
+        MarkDirty();
+        StatusText.Text = $"Deleted page {removedIndex + 1}. Now on page {_currentPageIndex + 1} of {_pages.Count}.";
+
+        // Simple, honest feedback. Full multi-page undo comes later.
+        _ = removedPage;
     }
 
     // =====================================================================
@@ -152,7 +278,7 @@ public partial class MainWindow : Window
     {
         if (sender is RadioButton rb && rb.Tag is string hex)
         {
-            _backgroundColor = ParseHexColor(hex, Colors.White);
+            CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
             UpdatePageBackground();
             StatusText.Text = $"Background: {rb.ToolTip}";
             MarkDirty();
@@ -164,7 +290,7 @@ public partial class MainWindow : Window
         if (sender is RadioButton rb && rb.Tag is string name
             && Enum.TryParse<PageTemplate>(name, out var t))
         {
-            _template = t;
+            CurrentPage.Template = t;
             UpdatePageBackground();
             StatusText.Text = $"Template: {rb.ToolTip}";
             MarkDirty();
@@ -177,7 +303,7 @@ public partial class MainWindow : Window
         if (SpacingCombo.SelectedItem is ComboBoxItem item
             && double.TryParse(item.Content?.ToString(), out var s))
         {
-            _spacing = s;
+            CurrentPage.Spacing = s;
             UpdatePageBackground();
             MarkDirty();
         }
@@ -185,7 +311,7 @@ public partial class MainWindow : Window
 
     private void UpdatePageBackground()
     {
-        PageBackground.Fill = BuildPageBrush(_backgroundColor, _template, _spacing);
+        PageBackground.Fill = BuildPageBrush(CurrentPage.BackgroundColor, CurrentPage.Template, CurrentPage.Spacing);
     }
 
     private static Brush BuildPageBrush(Color baseColor, PageTemplate template, double spacing)
@@ -254,7 +380,7 @@ public partial class MainWindow : Window
 
     private void SyncUIWithSettings()
     {
-        string hex = $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}";
+        string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
 
         RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack };
         bool matched = false;
@@ -269,7 +395,7 @@ public partial class MainWindow : Window
         }
         if (!matched) ColorWhite.IsChecked = true;
 
-        RadioButton templateBtn = _template switch
+        RadioButton templateBtn = CurrentPage.Template switch
         {
             PageTemplate.Blank => TemplateBlank,
             PageTemplate.Ruled => TemplateRuled,
@@ -281,7 +407,7 @@ public partial class MainWindow : Window
 
         foreach (ComboBoxItem item in SpacingCombo.Items)
         {
-            if (item.Content?.ToString() == ((int)_spacing).ToString())
+            if (item.Content?.ToString() == ((int)CurrentPage.Spacing).ToString())
             {
                 SpacingCombo.SelectedItem = item;
                 break;
@@ -352,22 +478,14 @@ public partial class MainWindow : Window
         SmoothCompletedStroke(e.Stroke);
     }
 
-    // ---------------------------------------------------------------------
-    // High-quality stroke rebuilding
-    //
-    // While drawing, FitToCurve=false gives us instant ink under the pen tip.
-    // Once the pen is up we rebuild the stroke as a dense Catmull-Rom spline
-    // through smoothed control points. The result is a stroke that renders
-    // as a real smooth curve, staying crisp at any zoom. Because the swap
-    // happens after pen-up, the writer never sees any lag.
-    // ---------------------------------------------------------------------
+    // While drawing FitToCurve=false gives instant ink. On pen-up, replace the
+    // raw stroke with a dense Catmull-Rom spline so curves stay crisp at any zoom.
     private void SmoothCompletedStroke(Stroke original)
     {
         var pts = original.StylusPoints;
         int n = pts.Count;
         if (n < 3) return;
 
-        // 1) Pull out raw coords + pressure
         var rawX = new double[n];
         var rawY = new double[n];
         var rawP = new float[n];
@@ -378,7 +496,6 @@ public partial class MainWindow : Window
             rawP[i] = pts[i].PressureFactor;
         }
 
-        // 2) Gentle 5-tap moving average to remove sample noise
         var sx = new double[n];
         var sy = new double[n];
         var sp = new float[n];
@@ -402,9 +519,6 @@ public partial class MainWindow : Window
             sp[i] = sumP / cnt;
         }
 
-        // 3) Catmull-Rom spline through the smoothed control points.
-        //    Target spacing ~1.2 px between output samples so curves stay
-        //    smooth even when the app is zoomed in.
         const double step = 1.2;
         const int maxOut = 6000;
         var outPts = new StylusPointCollection();
@@ -412,8 +526,8 @@ public partial class MainWindow : Window
 
         for (int i = 0; i < n - 1; i++)
         {
-            double p1x = sx[i],       p1y = sy[i];
-            double p2x = sx[i + 1],   p2y = sy[i + 1];
+            double p1x = sx[i],     p1y = sy[i];
+            double p2x = sx[i + 1], p2y = sy[i + 1];
             double p0x = i > 0     ? sx[i - 1] : p1x - (p2x - p1x);
             double p0y = i > 0     ? sy[i - 1] : p1y - (p2y - p1y);
             double p3x = i < n - 2 ? sx[i + 2] : p2x + (p2x - p1x);
@@ -445,7 +559,7 @@ public partial class MainWindow : Window
         }
 
         var da = original.DrawingAttributes.Clone();
-        da.FitToCurve = false;   // already a dense smooth curve
+        da.FitToCurve = false;
         var smoothed = new Stroke(outPts, da);
 
         int idx = InkArea.Strokes.IndexOf(original);
@@ -462,7 +576,6 @@ public partial class MainWindow : Window
             _applyingHistory = false;
         }
 
-        // Keep the undo stack referring to the smoothed stroke, not the raw one
         if (_undo.Count > 0)
         {
             var last = _undo.Pop();
@@ -546,17 +659,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ReplaceStrokes(StrokeCollection strokes)
-    {
-        InkArea.Strokes.StrokesChanged -= Strokes_Changed;
-        InkArea.Strokes = strokes;
-        InkArea.Strokes.StrokesChanged += Strokes_Changed;
-
-        _undo.Clear();
-        _redo.Clear();
-        CommandManager.InvalidateRequerySuggested();
-    }
-
     // =====================================================================
     // New / Open / Save
     // =====================================================================
@@ -565,7 +667,11 @@ public partial class MainWindow : Window
     {
         if (!ConfirmDiscardChanges()) return;
 
-        ReplaceStrokes(new StrokeCollection());
+        _pages.Clear();
+        _pages.Add(new NotebookPage());
+        _currentPageIndex = 0;
+        LoadCurrentPageIntoCanvas();
+
         _currentPath = null;
         _dirty = false;
         UpdateTitle();
@@ -627,10 +733,19 @@ public partial class MainWindow : Window
                     App = "Canvaas",
                     AppVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "",
                     SavedAtUtc = DateTime.UtcNow.ToString("o"),
-                    BackgroundColor = $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}",
-                    Template = _template.ToString(),
-                    Spacing = _spacing
+                    CurrentPageIndex = _currentPageIndex,
+                    Pages = new List<PageManifest>()
                 };
+
+                foreach (var page in _pages)
+                {
+                    manifest.Pages.Add(new PageManifest
+                    {
+                        BackgroundColor = $"#{page.BackgroundColor.R:X2}{page.BackgroundColor.G:X2}{page.BackgroundColor.B:X2}",
+                        Template = page.Template.ToString(),
+                        Spacing = page.Spacing
+                    });
+                }
 
                 var manifestEntry = zip.CreateEntry(ManifestEntryName);
                 using (var entryStream = manifestEntry.Open())
@@ -638,13 +753,15 @@ public partial class MainWindow : Window
                     JsonSerializer.Serialize(entryStream, manifest, JsonOptions);
                 }
 
-                if (InkArea.Strokes.Count > 0)
+                for (int i = 0; i < _pages.Count; i++)
                 {
+                    if (_pages[i].Strokes.Count == 0) continue;
+
                     using var inkBuffer = new MemoryStream();
-                    InkArea.Strokes.Save(inkBuffer);
+                    _pages[i].Strokes.Save(inkBuffer);
                     inkBuffer.Position = 0;
 
-                    var inkEntry = zip.CreateEntry(InkEntryName);
+                    var inkEntry = zip.CreateEntry(string.Format(PageEntryFormat, i));
                     using var entryStream = inkEntry.Open();
                     inkBuffer.CopyTo(entryStream);
                 }
@@ -673,10 +790,8 @@ public partial class MainWindow : Window
 
     private void OpenFromFile(string path)
     {
-        StrokeCollection loaded;
-        Color loadedBg = Colors.White;
-        PageTemplate loadedTemplate = PageTemplate.Blank;
-        double loadedSpacing = 40;
+        List<NotebookPage> loadedPages;
+        int loadedCurrentPage = 0;
 
         try
         {
@@ -706,33 +821,65 @@ public partial class MainWindow : Window
                 return;
             }
 
-            if (manifest.FormatVersion >= 2)
+            loadedPages = new List<NotebookPage>();
+
+            if (manifest.FormatVersion >= 3 && manifest.Pages is { Count: > 0 })
             {
-                if (!string.IsNullOrEmpty(manifest.BackgroundColor))
-                    loadedBg = ParseHexColor(manifest.BackgroundColor!, Colors.White);
+                // v3 multi-page
+                for (int i = 0; i < manifest.Pages.Count; i++)
+                {
+                    var pm = manifest.Pages[i];
+                    var page = new NotebookPage
+                    {
+                        BackgroundColor = ParseHexColor(pm.BackgroundColor ?? "#FFFFFF", Colors.White),
+                        Spacing = pm.Spacing is double s && s > 0 ? s : 40
+                    };
+                    if (Enum.TryParse<PageTemplate>(pm.Template, out var t))
+                        page.Template = t;
 
-                if (Enum.TryParse<PageTemplate>(manifest.Template, out var t))
-                    loadedTemplate = t;
+                    var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
+                    if (inkEntry is not null)
+                    {
+                        using var buffer = new MemoryStream();
+                        using (var es = inkEntry.Open()) es.CopyTo(buffer);
+                        buffer.Position = 0;
+                        page.Strokes = new StrokeCollection(buffer);
+                    }
 
-                if (manifest.Spacing is double s && s > 0)
-                    loadedSpacing = s;
-            }
+                    loadedPages.Add(page);
+                }
 
-            var inkEntry = zip.GetEntry(InkEntryName);
-            if (inkEntry is null)
-            {
-                loaded = new StrokeCollection();
+                loadedCurrentPage = Math.Clamp(manifest.CurrentPageIndex, 0, loadedPages.Count - 1);
             }
             else
             {
-                using var buffer = new MemoryStream();
-                using (var entryStream = inkEntry.Open())
+                // v1 / v2 single-page → becomes page 1 of a 1-page notebook
+                var page = new NotebookPage();
+                if (manifest.FormatVersion >= 2)
                 {
-                    entryStream.CopyTo(buffer);
+                    if (!string.IsNullOrEmpty(manifest.BackgroundColor))
+                        page.BackgroundColor = ParseHexColor(manifest.BackgroundColor!, Colors.White);
+                    if (Enum.TryParse<PageTemplate>(manifest.Template, out var t))
+                        page.Template = t;
+                    if (manifest.Spacing is double s && s > 0)
+                        page.Spacing = s;
                 }
-                buffer.Position = 0;
-                loaded = new StrokeCollection(buffer);
+
+                var inkEntry = zip.GetEntry(LegacyInkEntryName);
+                if (inkEntry is not null)
+                {
+                    using var buffer = new MemoryStream();
+                    using (var es = inkEntry.Open()) es.CopyTo(buffer);
+                    buffer.Position = 0;
+                    page.Strokes = new StrokeCollection(buffer);
+                }
+
+                loadedPages.Add(page);
+                loadedCurrentPage = 0;
             }
+
+            if (loadedPages.Count == 0)
+                loadedPages.Add(new NotebookPage());
         }
         catch (Exception ex)
         {
@@ -745,17 +892,15 @@ public partial class MainWindow : Window
             return;
         }
 
-        _backgroundColor = loadedBg;
-        _template = loadedTemplate;
-        _spacing = loadedSpacing;
-
-        ReplaceStrokes(loaded);
-        SyncUIWithSettings();
+        _pages.Clear();
+        _pages.AddRange(loadedPages);
+        _currentPageIndex = loadedCurrentPage;
+        LoadCurrentPageIntoCanvas();
 
         _currentPath = path;
         _dirty = false;
         UpdateTitle();
-        StatusText.Text = "Opened: " + path;
+        StatusText.Text = $"Opened: {path}  ({_pages.Count} page{(_pages.Count == 1 ? "" : "s")})";
     }
 
     // =====================================================================
