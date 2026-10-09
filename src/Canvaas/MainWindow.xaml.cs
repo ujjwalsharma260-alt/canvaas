@@ -349,23 +349,104 @@ public partial class MainWindow : Window
 
         StatusText.Text = $"Last stroke: {points.Count} points, pressure {min:0.00} to {max:0.00} - {verdict}.";
 
-        // Smooth the completed stroke now that the pen is up.
         SmoothCompletedStroke(e.Stroke);
     }
 
-    // While drawing we keep FitToCurve=false so ink appears under the pen tip
-    // with zero lag. Once the stroke is finished, replace it with a smoothed
-    // copy so the final line looks clean instead of faceted. The swap happens
-    // after the pen leaves the tablet, so it's invisible to the writer.
+    // ---------------------------------------------------------------------
+    // High-quality stroke rebuilding
+    //
+    // While drawing, FitToCurve=false gives us instant ink under the pen tip.
+    // Once the pen is up we rebuild the stroke as a dense Catmull-Rom spline
+    // through smoothed control points. The result is a stroke that renders
+    // as a real smooth curve, staying crisp at any zoom. Because the swap
+    // happens after pen-up, the writer never sees any lag.
+    // ---------------------------------------------------------------------
     private void SmoothCompletedStroke(Stroke original)
     {
-        if (original.StylusPoints.Count < 3) return;
+        var pts = original.StylusPoints;
+        int n = pts.Count;
+        if (n < 3) return;
+
+        // 1) Pull out raw coords + pressure
+        var rawX = new double[n];
+        var rawY = new double[n];
+        var rawP = new float[n];
+        for (int i = 0; i < n; i++)
+        {
+            rawX[i] = pts[i].X;
+            rawY[i] = pts[i].Y;
+            rawP[i] = pts[i].PressureFactor;
+        }
+
+        // 2) Gentle 5-tap moving average to remove sample noise
+        var sx = new double[n];
+        var sy = new double[n];
+        var sp = new float[n];
+        const int half = 2;
+        for (int i = 0; i < n; i++)
+        {
+            double sumX = 0, sumY = 0;
+            float sumP = 0;
+            int cnt = 0;
+            for (int j = -half; j <= half; j++)
+            {
+                int k = i + j;
+                if (k < 0 || k >= n) continue;
+                sumX += rawX[k];
+                sumY += rawY[k];
+                sumP += rawP[k];
+                cnt++;
+            }
+            sx[i] = sumX / cnt;
+            sy[i] = sumY / cnt;
+            sp[i] = sumP / cnt;
+        }
+
+        // 3) Catmull-Rom spline through the smoothed control points.
+        //    Target spacing ~1.2 px between output samples so curves stay
+        //    smooth even when the app is zoomed in.
+        const double step = 1.2;
+        const int maxOut = 6000;
+        var outPts = new StylusPointCollection();
+        outPts.Add(new StylusPoint((float)sx[0], (float)sy[0], Clamp01(sp[0])));
+
+        for (int i = 0; i < n - 1; i++)
+        {
+            double p1x = sx[i],       p1y = sy[i];
+            double p2x = sx[i + 1],   p2y = sy[i + 1];
+            double p0x = i > 0     ? sx[i - 1] : p1x - (p2x - p1x);
+            double p0y = i > 0     ? sy[i - 1] : p1y - (p2y - p1y);
+            double p3x = i < n - 2 ? sx[i + 2] : p2x + (p2x - p1x);
+            double p3y = i < n - 2 ? sy[i + 2] : p2y + (p2y - p1y);
+
+            double segLen = Math.Sqrt((p2x - p1x) * (p2x - p1x) + (p2y - p1y) * (p2y - p1y));
+            int subdiv = Math.Max(1, (int)Math.Ceiling(segLen / step));
+            if (subdiv > 500) subdiv = 500;
+
+            for (int s = 1; s <= subdiv; s++)
+            {
+                double t = (double)s / subdiv;
+                double t2 = t * t;
+                double t3 = t2 * t;
+                double x = 0.5 * ((2 * p1x)
+                                  + (-p0x + p2x) * t
+                                  + (2 * p0x - 5 * p1x + 4 * p2x - p3x) * t2
+                                  + (-p0x + 3 * p1x - 3 * p2x + p3x) * t3);
+                double y = 0.5 * ((2 * p1y)
+                                  + (-p0y + p2y) * t
+                                  + (2 * p0y - 5 * p1y + 4 * p2y - p3y) * t2
+                                  + (-p0y + 3 * p1y - 3 * p2y + p3y) * t3);
+                float pressure = (float)(sp[i] + (sp[i + 1] - sp[i]) * t);
+
+                outPts.Add(new StylusPoint((float)x, (float)y, Clamp01(pressure)));
+                if (outPts.Count >= maxOut) break;
+            }
+            if (outPts.Count >= maxOut) break;
+        }
 
         var da = original.DrawingAttributes.Clone();
-        if (da.FitToCurve) return;   // already smoothed
-        da.FitToCurve = true;
-
-        var smoothed = new Stroke(original.StylusPoints, da);
+        da.FitToCurve = false;   // already a dense smooth curve
+        var smoothed = new Stroke(outPts, da);
 
         int idx = InkArea.Strokes.IndexOf(original);
         if (idx < 0) return;
@@ -381,9 +462,7 @@ public partial class MainWindow : Window
             _applyingHistory = false;
         }
 
-        // The undo stack currently has an entry saying "the raw stroke was added".
-        // The raw stroke no longer exists on the canvas, so swap that entry to
-        // refer to the smoothed stroke instead.
+        // Keep the undo stack referring to the smoothed stroke, not the raw one
         if (_undo.Count > 0)
         {
             var last = _undo.Pop();
@@ -391,14 +470,20 @@ public partial class MainWindow : Window
                 && last.Added.Count == 1
                 && last.Added[0] == original)
             {
-                var added = new StrokeCollection { smoothed };
-                _undo.Push(new StrokeChange(added, last.Removed));
+                _undo.Push(new StrokeChange(new StrokeCollection { smoothed }, last.Removed));
             }
             else
             {
                 _undo.Push(last);
             }
         }
+    }
+
+    private static float Clamp01(float v)
+    {
+        if (v < 0f) return 0f;
+        if (v > 1f) return 1f;
+        return v;
     }
 
     // =====================================================================
