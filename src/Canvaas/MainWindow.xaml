@@ -16,7 +16,7 @@
         PreviewKeyDown="Window_PreviewKeyDown">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="36" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
+        <shell:WindowChrome x:Name="AppWindowChrome" CaptionHeight="36" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
@@ -133,20 +133,20 @@
             </Setter>
         </Style>
 
-        <Style x:Key="PenSwatch" TargetType="RadioButton">
-            <Setter Property="Width" Value="32"/>
-            <Setter Property="Height" Value="32"/>
+        <Style x:Key="PopupSwatchButton" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
             <Setter Property="Margin" Value="3"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
+                    <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="16"/>
-                            <Border x:Name="Ring" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="17" Visibility="Collapsed"/>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="17" BorderBrush="#CCCCCC" BorderThickness="1"/>
                         </Grid>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Ring" Property="Visibility" Value="Visible"/>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1A73E8"/>
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -216,27 +216,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="PopupSwatchButton" TargetType="Button">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Margin" Value="3"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="17" BorderBrush="#CCCCCC" BorderThickness="1"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1A73E8"/>
-                                <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
             <DrawingBrush.Drawing>
                 <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,54,70"/></GeometryDrawing.Geometry></GeometryDrawing>
@@ -293,6 +272,7 @@
 
     <Grid>
         <DockPanel>
+            <!-- 1. Title bar (top, full width) -->
             <Border x:Name="TitleBarBorder" DockPanel.Dock="Top" Background="#7B2FBE" Height="36">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -304,6 +284,7 @@
                 </DockPanel>
             </Border>
 
+            <!-- 2. Toolbar (top, full width) -->
             <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
                 <DockPanel Margin="8,6">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
@@ -351,6 +332,42 @@
                 </DockPanel>
             </Border>
 
+            <!-- 3. Status bar (bottom, FULL WIDTH — declared before left/right panels) -->
+            <Border DockPanel.Dock="Bottom" Background="#FAFAFA" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" Height="34">
+                <Grid Margin="10,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="StatusText" Text="Ready. Pen or mouse to draw; middle-mouse drag to pan; Ctrl+scroll to zoom."
+                                   VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
+                        <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
+                        <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
+                        <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="58">
+                            <TextBox x:Name="ZoomText" Text="100%"
+                                     Width="46" BorderThickness="0" Background="Transparent"
+                                     Padding="0" FontSize="12" Foreground="#333333"
+                                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                     KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
+                        </Border>
+                        <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
+                        <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
+                        <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
+                        <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="10,2" Margin="6,0">
+                            <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
+                        </Border>
+                        <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
+                        <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
+                        <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="1,0,0,0" Click="AddPageButton_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 4. Left sidebar (below toolbar, above status bar) -->
             <Border x:Name="LeftPanel" DockPanel.Dock="Left" Width="180"
                     Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
                 <DockPanel>
@@ -383,12 +400,12 @@
                 </DockPanel>
             </Border>
 
+            <!-- 5. Right side panel -->
             <Border x:Name="SidePanel" DockPanel.Dock="Right" Width="320"
                     Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
                     Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="18,16">
-
                         <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
                         <UniformGrid Columns="4" Rows="2">
                             <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
@@ -422,48 +439,15 @@
                         <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
                             <ComboBoxItem Content="Arrow"/>
                             <ComboBoxItem Content="Crosshair"/>
+                            <ComboBoxItem Content="Yellow arrow"/>
                             <ComboBoxItem Content="Yellow dot"/>
+                            <ComboBoxItem Content="Hidden (use pen tip)"/>
                         </ComboBox>
-
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
-            <!-- Bottom bar: plain Border+Grid, more reliable than StatusBar -->
-            <Border DockPanel.Dock="Bottom" Background="#F0F0F0" BorderBrush="#D0D0D0" BorderThickness="0,1,0,0" Height="30">
-                <Grid Margin="8,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="StatusText" Text="Ready. Pen or mouse to draw; middle-mouse drag to pan; Ctrl+scroll to zoom."
-                                   VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
-                        <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
-                        <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
-                        <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="58">
-                            <TextBox x:Name="ZoomText" Text="100%"
-                                     Width="46" BorderThickness="0" Background="Transparent"
-                                     Padding="0" FontSize="12" Foreground="#333333"
-                                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                     KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
-                        </Border>
-                        <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
-                        <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
-                        <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
-                        <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="10,2" Margin="6,0">
-                            <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
-                        </Border>
-                        <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
-                        <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
-                        <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="1,0,0,0" Click="AddPageButton_Click"/>
-                    </StackPanel>
-                </Grid>
-            </Border>
-
+            <!-- 6. Canvas (fills rest) -->
             <ScrollViewer x:Name="PageScroller"
                           HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Auto"
@@ -493,7 +477,7 @@
                                        Background="Transparent"
                                        Stylus.IsPressAndHoldEnabled="False"
                                        Stylus.IsFlicksEnabled="False"
-                                                  StylusOutOfRange="InkArea_StylusOutOfRange"
+                                       StylusOutOfRange="InkArea_StylusOutOfRange"
                                        StrokeCollected="InkArea_StrokeCollected"/>
                         </Grid>
                     </Border>
@@ -513,7 +497,6 @@
                 </Border.Effect>
                 <StackPanel Width="252">
                     <TextBlock x:Name="ToolPopupTitle" Text="Pen" FontSize="13" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,10"/>
-
                     <TextBlock Text="Colour" FontSize="11" Foreground="#666666" Margin="0,0,0,6"/>
                     <ItemsControl x:Name="ToolColorGrid">
                         <ItemsControl.ItemsPanel>
