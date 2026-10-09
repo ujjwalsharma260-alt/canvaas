@@ -427,7 +427,11 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Cursor
+    // Cursor — switch is now instant
+    //
+    // Rule: if the Hand tool is selected, the cursor is SizeAll (the "move"
+    // cursor) the moment the pointer enters the page. It does not wait for
+    // a click. This is what makes it feel instant.
     // =====================================================================
 
     private void UpdateCursor()
@@ -435,8 +439,10 @@ public partial class MainWindow : Window
         if (PageBorder is null) return;
 
         Cursor c;
-        if (_panning) c = Cursors.SizeAll;
-        else if (_tool == ToolMode.Hand) c = Cursors.Hand;
+        if (_tool == ToolMode.Hand)
+        {
+            c = Cursors.SizeAll;
+        }
         else
         {
             c = _cursorStyle switch
@@ -497,10 +503,6 @@ public partial class MainWindow : Window
         if (TitleBarBorder is not null)
             TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
 
-        // The WindowChrome reserves the top 36px as a "caption" (drag) area.
-        // When the title bar is hidden, that reserved area would sit on top of
-        // the toolbar and swallow mouse/trackpad clicks. Zero it out in fullscreen
-        // and restore it on exit.
         if (AppWindowChrome is not null)
         {
             AppWindowChrome.CaptionHeight = _fullscreenMode ? 0 : 36;
@@ -895,7 +897,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Panning — with bitmap cache for smooth motion on low-end hardware
+    // Panning
     // =====================================================================
 
     private void PageBorder_MouseDown(object sender, MouseButtonEventArgs e)
@@ -912,8 +914,6 @@ public partial class MainWindow : Window
         _panStartTfY = PanTransform.Y;
         PageBorder.CaptureMouse();
 
-        // Cache the page as a single bitmap so each pan frame is a fast blit
-        // instead of a full re-render. Removed on pen-up.
         try
         {
             var cache = new BitmapCache
@@ -927,7 +927,6 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        UpdateCursor();
         e.Handled = true;
     }
 
@@ -966,7 +965,6 @@ public partial class MainWindow : Window
             if (PageBorder.IsMouseCaptured)
                 PageBorder.ReleaseMouseCapture();
 
-            // Drop the bitmap cache so the page re-renders normally (crisp) again.
             try { PageBorder.CacheMode = null; } catch { }
         }
 
