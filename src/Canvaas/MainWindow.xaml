@@ -19,6 +19,16 @@
         <shell:WindowChrome x:Name="AppWindowChrome" CaptionHeight="36" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.New" Executed="New_Executed"/>
+        <CommandBinding Command="ApplicationCommands.Open" Executed="Open_Executed"/>
+        <CommandBinding Command="ApplicationCommands.Save" Executed="Save_Executed"/>
+        <CommandBinding Command="ApplicationCommands.SaveAs" Executed="SaveAs_Executed"/>
+        <CommandBinding Command="ApplicationCommands.Undo" Executed="Undo_Executed" CanExecute="Undo_CanExecute"/>
+        <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute"/>
+        <CommandBinding Command="ApplicationCommands.SelectAll" Executed="SelectAll_Executed"/>
+    </Window.CommandBindings>
+
     <Window.Resources>
         <Style x:Key="ToolIconRadio" TargetType="RadioButton">
             <Setter Property="Width" Value="42"/>
@@ -261,15 +271,6 @@
         </DrawingBrush>
     </Window.Resources>
 
-    <Window.CommandBindings>
-        <CommandBinding Command="ApplicationCommands.New" Executed="New_Executed"/>
-        <CommandBinding Command="ApplicationCommands.Open" Executed="Open_Executed"/>
-        <CommandBinding Command="ApplicationCommands.Save" Executed="Save_Executed"/>
-        <CommandBinding Command="ApplicationCommands.SaveAs" Executed="SaveAs_Executed"/>
-        <CommandBinding Command="ApplicationCommands.Undo" Executed="Undo_Executed" CanExecute="Undo_CanExecute"/>
-        <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute"/>
-    </Window.CommandBindings>
-
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -278,7 +279,6 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Row 0: title bar -->
         <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#7B2FBE" Height="36">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -290,7 +290,6 @@
             </DockPanel>
         </Border>
 
-        <!-- Row 1: toolbar -->
         <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
@@ -329,6 +328,7 @@
                     <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
                     <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter" Click="HighlighterButton_Click"/>
                     <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser" Click="EraserButton_Click"/>
+                    <RadioButton x:Name="LassoButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso select (drag around ink)" Click="LassoButton_Click"/>
                     <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (drag the page)" Click="HandButton_Click"/>
                     <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
                     <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
@@ -338,7 +338,6 @@
             </DockPanel>
         </Border>
 
-        <!-- Row 2: middle band. Inner DockPanel: left panel | right panel | canvas -->
         <DockPanel Grid.Row="2">
             <Border x:Name="LeftPanel" DockPanel.Dock="Left" Width="180"
                     Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
@@ -448,14 +447,14 @@
                                        Stylus.IsPressAndHoldEnabled="False"
                                        Stylus.IsFlicksEnabled="False"
                                        StylusOutOfRange="InkArea_StylusOutOfRange"
-                                       StrokeCollected="InkArea_StrokeCollected"/>
+                                       StrokeCollected="InkArea_StrokeCollected"
+                                       SelectionChanged="InkArea_SelectionChanged"/>
                         </Grid>
                     </Border>
                 </Grid>
             </ScrollViewer>
         </DockPanel>
 
-        <!-- Row 3: status bar (bottom, always full width) -->
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="34">
             <Grid Margin="10,3">
                 <Grid.ColumnDefinitions>
