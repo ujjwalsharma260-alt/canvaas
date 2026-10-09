@@ -131,6 +131,10 @@ public partial class MainWindow : Window
     private Point _panStart;
     private double _panStartTfX, _panStartTfY;
 
+    private bool _draggingFloatingZoom;
+    private Point _floatingZoomDragStart;
+    private double _floatingZoomStartX, _floatingZoomStartY;
+
     private DispatcherTimer? _thumbnailTimer;
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
@@ -594,6 +598,42 @@ public partial class MainWindow : Window
             StepZoom(e.Delta > 0 ? +1 : -1);
             e.Handled = true;
         }
+    }
+
+    // =====================================================================
+    // Floating zoom widget drag
+    // =====================================================================
+
+    private void FloatingZoomGrip_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not UIElement el) return;
+        _draggingFloatingZoom = true;
+        _floatingZoomDragStart = e.GetPosition(this);
+        _floatingZoomStartX = FloatingZoomTransform.X;
+        _floatingZoomStartY = FloatingZoomTransform.Y;
+        el.CaptureMouse();
+        el.Cursor = Cursors.SizeAll;
+        e.Handled = true;
+    }
+
+    private void FloatingZoomGrip_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_draggingFloatingZoom) return;
+        var p = e.GetPosition(this);
+        FloatingZoomTransform.X = _floatingZoomStartX + (p.X - _floatingZoomDragStart.X);
+        FloatingZoomTransform.Y = _floatingZoomStartY + (p.Y - _floatingZoomDragStart.Y);
+    }
+
+    private void FloatingZoomGrip_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_draggingFloatingZoom) return;
+        _draggingFloatingZoom = false;
+        if (sender is UIElement el)
+        {
+            el.ReleaseMouseCapture();
+            el.Cursor = Cursors.SizeAll;
+        }
+        e.Handled = true;
     }
 
     // =====================================================================

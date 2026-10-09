@@ -19,16 +19,6 @@
         <shell:WindowChrome x:Name="AppWindowChrome" CaptionHeight="36" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
     </shell:WindowChrome.WindowChrome>
 
-    <Window.CommandBindings>
-        <CommandBinding Command="ApplicationCommands.New" Executed="New_Executed"/>
-        <CommandBinding Command="ApplicationCommands.Open" Executed="Open_Executed"/>
-        <CommandBinding Command="ApplicationCommands.Save" Executed="Save_Executed"/>
-        <CommandBinding Command="ApplicationCommands.SaveAs" Executed="SaveAs_Executed"/>
-        <CommandBinding Command="ApplicationCommands.Undo" Executed="Undo_Executed" CanExecute="Undo_CanExecute"/>
-        <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute"/>
-        <CommandBinding Command="ApplicationCommands.SelectAll" Executed="SelectAll_Executed"/>
-    </Window.CommandBindings>
-
     <Window.Resources>
         <Style x:Key="ToolIconRadio" TargetType="RadioButton">
             <Setter Property="Width" Value="42"/>
@@ -271,6 +261,16 @@
         </DrawingBrush>
     </Window.Resources>
 
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.New" Executed="New_Executed"/>
+        <CommandBinding Command="ApplicationCommands.Open" Executed="Open_Executed"/>
+        <CommandBinding Command="ApplicationCommands.Save" Executed="Save_Executed"/>
+        <CommandBinding Command="ApplicationCommands.SaveAs" Executed="SaveAs_Executed"/>
+        <CommandBinding Command="ApplicationCommands.Undo" Executed="Undo_Executed" CanExecute="Undo_CanExecute"/>
+        <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute"/>
+        <CommandBinding Command="ApplicationCommands.SelectAll" Executed="SelectAll_Executed"/>
+    </Window.CommandBindings>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -328,8 +328,8 @@
                     <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
                     <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter" Click="HighlighterButton_Click"/>
                     <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser" Click="EraserButton_Click"/>
-                    <RadioButton x:Name="LassoButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso select (drag around ink)" Click="LassoButton_Click"/>
-                    <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (drag the page)" Click="HandButton_Click"/>
+                    <RadioButton x:Name="LassoButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso select" Click="LassoButton_Click"/>
+                    <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan" Click="HandButton_Click"/>
                     <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
                     <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
                     <Button x:Name="UndoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A7;" ToolTip="Undo" Command="ApplicationCommands.Undo"/>
@@ -444,6 +444,7 @@
                             <Rectangle x:Name="PageBackground" Fill="White"/>
                             <InkCanvas x:Name="InkArea"
                                        Background="Transparent"
+                                       ForceCursor="True"
                                        Stylus.IsPressAndHoldEnabled="False"
                                        Stylus.IsFlicksEnabled="False"
                                        StylusOutOfRange="InkArea_StylusOutOfRange"
@@ -455,6 +456,41 @@
             </ScrollViewer>
         </DockPanel>
 
+        <!-- Floating draggable zoom -->
+        <Border x:Name="FloatingZoom" Grid.Row="2"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,28,28"
+                Background="#FAFFFFFF" BorderBrush="#B0B0B0" BorderThickness="1"
+                CornerRadius="10" Padding="4,3">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="3" Opacity="0.22" Direction="270"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="FloatingZoomTransform" X="0" Y="0"/>
+            </Border.RenderTransform>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Border x:Name="FloatingZoomGrip" Padding="8,4" Background="Transparent"
+                        Cursor="SizeAll" ToolTip="Drag to move"
+                        MouseLeftButtonDown="FloatingZoomGrip_MouseDown"
+                        MouseMove="FloatingZoomGrip_MouseMove"
+                        MouseLeftButtonUp="FloatingZoomGrip_MouseUp">
+                    <TextBlock Text="&#xE784;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#999999" VerticalAlignment="Center"/>
+                </Border>
+                <Rectangle Width="1" Margin="2,2" Fill="#DDDDDD"/>
+                <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
+                <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="60">
+                    <TextBox x:Name="ZoomText" Text="100%"
+                             Width="46" BorderThickness="0" Background="Transparent"
+                             Padding="0" FontSize="12" Foreground="#333333"
+                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                             KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
+                </Border>
+                <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
+                <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Status bar: only page nav + status text -->
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="34">
             <Grid Margin="10,3">
                 <Grid.ColumnDefinitions>
@@ -467,17 +503,6 @@
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
-                    <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="60">
-                        <TextBox x:Name="ZoomText" Text="100%"
-                                 Width="46" BorderThickness="0" Background="Transparent"
-                                 Padding="0" FontSize="12" Foreground="#333333"
-                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                 KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
-                    </Border>
-                    <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
-                    <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
                     <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
                     <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="10,2" Margin="6,0">
                         <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
