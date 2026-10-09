@@ -373,7 +373,7 @@ public partial class MainWindow : Window
     // Tool options popup
     // =====================================================================
 
-    private void ShowToolPopup(FrameworkElement target, string title)
+    private void ShowToolPopup(UIElement target, string title)
     {
         if (ToolOptionsPopup is null) return;
 
@@ -1069,7 +1069,8 @@ public partial class MainWindow : Window
 
     private void AddText_Click(object sender, RoutedEventArgs e)
         => StatusText.Text = "Add Text is coming in a future update.";
-            // =====================================================================
+
+    // =====================================================================
     // Insert: Image / Text / Clipboard
     // =====================================================================
 
@@ -1185,8 +1186,6 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        // Insert somewhere near the top-left of the current page view,
-        // with a small offset so consecutive inserts don't stack exactly.
         double left = 60 + (InkArea.Children.Count % 6) * 24;
         double top = 60 + (InkArea.Children.Count % 6) * 24;
 
@@ -1194,10 +1193,6 @@ public partial class MainWindow : Window
         InkCanvas.SetTop(element, top);
         InkCanvas.SetRight(element, double.NaN);
         InkCanvas.SetBottom(element, double.NaN);
-
-        // Makes the element reachable by the InkCanvas selection tool,
-        // so the Lasso can pick it up and drag/resize it.
-        InkCanvas.SetEnabled(element, true);
 
         InkArea.Children.Add(element);
 
