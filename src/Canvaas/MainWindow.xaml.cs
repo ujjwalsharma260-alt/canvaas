@@ -78,7 +78,7 @@ public partial class MainWindow : Window
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
     private enum PenCursorStyle { Arrow, Cross, YellowArrow, YellowDot, Hidden }
-    private enum ToolMode { Pen, Highlighter, Eraser, Hand }
+    private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand }
 
     private sealed class NotebookPage
     {
@@ -427,11 +427,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Cursor — switch is now instant
-    //
-    // Rule: if the Hand tool is selected, the cursor is SizeAll (the "move"
-    // cursor) the moment the pointer enters the page. It does not wait for
-    // a click. This is what makes it feel instant.
+    // Cursor
     // =====================================================================
 
     private void UpdateCursor()
@@ -442,6 +438,10 @@ public partial class MainWindow : Window
         if (_tool == ToolMode.Hand)
         {
             c = Cursors.SizeAll;
+        }
+        else if (_tool == ToolMode.Lasso)
+        {
+            c = Cursors.Cross;
         }
         else
         {
@@ -466,6 +466,7 @@ public partial class MainWindow : Window
     private void ApplyPenAttributes()
     {
         if (!_uiReady || InkArea is null) return;
+        if (_tool == ToolMode.Lasso) return;
         var da = InkArea.DefaultDrawingAttributes;
         if (da is null) return;
 
@@ -1250,6 +1251,43 @@ public partial class MainWindow : Window
         UpdateCursor();
         if (StatusText is not null) StatusText.Text = "Eraser selected: touch a stroke to remove it.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
+    }
+
+    private void LassoButton_Click(object sender, RoutedEventArgs e)
+    {
+        _tool = ToolMode.Lasso;
+        EndPan();
+        if (InkArea is not null)
+        {
+            InkArea.IsHitTestVisible = true;
+            InkArea.EditingMode = InkCanvasEditingMode.Select;
+        }
+        UpdateCursor();
+        if (StatusText is not null)
+            StatusText.Text = "Lasso select: drag around ink to select it. Drag inside the selection to move; drag a corner handle to resize.";
+        if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
+    }
+
+    private void InkArea_SelectionChanged(object sender, EventArgs e)
+    {
+        if (InkArea is null) return;
+        int n = InkArea.GetSelectedStrokes().Count;
+        if (n > 0 && StatusText is not null)
+            StatusText.Text = $"Selected {n} stroke{(n == 1 ? "" : "s")}. Drag to move, drag a handle to resize, Delete to remove.";
+    }
+
+    private void SelectAll_Executed(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (InkArea is null) return;
+        if (_tool != ToolMode.Lasso)
+        {
+            _tool = ToolMode.Lasso;
+            if (LassoButton is not null) LassoButton.IsChecked = true;
+            InkArea.EditingMode = InkCanvasEditingMode.Select;
+        }
+        foreach (var s in InkArea.Strokes)
+            InkArea.Select(s);
+        e.Handled = true;
     }
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
