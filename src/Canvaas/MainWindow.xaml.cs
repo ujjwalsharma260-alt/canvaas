@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -41,7 +42,6 @@ public partial class MainWindow : Window
     }
 
     // ---- Undo / redo history ----
-    // Every change to the strokes is stored as "what was added, what was removed".
     private sealed class StrokeChange
     {
         public StrokeCollection Added { get; }
@@ -56,11 +56,11 @@ public partial class MainWindow : Window
 
     private readonly Stack<StrokeChange> _undo = new();
     private readonly Stack<StrokeChange> _redo = new();
-    private bool _applyingHistory;   // true while undo/redo is changing the strokes
+    private bool _applyingHistory;
 
     // ---- Document state ----
-    private string? _currentPath;    // null = not saved yet
-    private bool _dirty;             // true = there are unsaved changes
+    private string? _currentPath;
+    private bool _dirty;
 
     public MainWindow()
     {
@@ -68,14 +68,13 @@ public partial class MainWindow : Window
 
         // FitToCurve = false is deliberate. It makes ink appear under the pen tip
         // immediately, instead of waiting to smooth the stroke into a Bezier curve.
-        // This is the single biggest change for low-latency handwriting.
         InkArea.DefaultDrawingAttributes = new DrawingAttributes
         {
             Color = Colors.Black,
             Width = 2.5,
             Height = 2.5,
             FitToCurve = false,
-            IgnorePressure = false   // use pen pressure when the pen provides it
+            IgnorePressure = false
         };
 
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
@@ -87,6 +86,27 @@ public partial class MainWindow : Window
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
         UpdateTitle();
+    }
+
+    // =====================================================================
+    // Toolbar menus
+    // =====================================================================
+
+    // Opens the ContextMenu attached to whichever toolbar button was clicked.
+    private void MenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.ContextMenu is ContextMenu cm)
+        {
+            cm.PlacementTarget = b;
+            cm.Placement = PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    // Placeholder. We will wire this up properly in the next UI milestone.
+    private void AddText_Click(object sender, RoutedEventArgs e)
+    {
+        StatusText.Text = "Add Text is coming in a future update.";
     }
 
     // =====================================================================
@@ -122,12 +142,11 @@ public partial class MainWindow : Window
 
         if (answer == MessageBoxResult.OK)
         {
-            InkArea.Strokes.Clear();   // recorded in undo history by Strokes_Changed
+            InkArea.Strokes.Clear();
             StatusText.Text = "Page cleared.";
         }
     }
 
-    // Shows what the pen sent for the last stroke. Useful to test pressure on a tablet.
     private void InkArea_StrokeCollected(object sender, InkCanvasStrokeCollectedEventArgs e)
     {
         var points = e.Stroke.StylusPoints;
@@ -206,8 +225,6 @@ public partial class MainWindow : Window
         MarkDirty();
     }
 
-    // reverse = true  -> undo the change (remove what was added, put back what was removed)
-    // reverse = false -> redo the change
     private void ApplyChange(StrokeChange change, bool reverse)
     {
         var toRemove = reverse ? change.Added : change.Removed;
@@ -232,7 +249,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // Swap in a whole new set of strokes (used by New and Open) and forget the history.
     private void ReplaceStrokes(StrokeCollection strokes)
     {
         InkArea.Strokes.StrokesChanged -= Strokes_Changed;
@@ -316,8 +332,6 @@ public partial class MainWindow : Window
         return SaveToFile(dialog.FileName);
     }
 
-    // Saves to a temporary file first, then swaps it in. A failed save can never
-    // destroy an older good copy of the note.
     private bool SaveToFile(string path)
     {
         string tempPath = path + ".tmp";
@@ -341,7 +355,6 @@ public partial class MainWindow : Window
                     JsonSerializer.Serialize(entryStream, manifest, JsonOptions);
                 }
 
-                // An empty page has no ink file; opening handles that.
                 if (InkArea.Strokes.Count > 0)
                 {
                     using var inkBuffer = new MemoryStream();
@@ -412,7 +425,7 @@ public partial class MainWindow : Window
             var inkEntry = zip.GetEntry(InkEntryName);
             if (inkEntry is null)
             {
-                loaded = new StrokeCollection();   // saved empty page
+                loaded = new StrokeCollection();
             }
             else
             {
@@ -456,7 +469,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // Returns true if it is safe to continue (nothing unsaved, or the user chose Save / Don't save).
     private bool ConfirmDiscardChanges()
     {
         if (!_dirty)
