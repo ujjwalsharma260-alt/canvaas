@@ -373,7 +373,7 @@ public partial class MainWindow : Window
     // Tool options popup
     // =====================================================================
 
-    private void ShowToolPopup(UIElement target, string title)
+    private void ShowToolPopup(FrameworkElement target, string title)
     {
         if (ToolOptionsPopup is null) return;
 
@@ -606,7 +606,7 @@ public partial class MainWindow : Window
 
     private void FloatingZoomGrip_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not UIElement el) return;
+        if (sender is not FrameworkElement el) return;
         _draggingFloatingZoom = true;
         _floatingZoomDragStart = e.GetPosition(this);
         _floatingZoomStartX = FloatingZoomTransform.X;
@@ -628,7 +628,7 @@ public partial class MainWindow : Window
     {
         if (!_draggingFloatingZoom) return;
         _draggingFloatingZoom = false;
-        if (sender is UIElement el)
+        if (sender is FrameworkElement el)
         {
             el.ReleaseMouseCapture();
             el.Cursor = Cursors.SizeAll;
