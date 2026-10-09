@@ -58,7 +58,6 @@ public partial class MainWindow : Window
     private string? _currentPath;
     private bool _dirty;
 
-    // Current page style
     private Color _backgroundColor = Colors.White;
     private PageTemplate _template = PageTemplate.Blank;
     private double _spacing = 40;
@@ -77,6 +76,7 @@ public partial class MainWindow : Window
         };
 
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
+        StateChanged += MainWindow_StateChanged;
 
         PenButton.IsChecked = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
@@ -88,6 +88,34 @@ public partial class MainWindow : Window
 
         UpdatePageBackground();
         UpdateTitle();
+    }
+
+    // =====================================================================
+    // Title bar buttons
+    // =====================================================================
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void MainWindow_StateChanged(object? sender, EventArgs e)
+    {
+        if (MaximizeButton is not null)
+        {
+            MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+            MaximizeButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
+        }
     }
 
     // =====================================================================
@@ -168,8 +196,6 @@ public partial class MainWindow : Window
         }
 
         var group = new DrawingGroup();
-
-        // Base fill for the tile
         group.Children.Add(new GeometryDrawing(
             new SolidColorBrush(baseColor),
             null,
@@ -226,7 +252,6 @@ public partial class MainWindow : Window
         return fallback;
     }
 
-    // Sync the panel UI to reflect _backgroundColor / _template / _spacing
     private void SyncUIWithSettings()
     {
         string hex = $"#{_backgroundColor.R:X2}{_backgroundColor.G:X2}{_backgroundColor.B:X2}";
@@ -323,6 +348,57 @@ public partial class MainWindow : Window
             : "no pressure change (mouse, or the tablet driver is not sending pressure)";
 
         StatusText.Text = $"Last stroke: {points.Count} points, pressure {min:0.00} to {max:0.00} - {verdict}.";
+
+        // Smooth the completed stroke now that the pen is up.
+        SmoothCompletedStroke(e.Stroke);
+    }
+
+    // While drawing we keep FitToCurve=false so ink appears under the pen tip
+    // with zero lag. Once the stroke is finished, replace it with a smoothed
+    // copy so the final line looks clean instead of faceted. The swap happens
+    // after the pen leaves the tablet, so it's invisible to the writer.
+    private void SmoothCompletedStroke(Stroke original)
+    {
+        if (original.StylusPoints.Count < 3) return;
+
+        var da = original.DrawingAttributes.Clone();
+        if (da.FitToCurve) return;   // already smoothed
+        da.FitToCurve = true;
+
+        var smoothed = new Stroke(original.StylusPoints, da);
+
+        int idx = InkArea.Strokes.IndexOf(original);
+        if (idx < 0) return;
+
+        _applyingHistory = true;
+        try
+        {
+            InkArea.Strokes.RemoveAt(idx);
+            InkArea.Strokes.Insert(idx, smoothed);
+        }
+        finally
+        {
+            _applyingHistory = false;
+        }
+
+        // The undo stack currently has an entry saying "the raw stroke was added".
+        // The raw stroke no longer exists on the canvas, so swap that entry to
+        // refer to the smoothed stroke instead.
+        if (_undo.Count > 0)
+        {
+            var last = _undo.Pop();
+            if (last.Removed.Count == 0
+                && last.Added.Count == 1
+                && last.Added[0] == original)
+            {
+                var added = new StrokeCollection { smoothed };
+                _undo.Push(new StrokeChange(added, last.Removed));
+            }
+            else
+            {
+                _undo.Push(last);
+            }
+        }
     }
 
     // =====================================================================
@@ -545,7 +621,6 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Page style is only present in v2+ files. v1 files get defaults.
             if (manifest.FormatVersion >= 2)
             {
                 if (!string.IsNullOrEmpty(manifest.BackgroundColor))
@@ -637,7 +712,9 @@ public partial class MainWindow : Window
     private void UpdateTitle()
     {
         string name = _currentPath is null ? "Untitled" : System.IO.Path.GetFileNameWithoutExtension(_currentPath);
-        Title = $"{name}{(_dirty ? " *" : "")} - Canvaas";
+        string text = $"{name}{(_dirty ? " *" : "")} - Canvaas";
+        Title = text;
+        if (TitleBarText is not null) TitleBarText.Text = text;
     }
 
     private static void TryDelete(string path)
