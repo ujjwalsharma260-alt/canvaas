@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — Phase 1 (handwriting prototype)  [awaiting build + hand test]
+## 0.1.0 — Phase 1 (handwriting prototype)  [fix1: added missing using System.IO; awaiting build + hand test]
 - White writing page with pen and mouse input.
 - Pen and stroke-eraser tools.
 - Undo / Redo (Ctrl+Z, Ctrl+Y).

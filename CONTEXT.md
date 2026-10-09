@@ -71,6 +71,7 @@ Known trade-offs / risks to keep in mind:
 ### History of the first (failed) attempt — lessons
 1. `CS0103: 'InkCanvasEditingMode' does not exist` — missing `using System.Windows.Controls;`.
 2. `MC3000: Data at the root level is invalid` in `MainWindow.xaml` — non-XML text had been pasted into a XAML file via the GitHub website editor.
+Phase 1 build failure #1 (2026-10-09): missing `using System.IO;` (see section 10). Fixed in the Phase 1 fix1 patch.
 Lessons: never paste C# into `.xaml` or XML into `.cs`; validate XAML as XML; prefer ZIPs; always check CI after push.
 
 ---
@@ -145,7 +146,7 @@ If a build fails: ask the user for a screenshot of the failing step (the red ✗
 
 ## 10. Coding conventions
 
-- C# with `Nullable` and `ImplicitUsings` enabled. WPF still needs explicit `using System.Windows;` (and `System.Windows.Controls`, `System.Windows.Ink`, `System.Windows.Input` when used).
+- C# with `Nullable` and `ImplicitUsings` enabled. **In WPF projects the implicit usings do NOT include `System.IO` or `System.Net.Http`** (this caused the first Phase 1 build failure: CS0246/CS0103 for File, FileStream, MemoryStream, FileMode, InvalidDataException) - add `using System.IO;` explicitly. WPF also needs explicit `using System.Windows;` (and `System.Windows.Controls`, `System.Windows.Ink`, `System.Windows.Input` when used).
 - Root namespace `Canvaas`. One class per file; XAML code-behind named `<Name>.xaml.cs`.
 - Keep UI logic in code-behind for early phases; when notebooks/settings arrive, put data in separate plain classes (model) so it can be tested and saved.
 - Save format: see `docs/FILE_FORMAT.md` (implemented in Phase 1).
