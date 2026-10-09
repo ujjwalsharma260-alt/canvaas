@@ -1,0 +1,15 @@
+# Build output
+bin/
+obj/
+publish/
+artifacts/
+
+# Visual Studio / editors
+.vs/
+.vscode/
+*.user
+*.suo
+
+# OS files
+Thumbs.db
+.DS_Store
