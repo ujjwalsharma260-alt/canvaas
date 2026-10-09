@@ -295,12 +295,16 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
                     <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Infinite canvas (expand page)" Click="InfiniteCanvasButton_Click"/>
-                    <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style (background, template)" Click="PaletteButton_Click"/>
+                    <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Add" Click="MenuButton_Click">
+                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert" Click="MenuButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Add Text" Click="AddText_Click"/>
+                                <MenuItem Header="Insert Image…" Click="InsertImage_Click"/>
+                                <MenuItem Header="Insert Text…" Click="InsertText_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Paste Image from Clipboard" Click="PasteClipboardImage_Click"/>
+                                <MenuItem Header="Paste Text from Clipboard" Click="PasteClipboardText_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -322,7 +326,7 @@
                         </Button.ContextMenu>
                     </Button>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen (F11, ESC to exit)" Click="FullscreenButton_Click"/>
+                    <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen" Click="FullscreenButton_Click"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
@@ -456,7 +460,6 @@
             </ScrollViewer>
         </DockPanel>
 
-        <!-- Floating draggable zoom -->
         <Border x:Name="FloatingZoom" Grid.Row="2"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                 Margin="0,0,28,28"
@@ -477,7 +480,7 @@
                     <TextBlock Text="&#xE784;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#999999" VerticalAlignment="Center"/>
                 </Border>
                 <Rectangle Width="1" Margin="2,2" Fill="#DDDDDD"/>
-                <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
+                <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out" Click="ZoomOutButton_Click"/>
                 <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="60">
                     <TextBox x:Name="ZoomText" Text="100%"
                              Width="46" BorderThickness="0" Background="Transparent"
@@ -485,12 +488,11 @@
                              HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                              KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
                 </Border>
-                <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
+                <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in" Click="ZoomInButton_Click"/>
                 <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
             </StackPanel>
         </Border>
 
-        <!-- Status bar: only page nav + status text -->
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="34">
             <Grid Margin="10,3">
                 <Grid.ColumnDefinitions>

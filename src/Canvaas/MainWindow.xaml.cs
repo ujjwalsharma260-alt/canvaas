@@ -1069,6 +1069,141 @@ public partial class MainWindow : Window
 
     private void AddText_Click(object sender, RoutedEventArgs e)
         => StatusText.Text = "Add Text is coming in a future update.";
+            // =====================================================================
+    // Insert: Image / Text / Clipboard
+    // =====================================================================
+
+    private void InsertImage_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = "Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files (*.*)|*.*",
+            Title = "Insert image"
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.UriSource = new Uri(dlg.FileName);
+            bmp.EndInit();
+            bmp.Freeze();
+
+            AddImageToPage(bmp);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not load image.\n\n" + ex.Message,
+                "Insert image", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void PasteClipboardImage_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!Clipboard.ContainsImage())
+            {
+                MessageBox.Show(this, "There is no image in the clipboard.",
+                    "Paste image", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            var src = Clipboard.GetImage();
+            if (src is null) return;
+
+            if (src.CanFreeze) src.Freeze();
+            AddImageToPage(src);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Could not paste image.\n\n" + ex.Message,
+                "Paste image", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void AddImageToPage(BitmapSource bmp)
+    {
+        double maxDim = 400;
+        double scale = 1.0;
+        if (bmp.PixelWidth > maxDim) scale = maxDim / bmp.PixelWidth;
+        if (bmp.PixelHeight * scale > maxDim) scale = maxDim / bmp.PixelHeight;
+
+        double w = Math.Max(40, bmp.PixelWidth * scale);
+        double h = Math.Max(40, bmp.PixelHeight * scale);
+
+        var img = new Image
+        {
+            Source = bmp,
+            Width = w,
+            Height = h,
+            Stretch = Stretch.Uniform
+        };
+
+        PlaceOnCanvas(img);
+        StatusText.Text = "Image inserted. Switch to Lasso to move or resize it.";
+    }
+
+    private void InsertText_Click(object sender, RoutedEventArgs e) => AddTextToPage(string.Empty);
+
+    private void PasteClipboardText_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Clipboard.ContainsText())
+        {
+            MessageBox.Show(this, "There is no text in the clipboard.",
+                "Paste text", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        AddTextToPage(Clipboard.GetText());
+    }
+
+    private void AddTextToPage(string initialText)
+    {
+        var tb = new TextBox
+        {
+            Text = initialText,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 18,
+            Width = 260,
+            MinHeight = 36,
+            Padding = new Thickness(4, 2, 4, 2),
+            Background = new SolidColorBrush(Color.FromArgb(20, 0, 0, 0)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(120, 26, 115, 232)),
+            BorderThickness = new Thickness(1),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+
+        PlaceOnCanvas(tb);
+        tb.Focus();
+        tb.CaretIndex = tb.Text.Length;
+        StatusText.Text = "Type your text, then click on empty canvas space to place it.";
+    }
+
+    private void PlaceOnCanvas(FrameworkElement element)
+    {
+        if (InkArea is null) return;
+
+        // Insert somewhere near the top-left of the current page view,
+        // with a small offset so consecutive inserts don't stack exactly.
+        double left = 60 + (InkArea.Children.Count % 6) * 24;
+        double top = 60 + (InkArea.Children.Count % 6) * 24;
+
+        InkCanvas.SetLeft(element, left);
+        InkCanvas.SetTop(element, top);
+        InkCanvas.SetRight(element, double.NaN);
+        InkCanvas.SetBottom(element, double.NaN);
+
+        // Makes the element reachable by the InkCanvas selection tool,
+        // so the Lasso can pick it up and drag/resize it.
+        InkCanvas.SetEnabled(element, true);
+
+        InkArea.Children.Add(element);
+
+        MarkDirty();
+        ScheduleThumbnailRefresh();
+    }
 
     private void PaletteButton_Click(object sender, RoutedEventArgs e)
     {
