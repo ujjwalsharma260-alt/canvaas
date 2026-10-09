@@ -76,6 +76,7 @@ public partial class MainWindow : Window
 
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
+    private enum PenCursorStyle { Arrow, Cross, Hidden }
 
     private sealed class NotebookPage
     {
@@ -106,6 +107,12 @@ public partial class MainWindow : Window
     private double _zoom = 1.0;
     private bool _suppressPageListChange;
     private bool _handToolActive;
+    private bool _fullscreenMode;
+
+    // Shared ink attributes — these apply to new strokes, and are global to the app
+    private Color _penColor = Colors.Black;
+    private double _penSize = 2.5;
+    private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
 
     private bool _panning;
     private Point _panStart;
@@ -121,9 +128,9 @@ public partial class MainWindow : Window
 
         InkArea.DefaultDrawingAttributes = new DrawingAttributes
         {
-            Color = Colors.Black,
-            Width = 2.5,
-            Height = 2.5,
+            Color = _penColor,
+            Width = _penSize,
+            Height = _penSize,
             FitToCurve = false,
             IgnorePressure = false
         };
@@ -140,14 +147,80 @@ public partial class MainWindow : Window
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
         ColorWhite.IsChecked = true;
         TemplateBlank.IsChecked = true;
+        PenColorBlack.IsChecked = true;
+        CursorCombo.SelectedIndex = 0;
 
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
         ApplyZoom();
         UpdateTitle();
+        UpdateCursor();
 
         Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
+    }
+
+    // =====================================================================
+    // Cursor management
+    //
+    // Cursor is set on PageBorder, and WPF inherits it into the page.
+    // Result: hand only shows over the page, arrow elsewhere.
+    // =====================================================================
+
+    private void UpdateCursor()
+    {
+        if (PageBorder is null) return;
+
+        if (_panning)
+        {
+            PageBorder.Cursor = Cursors.SizeAll;
+            return;
+        }
+
+        if (_handToolActive)
+        {
+            PageBorder.Cursor = Cursors.Hand;
+            return;
+        }
+
+        PageBorder.Cursor = _cursorStyle switch
+        {
+            PenCursorStyle.Cross => Cursors.Cross,
+            PenCursorStyle.Hidden => Cursors.None,
+            _ => Cursors.Arrow
+        };
+    }
+
+    // =====================================================================
+    // Fullscreen
+    // =====================================================================
+
+    private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
+
+    private void ToggleFullscreen()
+    {
+        _fullscreenMode = !_fullscreenMode;
+        if (TitleBarBorder is not null)
+            TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
+
+        StatusText.Text = _fullscreenMode
+            ? "Fullscreen mode. Press ESC or F11 to exit."
+            : "Exited fullscreen.";
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && _fullscreenMode)
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.F11)
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+        }
     }
 
     // =====================================================================
@@ -156,15 +229,10 @@ public partial class MainWindow : Window
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e) => StepZoom(+1);
     private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => StepZoom(-1);
-    private void ZoomResetButton_Click(object sender, RoutedEventArgs e)
-    {
-        _zoom = 1.0;
-        ApplyZoom();
-    }
+    private void ZoomResetButton_Click(object sender, RoutedEventArgs e) { _zoom = 1.0; ApplyZoom(); }
 
     private void StepZoom(int direction)
     {
-        // Find the nearest defined zoom level, then step from there.
         int current = 0;
         double bestDist = double.MaxValue;
         for (int i = 0; i < ZoomLevels.Length; i++)
@@ -190,17 +258,10 @@ public partial class MainWindow : Window
 
     private void ZoomText_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
-        {
-            ApplyZoomFromText();
-            e.Handled = true;
-        }
+        if (e.Key == Key.Enter) { ApplyZoomFromText(); e.Handled = true; }
     }
 
-    private void ZoomText_LostFocus(object sender, RoutedEventArgs e)
-    {
-        ApplyZoomFromText();
-    }
+    private void ZoomText_LostFocus(object sender, RoutedEventArgs e) => ApplyZoomFromText();
 
     private void ApplyZoomFromText()
     {
@@ -421,7 +482,7 @@ public partial class MainWindow : Window
                 foreach (var stroke in page.Strokes)
                     stroke.Draw(dc);
             }
-            catch { /* ignore thumbnail render errors */ }
+            catch { }
             dc.Pop();
             dc.Pop();
         }
@@ -444,7 +505,7 @@ public partial class MainWindow : Window
         _panStartH = PageScroller.HorizontalOffset;
         _panStartV = PageScroller.VerticalOffset;
         PageBorder.CaptureMouse();
-        Cursor = Cursors.SizeAll;
+        UpdateCursor();
         e.Handled = true;
     }
 
@@ -468,7 +529,7 @@ public partial class MainWindow : Window
         UpdateCursor();
     }
 
-    // Safety net: if the user releases the mouse anywhere, always end the pan.
+    // Safety net — if the pen leaves the surface anywhere, always end the pan.
     private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_panning) EndPan();
@@ -480,11 +541,6 @@ public partial class MainWindow : Window
         if (PageBorder is not null && PageBorder.IsMouseCaptured)
             PageBorder.ReleaseMouseCapture();
         UpdateCursor();
-    }
-
-    private void UpdateCursor()
-    {
-        Cursor = _handToolActive ? Cursors.SizeAll : Cursors.Arrow;
     }
 
     private void SidebarButton_Click(object sender, RoutedEventArgs e)
@@ -535,6 +591,44 @@ public partial class MainWindow : Window
         SidePanel.Visibility = SidePanel.Visibility == Visibility.Visible
             ? Visibility.Collapsed
             : Visibility.Visible;
+    }
+
+    // =====================================================================
+    // Pen colour / size / cursor
+    // =====================================================================
+
+    private void PenColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string hex)
+        {
+            _penColor = ParseHexColor(hex, Colors.Black);
+            InkArea.DefaultDrawingAttributes.Color = _penColor;
+            StatusText.Text = $"Pen colour: {rb.ToolTip}";
+        }
+    }
+
+    private void PenSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        _penSize = e.NewValue;
+        if (InkArea is not null)
+        {
+            InkArea.DefaultDrawingAttributes.Width = _penSize;
+            InkArea.DefaultDrawingAttributes.Height = _penSize;
+        }
+        if (PenSizeText is not null)
+            PenSizeText.Text = _penSize.ToString("0.#");
+    }
+
+    private void CursorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CursorCombo is null) return;
+        _cursorStyle = CursorCombo.SelectedIndex switch
+        {
+            1 => PenCursorStyle.Cross,
+            2 => PenCursorStyle.Hidden,
+            _ => PenCursorStyle.Arrow
+        };
+        UpdateCursor();
     }
 
     // =====================================================================
@@ -710,7 +804,7 @@ public partial class MainWindow : Window
         _handToolActive = true;
         InkArea.IsHitTestVisible = false;
         UpdateCursor();
-        StatusText.Text = "Hand tool: drag to pan around.";
+        StatusText.Text = "Hand tool: drag over the page to move around.";
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
