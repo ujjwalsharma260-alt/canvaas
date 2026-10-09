@@ -80,6 +80,36 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SmallIconButton" TargetType="Button">
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Margin" Value="1,0"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#CCCCCC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ColorSwatch" TargetType="RadioButton">
             <Setter Property="Width" Value="46"/>
             <Setter Property="Height" Value="46"/>
@@ -274,6 +304,9 @@
                                 <Separator/>
                                 <MenuItem Header="Save" Command="ApplicationCommands.Save"/>
                                 <MenuItem Header="Save As..." Command="ApplicationCommands.SaveAs"/>
+                                <Separator/>
+                                <MenuItem Header="Add page" Click="AddPageButton_Click"/>
+                                <MenuItem Header="Delete current page" Click="DeletePageButton_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
@@ -337,10 +370,22 @@
 
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock x:Name="StatusText" Text="Ready. Draw with your pen or mouse."/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="StatusText" Text="Ready. Draw with your pen or mouse."/>
+                    <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0"/>
+                </StackPanel>
             </StatusBarItem>
             <StatusBarItem HorizontalAlignment="Right">
-                <TextBlock x:Name="VersionText" Foreground="Gray"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}"
+                            Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
+                    <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center"
+                               Margin="6,0" FontSize="12" Foreground="#333333"/>
+                    <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}"
+                            Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
+                    <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}"
+                            Content="&#xE710;" ToolTip="Add page" Margin="6,0,0,0" Click="AddPageButton_Click"/>
+                </StackPanel>
             </StatusBarItem>
         </StatusBar>
 
