@@ -27,8 +27,14 @@ public partial class MainWindow : Window
     private const double PageWidthDefault = 800;
     private const double PageHeightDefault = 1120;
     private const double InfiniteSize = 6000;
+    private const double MinZoom = 0.05;
+    private const double MaxZoom = 6.00;
 
-    private static readonly double[] ZoomLevels = { 0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0 };
+    private static readonly double[] ZoomLevels =
+    {
+        0.05, 0.10, 0.15, 0.20, 0.25, 0.33, 0.50, 0.67, 0.75, 0.90,
+        1.00, 1.10, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00, 4.00, 5.00, 6.00
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -141,7 +147,6 @@ public partial class MainWindow : Window
         ApplyZoom();
         UpdateTitle();
 
-        // First thumbnail render has to wait until the window is laid out.
         Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
     }
 
@@ -159,10 +164,13 @@ public partial class MainWindow : Window
 
     private void StepZoom(int direction)
     {
-        int current = 5;
+        // Find the nearest defined zoom level, then step from there.
+        int current = 0;
+        double bestDist = double.MaxValue;
         for (int i = 0; i < ZoomLevels.Length; i++)
         {
-            if (Math.Abs(ZoomLevels[i] - _zoom) < 0.001) { current = i; break; }
+            double d = Math.Abs(ZoomLevels[i] - _zoom);
+            if (d < bestDist) { bestDist = d; current = i; }
         }
         int next = current + direction;
         if (next < 0) next = 0;
@@ -176,8 +184,35 @@ public partial class MainWindow : Window
         if (PageScale is null) return;
         PageScale.ScaleX = _zoom;
         PageScale.ScaleY = _zoom;
-        if (ZoomText is not null)
+        if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_zoom * 100)}%";
+    }
+
+    private void ZoomText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ApplyZoomFromText();
+            e.Handled = true;
+        }
+    }
+
+    private void ZoomText_LostFocus(object sender, RoutedEventArgs e)
+    {
+        ApplyZoomFromText();
+    }
+
+    private void ApplyZoomFromText()
+    {
+        string raw = ZoomText.Text.Trim().TrimEnd('%').Trim();
+        if (double.TryParse(raw, out var pct))
+        {
+            double z = pct / 100.0;
+            if (z < MinZoom) z = MinZoom;
+            if (z > MaxZoom) z = MaxZoom;
+            _zoom = z;
+        }
+        ApplyZoom();
     }
 
     private void PageScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -231,6 +266,13 @@ public partial class MainWindow : Window
             PageBorder.Width = PageWidthDefault;
             PageBorder.Height = PageHeightDefault;
         }
+
+        if (InfiniteCanvasButton is not null)
+        {
+            InfiniteCanvasButton.Background = CurrentPage.Mode == CanvasMode.Infinite
+                ? new SolidColorBrush(Color.FromRgb(0xDC, 0xE9, 0xF9))
+                : Brushes.Transparent;
+        }
     }
 
     private void InfiniteCanvasButton_Click(object sender, RoutedEventArgs e)
@@ -238,7 +280,7 @@ public partial class MainWindow : Window
         CurrentPage.Mode = CurrentPage.Mode == CanvasMode.Page ? CanvasMode.Infinite : CanvasMode.Page;
         ApplyCanvasMode();
         StatusText.Text = CurrentPage.Mode == CanvasMode.Infinite
-            ? "Infinite canvas mode. Use Hand tool or middle-click drag to move around."
+            ? "Infinite canvas mode. Use the Hand tool to pan around."
             : "Fixed page mode.";
         MarkDirty();
         ScheduleThumbnailRefresh();
@@ -396,12 +438,12 @@ public partial class MainWindow : Window
 
     private void PageBorder_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (!_handToolActive || PageScroller is null) return;
+        if (!_handToolActive || PageScroller is null || PageBorder is null) return;
         _panning = true;
         _panStart = e.GetPosition(PageScroller);
         _panStartH = PageScroller.HorizontalOffset;
         _panStartV = PageScroller.VerticalOffset;
-        PageScroller.CaptureMouse();
+        PageBorder.CaptureMouse();
         Cursor = Cursors.SizeAll;
         e.Handled = true;
     }
@@ -416,11 +458,33 @@ public partial class MainWindow : Window
 
     private void PageBorder_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_panning || PageScroller is null) return;
-        _panning = false;
-        PageScroller.ReleaseMouseCapture();
-        Cursor = Cursors.Arrow;
+        EndPan();
         e.Handled = true;
+    }
+
+    private void PageBorder_LostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (_panning) _panning = false;
+        UpdateCursor();
+    }
+
+    // Safety net: if the user releases the mouse anywhere, always end the pan.
+    private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_panning) EndPan();
+    }
+
+    private void EndPan()
+    {
+        _panning = false;
+        if (PageBorder is not null && PageBorder.IsMouseCaptured)
+            PageBorder.ReleaseMouseCapture();
+        UpdateCursor();
+    }
+
+    private void UpdateCursor()
+    {
+        Cursor = _handToolActive ? Cursors.SizeAll : Cursors.Arrow;
     }
 
     private void SidebarButton_Click(object sender, RoutedEventArgs e)
@@ -624,32 +688,29 @@ public partial class MainWindow : Window
     private void PenButton_Click(object sender, RoutedEventArgs e)
     {
         _handToolActive = false;
+        EndPan();
         InkArea.IsHitTestVisible = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
+        UpdateCursor();
         StatusText.Text = "Pen selected.";
     }
 
     private void EraserButton_Click(object sender, RoutedEventArgs e)
     {
         _handToolActive = false;
+        EndPan();
         InkArea.IsHitTestVisible = true;
         InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke;
+        UpdateCursor();
         StatusText.Text = "Eraser selected: touch a stroke to remove it.";
     }
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
     {
-        if (HandButton.IsChecked == true)
-        {
-            _handToolActive = true;
-            InkArea.IsHitTestVisible = false;
-            StatusText.Text = "Hand tool: drag to pan around.";
-        }
-        else
-        {
-            _handToolActive = false;
-            InkArea.IsHitTestVisible = true;
-        }
+        _handToolActive = true;
+        InkArea.IsHitTestVisible = false;
+        UpdateCursor();
+        StatusText.Text = "Hand tool: drag to pan around.";
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
