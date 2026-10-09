@@ -216,6 +216,27 @@
             </Setter>
         </Style>
 
+        <Style x:Key="PopupSwatchButton" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="17" BorderBrush="#CCCCCC" BorderThickness="1"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1A73E8"/>
+                                <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
             <DrawingBrush.Drawing>
                 <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,54,70"/></GeometryDrawing.Geometry></GeometryDrawing>
@@ -270,222 +291,266 @@
         <CommandBinding Command="ApplicationCommands.Redo" Executed="Redo_Executed" CanExecute="Redo_CanExecute"/>
     </Window.CommandBindings>
 
-    <DockPanel>
-        <Border x:Name="TitleBarBorder" DockPanel.Dock="Top" Background="#7B2FBE" Height="36">
-            <DockPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button x:Name="MinimizeButton" Style="{StaticResource TitleBarButton}" Content="&#xE921;" ToolTip="Minimize" Click="MinimizeButton_Click"/>
-                    <Button x:Name="MaximizeButton" Style="{StaticResource TitleBarButton}" Content="&#xE922;" ToolTip="Maximize" Click="MaximizeButton_Click"/>
-                    <Button x:Name="CloseButton" Style="{StaticResource TitleBarCloseButton}" Content="&#xE8BB;" ToolTip="Close" Click="CloseButton_Click"/>
-                </StackPanel>
-                <TextBlock x:Name="TitleBarText" Foreground="White" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
-            </DockPanel>
-        </Border>
-
-        <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
-            <DockPanel Margin="8,6">
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
-                    <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Toggle infinite canvas for this page" Click="InfiniteCanvasButton_Click"/>
-                    <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Colours, pen, page style" Click="PaletteButton_Click"/>
-                    <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Add" Click="MenuButton_Click">
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="Add Text" Click="AddText_Click"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Button x:Name="SaveMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE700;" ToolTip="File menu" Click="MenuButton_Click">
-                        <Button.ContextMenu>
-                            <ContextMenu>
-                                <MenuItem Header="New" Command="ApplicationCommands.New"/>
-                                <MenuItem Header="Open..." Command="ApplicationCommands.Open"/>
-                                <Separator/>
-                                <MenuItem Header="Save" Command="ApplicationCommands.Save"/>
-                                <MenuItem Header="Save As..." Command="ApplicationCommands.SaveAs"/>
-                                <Separator/>
-                                <MenuItem Header="Add page" Click="AddPageButton_Click"/>
-                                <MenuItem Header="Delete current page" Click="DeletePageButton_Click"/>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE1D9;" ToolTip="Fullscreen (F11, ESC to exit)" Click="FullscreenButton_Click"/>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
-                    <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter" Click="HighlighterButton_Click"/>
-                    <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser" Click="EraserButton_Click"/>
-                    <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (drag to move around)" Click="HandButton_Click"/>
-                    <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
-                    <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
-                    <Button x:Name="UndoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A7;" ToolTip="Undo" Command="ApplicationCommands.Undo"/>
-                    <Button x:Name="RedoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A6;" ToolTip="Redo" Command="ApplicationCommands.Redo"/>
-                </StackPanel>
-            </DockPanel>
-        </Border>
-
-        <Border x:Name="LeftPanel" DockPanel.Dock="Left" Width="180"
-                Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
-            <DockPanel>
-                <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
-                    <DockPanel Margin="6,4">
-                        <Button x:Name="SidebarAddPageButton" DockPanel.Dock="Right"
-                                Style="{StaticResource SmallIconButton}"
-                                Content="&#xE710;" ToolTip="Add page" Click="AddPageButton_Click"/>
-                        <TextBlock Text="Pages" FontWeight="SemiBold" FontSize="12"
-                                   Foreground="#333333" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                    </DockPanel>
-                </Border>
-                <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
-                    <ListBox x:Name="PageListBox" Background="Transparent" BorderThickness="0"
-                             SelectionChanged="PageListBox_SelectionChanged"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             ScrollViewer.PanningMode="VerticalOnly">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Margin="4">
-                                    <Border BorderBrush="#CCCCCC" BorderThickness="1" Background="White">
-                                        <Image Width="120" Height="168" Source="{Binding Thumbnail}" Stretch="Fill"/>
-                                    </Border>
-                                    <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" FontSize="11" Margin="0,4,0,0" Foreground="#333333"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
-            </DockPanel>
-        </Border>
-
-        <Border x:Name="SidePanel" DockPanel.Dock="Right" Width="320"
-                Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
-                Visibility="Collapsed">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="18,16">
-
-                    <TextBlock Text="Pen Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
-                    <StackPanel Orientation="Horizontal">
-                        <RadioButton x:Name="PenColorBlack" Style="{StaticResource PenSwatch}" GroupName="PenColor" Background="#111111" ToolTip="Black" Click="PenColor_Click" Tag="#111111"/>
-                        <RadioButton x:Name="PenColorBlue" Style="{StaticResource PenSwatch}" GroupName="PenColor" Background="#1565C0" ToolTip="Blue" Click="PenColor_Click" Tag="#1565C0"/>
-                        <RadioButton x:Name="PenColorRed" Style="{StaticResource PenSwatch}" GroupName="PenColor" Background="#C62828" ToolTip="Red" Click="PenColor_Click" Tag="#C62828"/>
-                        <RadioButton x:Name="PenColorGreen" Style="{StaticResource PenSwatch}" GroupName="PenColor" Background="#2E7D32" ToolTip="Green" Click="PenColor_Click" Tag="#2E7D32"/>
-                        <RadioButton x:Name="PenColorOrange" Style="{StaticResource PenSwatch}" GroupName="PenColor" Background="#EF6C00" ToolTip="Orange" Click="PenColor_Click" Tag="#EF6C00"/>
-                        <RadioButton x:Name="PenColorPurple" Style="{StaticResource PenSwatch}" GroupName="PenColor" Background="#6A1B9A" ToolTip="Purple" Click="PenColor_Click" Tag="#6A1B9A"/>
+    <Grid>
+        <DockPanel>
+            <Border x:Name="TitleBarBorder" DockPanel.Dock="Top" Background="#7B2FBE" Height="36">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                        <Button x:Name="MinimizeButton" Style="{StaticResource TitleBarButton}" Content="&#xE921;" ToolTip="Minimize" Click="MinimizeButton_Click"/>
+                        <Button x:Name="MaximizeButton" Style="{StaticResource TitleBarButton}" Content="&#xE922;" ToolTip="Maximize" Click="MaximizeButton_Click"/>
+                        <Button x:Name="CloseButton" Style="{StaticResource TitleBarCloseButton}" Content="&#xE8BB;" ToolTip="Close" Click="CloseButton_Click"/>
                     </StackPanel>
+                    <TextBlock x:Name="TitleBarText" Foreground="White" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                </DockPanel>
+            </Border>
 
-                    <TextBlock Text="Pen Size" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,18,0,6"/>
-                    <DockPanel>
-                        <TextBlock x:Name="PenSizeText" DockPanel.Dock="Right" Text="2.5" Width="36"
-                                   VerticalAlignment="Center" HorizontalAlignment="Right" FontSize="12" Foreground="#555555"/>
-                        <Slider x:Name="PenSizeSlider" Minimum="1" Maximum="20" Value="2.5"
-                                TickFrequency="0.5" IsSnapToTickEnabled="True"
-                                VerticalAlignment="Center" ValueChanged="PenSizeSlider_ValueChanged"/>
-                    </DockPanel>
+            <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+                <DockPanel Margin="8,6">
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
+                        <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Infinite canvas (expand page)" Click="InfiniteCanvasButton_Click"/>
+                        <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style (background, template)" Click="PaletteButton_Click"/>
+                        <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
+                        <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Add" Click="MenuButton_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Add Text" Click="AddText_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Button x:Name="SaveMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE700;" ToolTip="File menu" Click="MenuButton_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="New" Command="ApplicationCommands.New"/>
+                                    <MenuItem Header="Open..." Command="ApplicationCommands.Open"/>
+                                    <Separator/>
+                                    <MenuItem Header="Save" Command="ApplicationCommands.Save"/>
+                                    <MenuItem Header="Save As..." Command="ApplicationCommands.SaveAs"/>
+                                    <Separator/>
+                                    <MenuItem Header="Export current page as PNG..." Click="ExportCurrentPagePng_Click"/>
+                                    <MenuItem Header="Export all pages as PNG..." Click="ExportAllPagesPng_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="Add page" Click="AddPageButton_Click"/>
+                                    <MenuItem Header="Delete current page" Click="DeletePageButton_Click"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
+                        <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen (F11, ESC to exit)" Click="FullscreenButton_Click"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
+                        <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter" Click="HighlighterButton_Click"/>
+                        <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser" Click="EraserButton_Click"/>
+                        <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (drag the page)" Click="HandButton_Click"/>
+                        <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
+                        <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
+                        <Button x:Name="UndoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A7;" ToolTip="Undo" Command="ApplicationCommands.Undo"/>
+                        <Button x:Name="RedoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A6;" ToolTip="Redo" Command="ApplicationCommands.Redo"/>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
 
-                    <TextBlock Text="Cursor" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,18,0,6"/>
-                    <ComboBox x:Name="CursorCombo" Width="180" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
-                        <ComboBoxItem Content="Arrow"/>
-                        <ComboBoxItem Content="Crosshair"/>
-                        <ComboBoxItem Content="Hidden (use pen tip)"/>
-                    </ComboBox>
+            <Border x:Name="LeftPanel" DockPanel.Dock="Left" Width="180"
+                    Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+                        <DockPanel Margin="6,4">
+                            <Button x:Name="SidebarAddPageButton" DockPanel.Dock="Right"
+                                    Style="{StaticResource SmallIconButton}"
+                                    Content="&#xE710;" ToolTip="Add page" Click="AddPageButton_Click"/>
+                            <TextBlock Text="Pages" FontWeight="SemiBold" FontSize="12"
+                                       Foreground="#333333" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                        </DockPanel>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
+                        <ListBox x:Name="PageListBox" Background="Transparent" BorderThickness="0"
+                                 SelectionChanged="PageListBox_SelectionChanged"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.PanningMode="VerticalOnly">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4">
+                                        <Border BorderBrush="#CCCCCC" BorderThickness="1" Background="White">
+                                            <Image Width="120" Height="168" Source="{Binding Thumbnail}" Stretch="Fill"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" FontSize="11" Margin="0,4,0,0" Foreground="#333333"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
 
-                    <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                    <UniformGrid Columns="4" Rows="2">
-                        <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
-                        <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
-                        <RadioButton x:Name="ColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#EEEEEE" ToolTip="Light grey" Click="ColorSwatch_Click" Tag="#EEEEEE"/>
-                        <RadioButton x:Name="ColorSage" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE9D5" ToolTip="Sage" Click="ColorSwatch_Click" Tag="#DCE9D5"/>
-                        <RadioButton x:Name="ColorSky" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE4F2" ToolTip="Sky" Click="ColorSwatch_Click" Tag="#DCE4F2"/>
-                        <RadioButton x:Name="ColorNavy" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#2C3E5C" ToolTip="Navy" Click="ColorSwatch_Click" Tag="#2C3E5C"/>
-                        <RadioButton x:Name="ColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1E4D3A" ToolTip="Dark green" Click="ColorSwatch_Click" Tag="#1E4D3A"/>
-                        <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
-                    </UniformGrid>
+            <Border x:Name="SidePanel" DockPanel.Dock="Right" Width="320"
+                    Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
+                    Visibility="Collapsed">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="18,16">
 
-                    <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                    <UniformGrid Columns="4">
-                        <RadioButton x:Name="TemplateBlank" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewBlank}" ToolTip="Blank" Click="TemplateButton_Click" Tag="Blank"/>
-                        <RadioButton x:Name="TemplateRuled" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewRuled}" ToolTip="Ruled" Click="TemplateButton_Click" Tag="Ruled"/>
-                        <RadioButton x:Name="TemplateGrid" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewGrid}" ToolTip="Grid" Click="TemplateButton_Click" Tag="Grid"/>
-                        <RadioButton x:Name="TemplateDot" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewDot}" ToolTip="Dot grid" Click="TemplateButton_Click" Tag="Dot"/>
-                    </UniformGrid>
+                        <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
+                        <UniformGrid Columns="4" Rows="2">
+                            <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
+                            <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
+                            <RadioButton x:Name="ColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#EEEEEE" ToolTip="Light grey" Click="ColorSwatch_Click" Tag="#EEEEEE"/>
+                            <RadioButton x:Name="ColorSage" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE9D5" ToolTip="Sage" Click="ColorSwatch_Click" Tag="#DCE9D5"/>
+                            <RadioButton x:Name="ColorSky" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE4F2" ToolTip="Sky" Click="ColorSwatch_Click" Tag="#DCE4F2"/>
+                            <RadioButton x:Name="ColorNavy" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#2C3E5C" ToolTip="Navy" Click="ColorSwatch_Click" Tag="#2C3E5C"/>
+                            <RadioButton x:Name="ColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1E4D3A" ToolTip="Dark green" Click="ColorSwatch_Click" Tag="#1E4D3A"/>
+                            <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
+                        </UniformGrid>
 
-                    <TextBlock Text="Spacing" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                    <ComboBox x:Name="SpacingCombo" Width="110" HorizontalAlignment="Left" SelectionChanged="SpacingCombo_SelectionChanged">
-                        <ComboBoxItem Content="20"/>
-                        <ComboBoxItem Content="30"/>
-                        <ComboBoxItem Content="40" IsSelected="True"/>
-                        <ComboBoxItem Content="50"/>
-                        <ComboBoxItem Content="60"/>
-                    </ComboBox>
-                </StackPanel>
+                        <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
+                        <UniformGrid Columns="4">
+                            <RadioButton x:Name="TemplateBlank" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewBlank}" ToolTip="Blank" Click="TemplateButton_Click" Tag="Blank"/>
+                            <RadioButton x:Name="TemplateRuled" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewRuled}" ToolTip="Ruled" Click="TemplateButton_Click" Tag="Ruled"/>
+                            <RadioButton x:Name="TemplateGrid" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewGrid}" ToolTip="Grid" Click="TemplateButton_Click" Tag="Grid"/>
+                            <RadioButton x:Name="TemplateDot" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewDot}" ToolTip="Dot grid" Click="TemplateButton_Click" Tag="Dot"/>
+                        </UniformGrid>
+
+                        <TextBlock Text="Spacing" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
+                        <ComboBox x:Name="SpacingCombo" Width="110" HorizontalAlignment="Left" SelectionChanged="SpacingCombo_SelectionChanged">
+                            <ComboBoxItem Content="20"/>
+                            <ComboBoxItem Content="30"/>
+                            <ComboBoxItem Content="40" IsSelected="True"/>
+                            <ComboBoxItem Content="50"/>
+                            <ComboBoxItem Content="60"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Cursor over page" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
+                        <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
+                            <ComboBoxItem Content="Arrow"/>
+                            <ComboBoxItem Content="Crosshair"/>
+                            <ComboBoxItem Content="Yellow dot"/>
+                        </ComboBox>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Bottom bar: plain Border+Grid, more reliable than StatusBar -->
+            <Border DockPanel.Dock="Bottom" Background="#F0F0F0" BorderBrush="#D0D0D0" BorderThickness="0,1,0,0" Height="30">
+                <Grid Margin="8,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="StatusText" Text="Ready. Pen or mouse to draw; middle-mouse drag to pan; Ctrl+scroll to zoom."
+                                   VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
+                        <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
+                        <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
+                        <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="58">
+                            <TextBox x:Name="ZoomText" Text="100%"
+                                     Width="46" BorderThickness="0" Background="Transparent"
+                                     Padding="0" FontSize="12" Foreground="#333333"
+                                     HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                     KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
+                        </Border>
+                        <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
+                        <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
+                        <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
+                        <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="10,2" Margin="6,0">
+                            <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
+                        </Border>
+                        <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
+                        <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
+                        <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="1,0,0,0" Click="AddPageButton_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <ScrollViewer x:Name="PageScroller"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          PreviewMouseWheel="PageScroller_PreviewMouseWheel"
+                          Background="#E6E6E6">
+                <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E6E6E6">
+                    <Grid.RenderTransform>
+                        <TranslateTransform x:Name="PanTransform" X="0" Y="0"/>
+                    </Grid.RenderTransform>
+                    <Border x:Name="PageBorder"
+                            Background="White"
+                            BorderBrush="#B0B0B0"
+                            BorderThickness="1"
+                            Width="800"
+                            Height="1120"
+                            Margin="20"
+                            MouseDown="PageBorder_MouseDown"
+                            MouseMove="PageBorder_MouseMove"
+                            MouseLeftButtonUp="PageBorder_MouseLeftButtonUp"
+                            LostMouseCapture="PageBorder_LostMouseCapture">
+                        <Border.LayoutTransform>
+                            <ScaleTransform x:Name="PageScale" ScaleX="1" ScaleY="1"/>
+                        </Border.LayoutTransform>
+                        <Grid>
+                            <Rectangle x:Name="PageBackground" Fill="White"/>
+                            <InkCanvas x:Name="InkArea"
+                                       Background="Transparent"
+                                       Stylus.IsPressAndHoldEnabled="False"
+                                       Stylus.IsFlicksEnabled="False"
+                                       StrokeCollected="InkArea_StrokeCollected"/>
+                        </Grid>
+                    </Border>
+                </Grid>
             </ScrollViewer>
-        </Border>
+        </DockPanel>
 
-        <StatusBar DockPanel.Dock="Bottom" Background="#F0F0F0">
-            <StatusBarItem DockPanel.Dock="Left" HorizontalAlignment="Left">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,0,0">
-                    <TextBlock x:Name="StatusText" Text="Ready. Draw with your pen or mouse." VerticalAlignment="Center" FontSize="12"/>
-                    <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
-                </StackPanel>
-            </StatusBarItem>
-            <StatusBarItem DockPanel.Dock="Right" HorizontalAlignment="Right">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
-                    <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out (Ctrl + -)" Click="ZoomOutButton_Click"/>
-                    <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE1A3;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="58">
-                        <TextBox x:Name="ZoomText" Text="100%"
-                                 Width="46" BorderThickness="0" Background="Transparent"
-                                 Padding="0" FontSize="12" Foreground="#333333"
-                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                 KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
-                    </Border>
-                    <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in (Ctrl + +)" Click="ZoomInButton_Click"/>
-                    <Rectangle Width="1" Margin="8,4" Fill="#CCCCCC"/>
-                    <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="10,2" Margin="6,0">
-                        <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
-                    </Border>
-                    <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
-                    <Rectangle Width="1" Margin="8,4" Fill="#CCCCCC"/>
-                    <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="1,0,0,0" Click="AddPageButton_Click"/>
-                </StackPanel>
-            </StatusBarItem>
-        </StatusBar>
+        <Popup x:Name="ToolOptionsPopup"
+               Placement="Bottom"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade">
+            <Border Background="White" BorderBrush="#D0D0D0" BorderThickness="1"
+                    CornerRadius="10" Padding="14,12" Margin="6,4,6,12">
+                <Border.Effect>
+                    <DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="4" Opacity="0.18" Direction="270"/>
+                </Border.Effect>
+                <StackPanel Width="252">
+                    <TextBlock x:Name="ToolPopupTitle" Text="Pen" FontSize="13" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,10"/>
 
-        <ScrollViewer x:Name="PageScroller"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      PreviewMouseWheel="PageScroller_PreviewMouseWheel"
-                      Background="#E6E6E6">
-            <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E6E6E6">
-                <Grid.RenderTransform>
-                    <TranslateTransform x:Name="PanTransform" X="0" Y="0"/>
-                </Grid.RenderTransform>
-                <Border x:Name="PageBorder"
-                        Background="White"
-                        BorderBrush="#B0B0B0"
-                        BorderThickness="1"
-                        Width="800"
-                        Height="1120"
-                        Margin="20"
-                        MouseLeftButtonDown="PageBorder_MouseDown"
-                        MouseMove="PageBorder_MouseMove"
-                        MouseLeftButtonUp="PageBorder_MouseLeftButtonUp"
-                        LostMouseCapture="PageBorder_LostMouseCapture">
-                    <Border.LayoutTransform>
-                        <ScaleTransform x:Name="PageScale" ScaleX="1" ScaleY="1"/>
-                    </Border.LayoutTransform>
-                    <Grid>
-                        <Rectangle x:Name="PageBackground" Fill="White"/>
-                        <InkCanvas x:Name="InkArea"
-                                   Background="Transparent"
-                                   Stylus.IsPressAndHoldEnabled="False"
-                                   Stylus.IsFlicksEnabled="False"
-                                   StrokeCollected="InkArea_StrokeCollected"/>
-                    </Grid>
-                </Border>
-            </Grid>
-        </ScrollViewer>
-    </DockPanel>
+                    <TextBlock Text="Colour" FontSize="11" Foreground="#666666" Margin="0,0,0,6"/>
+                    <ItemsControl x:Name="ToolColorGrid">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Columns="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource PopupSwatchButton}"
+                                        Tag="{Binding Hex}"
+                                        ToolTip="{Binding Name}"
+                                        Background="{Binding Brush}"
+                                        Click="ToolColorButton_Click"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Thickness" FontSize="11" Foreground="#666666" Margin="0,14,0,6"/>
+                    <Border Background="#FAFAFA" BorderBrush="#E6E6E6" BorderThickness="1" CornerRadius="4" Height="46" Padding="8,0">
+                        <Path x:Name="ToolThicknessPreview"
+                              HorizontalAlignment="Left" VerticalAlignment="Center"
+                              Stroke="#111111" StrokeThickness="2.5"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              Data="M 4,22 C 28,6 50,38 74,20 C 98,2 120,38 144,18 C 168,-2 190,32 214,16 C 222,10 226,14 230,14"/>
+                    </Border>
+
+                    <Slider x:Name="ToolSizeSlider" Minimum="1" Maximum="20" Value="2.5"
+                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                            Margin="0,10,0,0"
+                            ValueChanged="ToolSizeSlider_ValueChanged"/>
+
+                    <CheckBox x:Name="ToolPressureToggle" Content="Pressure (use pen pressure)"
+                              Margin="0,10,0,0" IsChecked="True"
+                              Checked="ToolPressureToggle_Changed"
+                              Unchecked="ToolPressureToggle_Changed"/>
+                </StackPanel>
+            </Border>
+        </Popup>
+    </Grid>
 </Window>

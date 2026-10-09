@@ -77,7 +77,7 @@ public partial class MainWindow : Window
 
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
-    private enum PenCursorStyle { Arrow, Cross, Hidden }
+    private enum PenCursorStyle { Arrow, Cross, Dot }
     private enum ToolMode { Pen, Highlighter, Eraser, Hand }
 
     private sealed class NotebookPage
@@ -96,6 +96,13 @@ public partial class MainWindow : Window
         public ImageSource? Thumbnail { get; set; }
     }
 
+    public sealed class PopupColorItem
+    {
+        public Brush Brush { get; set; } = Brushes.Black;
+        public string Hex { get; set; } = "#000000";
+        public string Name { get; set; } = "";
+    }
+
     private readonly List<NotebookPage> _pages = new();
     private int _currentPageIndex;
 
@@ -109,11 +116,15 @@ public partial class MainWindow : Window
     private double _zoom = 1.0;
     private bool _suppressPageListChange;
     private bool _fullscreenMode;
+    private bool _uiReady;
 
     private ToolMode _tool = ToolMode.Pen;
     private Color _penColor = Colors.Black;
     private double _penSize = 2.5;
+    private bool _pressureEnabled = true;
     private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
+
+    private Cursor? _dotCursor;
 
     private bool _panning;
     private Point _panStart;
@@ -127,10 +138,6 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // If the slider or the combo fire during InitializeComponent, this flag
-        // keeps their handlers from touching controls that don't exist yet.
-        _uiReady = true;
-
         if (InkArea is not null)
         {
             InkArea.DefaultDrawingAttributes = new DrawingAttributes
@@ -139,23 +146,35 @@ public partial class MainWindow : Window
                 Width = _penSize,
                 Height = _penSize,
                 FitToCurve = false,
-                IgnorePressure = false
+                IgnorePressure = !_pressureEnabled
             };
         }
 
-        Loaded += (s, e) => WindowState = WindowState.Maximized;
+        _uiReady = true;
+
+        _dotCursor = CreateDotCursor();
+
+        // Set maximize in code, after WindowChrome has initialized.
+        Loaded += (s, e) =>
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                WindowState = WindowState.Maximized;
+            }), DispatcherPriority.ApplicationIdle);
+        };
 
         StateChanged += MainWindow_StateChanged;
 
         _pages.Add(new NotebookPage());
         _currentPageIndex = 0;
+
+        PopulateToolColorGrid();
         LoadCurrentPageIntoCanvas();
 
         PenButton.IsChecked = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
         ColorWhite.IsChecked = true;
         TemplateBlank.IsChecked = true;
-        PenColorBlack.IsChecked = true;
         CursorCombo.SelectedIndex = 0;
 
         ApplyPenAttributes();
@@ -170,8 +189,216 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
     }
 
-    // Guards handlers that can fire during XAML parsing.
-    private bool _uiReady;
+    // =====================================================================
+    // Colour palette for the tool popup
+    // =====================================================================
+
+    private void PopulateToolColorGrid()
+    {
+        if (ToolColorGrid is null) return;
+
+        var items = new List<PopupColorItem>
+        {
+            // Neutrals
+            MakeColor("#111111", "Black"),
+            MakeColor("#555555", "Dark grey"),
+            MakeColor("#999999", "Grey"),
+            MakeColor("#CCCCCC", "Light grey"),
+            MakeColor("#FFFFFF", "White"),
+            MakeColor("#FAF6E3", "Cream"),
+            // Warm
+            MakeColor("#C62828", "Red"),
+            MakeColor("#EF6C00", "Orange"),
+            MakeColor("#FBC02D", "Yellow"),
+            MakeColor("#B8860B", "Gold"),
+            MakeColor("#A1887F", "Tan"),
+            MakeColor("#4E342E", "Brown"),
+            // Cool
+            MakeColor("#00ACC1", "Cyan"),
+            MakeColor("#4FC3F7", "Sky"),
+            MakeColor("#1565C0", "Blue"),
+            MakeColor("#1A237E", "Navy"),
+            MakeColor("#6A1B9A", "Purple"),
+            MakeColor("#AD1457", "Magenta"),
+            // Nature
+            MakeColor("#AED581", "Light green"),
+            MakeColor("#43A047", "Green"),
+            MakeColor("#1B5E20", "Dark green"),
+            MakeColor("#827717", "Olive"),
+            MakeColor("#F06292", "Pink"),
+            MakeColor("#7B1FA2", "Violet"),
+        };
+
+        ToolColorGrid.ItemsSource = items;
+    }
+
+    private static PopupColorItem MakeColor(string hex, string name)
+    {
+        var c = ParseHexColor(hex, Colors.Black);
+        return new PopupColorItem
+        {
+            Brush = new SolidColorBrush(c),
+            Hex = hex,
+            Name = name
+        };
+    }
+
+    // =====================================================================
+    // Tool options popup
+    // =====================================================================
+
+    private void ShowToolPopup(UIElement target, string title)
+    {
+        if (ToolOptionsPopup is null) return;
+
+        ToolOptionsPopup.IsOpen = false;
+        if (ToolPopupTitle is not null) ToolPopupTitle.Text = title;
+        ToolOptionsPopup.PlacementTarget = target;
+        UpdateThicknessPreview();
+
+        if (ToolSizeSlider is not null)
+            ToolSizeSlider.Value = _penSize;
+        if (ToolPressureToggle is not null)
+            ToolPressureToggle.IsChecked = _pressureEnabled;
+
+        ToolOptionsPopup.IsOpen = true;
+    }
+
+    private void UpdateThicknessPreview()
+    {
+        if (ToolThicknessPreview is null) return;
+
+        double actual = _tool == ToolMode.Highlighter
+            ? Math.Max(14, _penSize * 6)
+            : _penSize;
+
+        Color c = _tool == ToolMode.Highlighter
+            ? Color.FromArgb(180, _penColor.R, _penColor.G, _penColor.B)
+            : _penColor;
+
+        ToolThicknessPreview.Stroke = new SolidColorBrush(c);
+        ToolThicknessPreview.StrokeThickness = actual;
+    }
+
+    private void ToolColorButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.Tag is string hex)
+        {
+            _penColor = ParseHexColor(hex, Colors.Black);
+            ApplyPenAttributes();
+            UpdateThicknessPreview();
+        }
+    }
+
+    private void ToolSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        _penSize = e.NewValue;
+        ApplyPenAttributes();
+        UpdateThicknessPreview();
+    }
+
+    private void ToolPressureToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_uiReady) return;
+        _pressureEnabled = ToolPressureToggle.IsChecked == true;
+        ApplyPenAttributes();
+    }
+
+    // =====================================================================
+    // Cursor
+    // =====================================================================
+
+    private static Cursor CreateDotCursor()
+    {
+        try
+        {
+            const int size = 32;
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
+                var blackPen = new Pen(Brushes.Black, 1.5);
+                dc.DrawEllipse(yellow, blackPen, new Point(16, 16), 7, 7);
+                dc.DrawEllipse(Brushes.Black, null, new Point(16, 16), 1.8, 1.8);
+            }
+            var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+
+            return CreateCursorFromBitmap(rtb, 16, 16);
+        }
+        catch
+        {
+            return Cursors.Cross;
+        }
+    }
+
+    private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
+    {
+        int width = bmp.PixelWidth;
+        int height = bmp.PixelHeight;
+
+        using var ms = new MemoryStream();
+        using var bw = new BinaryWriter(ms);
+
+        // ICONDIR
+        bw.Write((short)0);
+        bw.Write((short)2);
+        bw.Write((short)1);
+
+        // ICONDIRENTRY
+        bw.Write((byte)width);
+        bw.Write((byte)height);
+        bw.Write((byte)0);
+        bw.Write((byte)0);
+        bw.Write((short)hotX);
+        bw.Write((short)hotY);
+        bw.Write(width * height * 4 + 40);
+        bw.Write(22);
+
+        // BITMAPINFOHEADER
+        bw.Write(40);
+        bw.Write(width);
+        bw.Write(height * 2);
+        bw.Write((short)1);
+        bw.Write((short)32);
+        bw.Write(0);
+        bw.Write(width * height * 4);
+        bw.Write(0);
+        bw.Write(0);
+        bw.Write(0);
+        bw.Write(0);
+
+        // Pixels (bottom-up BGRA)
+        int stride = width * 4;
+        var pixels = new byte[stride * height];
+        bmp.CopyPixels(pixels, stride, 0);
+        for (int y = height - 1; y >= 0; y--)
+            bw.Write(pixels, y * stride, stride);
+
+        ms.Position = 0;
+        return new Cursor(ms);
+    }
+
+    private void UpdateCursor()
+    {
+        if (PageBorder is null) return;
+
+        Cursor c;
+        if (_panning) c = Cursors.SizeAll;
+        else if (_tool == ToolMode.Hand) c = Cursors.Hand;
+        else
+        {
+            c = _cursorStyle switch
+            {
+                PenCursorStyle.Cross => Cursors.Cross,
+                PenCursorStyle.Dot => _dotCursor ?? Cursors.Cross,
+                _ => Cursors.Arrow
+            };
+        }
+
+        PageBorder.Cursor = c;
+        if (InkArea is not null) InkArea.Cursor = c;
+    }
 
     // =====================================================================
     // Pen attributes
@@ -180,7 +407,6 @@ public partial class MainWindow : Window
     private void ApplyPenAttributes()
     {
         if (!_uiReady || InkArea is null) return;
-
         var da = InkArea.DefaultDrawingAttributes;
         if (da is null) return;
 
@@ -201,27 +427,8 @@ public partial class MainWindow : Window
             da.Height = _penSize;
             da.IsHighlighter = false;
             da.FitToCurve = false;
-            da.IgnorePressure = false;
+            da.IgnorePressure = !_pressureEnabled;
         }
-    }
-
-    // =====================================================================
-    // Cursor
-    // =====================================================================
-
-    private void UpdateCursor()
-    {
-        if (PageBorder is null) return;
-
-        if (_panning) { PageBorder.Cursor = Cursors.SizeAll; return; }
-        if (_tool == ToolMode.Hand) { PageBorder.Cursor = Cursors.Hand; return; }
-
-        PageBorder.Cursor = _cursorStyle switch
-        {
-            PenCursorStyle.Cross => Cursors.Cross,
-            PenCursorStyle.Hidden => Cursors.None,
-            _ => Cursors.Arrow
-        };
     }
 
     // =====================================================================
@@ -236,9 +443,10 @@ public partial class MainWindow : Window
         if (TitleBarBorder is not null)
             TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
 
-        StatusText.Text = _fullscreenMode
-            ? "Fullscreen mode. Press ESC or F11 to exit."
-            : "Exited fullscreen.";
+        if (StatusText is not null)
+            StatusText.Text = _fullscreenMode
+                ? "Fullscreen mode. Press ESC or F11 to exit."
+                : "Exited fullscreen.";
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -298,6 +506,7 @@ public partial class MainWindow : Window
 
     private void ApplyZoomFromText()
     {
+        if (ZoomText is null) return;
         string raw = ZoomText.Text.Trim().TrimEnd('%').Trim();
         if (double.TryParse(raw, out var pct))
         {
@@ -376,7 +585,7 @@ public partial class MainWindow : Window
         CurrentPage.Mode = CurrentPage.Mode == CanvasMode.Page ? CanvasMode.Infinite : CanvasMode.Page;
         ApplyCanvasMode();
         StatusText.Text = CurrentPage.Mode == CanvasMode.Infinite
-            ? "Infinite canvas mode. Middle-mouse drag or 2-finger scroll to pan."
+            ? "Infinite canvas mode."
             : "Fixed page mode.";
         MarkDirty();
         ScheduleThumbnailRefresh();
@@ -529,7 +738,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Export as PNG
+    // Export PNG
     // =====================================================================
 
     private void ExportCurrentPagePng_Click(object sender, RoutedEventArgs e)
@@ -603,13 +812,10 @@ public partial class MainWindow : Window
         using (var dc = dv.RenderOpen())
         {
             dc.PushTransform(new ScaleTransform(scale, scale));
-
             var bg = BuildPageBrush(page.BackgroundColor, page.Template, page.Spacing);
             dc.DrawRectangle(bg, null, new Rect(0, 0, pageW, pageH));
-
             foreach (var s in page.Strokes)
                 s.Draw(dc);
-
             dc.Pop();
         }
 
@@ -745,40 +951,6 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Pen colour / size / cursor
-    // =====================================================================
-
-    private void PenColor_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton rb && rb.Tag is string hex)
-        {
-            _penColor = ParseHexColor(hex, Colors.Black);
-            ApplyPenAttributes();
-            StatusText.Text = $"Pen colour: {rb.ToolTip}";
-        }
-    }
-
-    private void PenSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        _penSize = e.NewValue;
-        ApplyPenAttributes();
-        if (PenSizeText is not null)
-            PenSizeText.Text = _penSize.ToString("0.#");
-    }
-
-    private void CursorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (CursorCombo is null) return;
-        _cursorStyle = CursorCombo.SelectedIndex switch
-        {
-            1 => PenCursorStyle.Cross,
-            2 => PenCursorStyle.Hidden,
-            _ => PenCursorStyle.Arrow
-        };
-        UpdateCursor();
-    }
-
-    // =====================================================================
     // Page appearance
     // =====================================================================
 
@@ -817,6 +989,18 @@ public partial class MainWindow : Window
             UpdatePageBackground();
             MarkDirty();
         }
+    }
+
+    private void CursorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CursorCombo is null) return;
+        _cursorStyle = CursorCombo.SelectedIndex switch
+        {
+            1 => PenCursorStyle.Cross,
+            2 => PenCursorStyle.Dot,
+            _ => PenCursorStyle.Arrow
+        };
+        UpdateCursor();
     }
 
     private void UpdatePageBackground()
@@ -947,7 +1131,8 @@ public partial class MainWindow : Window
         }
         ApplyPenAttributes();
         UpdateCursor();
-        if (StatusText is not null) StatusText.Text = "Pen selected.";
+        StatusText.Text = "Pen selected.";
+        ShowToolPopup(PenButton, "Pen");
     }
 
     private void HighlighterButton_Click(object sender, RoutedEventArgs e)
@@ -961,7 +1146,8 @@ public partial class MainWindow : Window
         }
         ApplyPenAttributes();
         UpdateCursor();
-        if (StatusText is not null) StatusText.Text = "Highlighter selected.";
+        StatusText.Text = "Highlighter selected.";
+        ShowToolPopup(HighlighterButton, "Highlighter");
     }
 
     private void EraserButton_Click(object sender, RoutedEventArgs e)
@@ -975,6 +1161,7 @@ public partial class MainWindow : Window
         }
         UpdateCursor();
         if (StatusText is not null) StatusText.Text = "Eraser selected: touch a stroke to remove it.";
+        if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
@@ -983,6 +1170,7 @@ public partial class MainWindow : Window
         if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
         if (StatusText is not null) StatusText.Text = "Hand tool: drag over the page to move around.";
+        if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
