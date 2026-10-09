@@ -224,13 +224,9 @@ public partial class MainWindow : Window
 
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
-
             return CreateCursorFromBitmap(rtb, 3, 2);
         }
-        catch
-        {
-            return Cursors.Arrow;
-        }
+        catch { return Cursors.Arrow; }
     }
 
     private static Cursor CreateYellowDotCursor()
@@ -250,10 +246,7 @@ public partial class MainWindow : Window
             rtb.Render(visual);
             return CreateCursorFromBitmap(rtb, 16, 16);
         }
-        catch
-        {
-            return Cursors.Cross;
-        }
+        catch { return Cursors.Cross; }
     }
 
     private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
@@ -300,7 +293,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Stylus release — fixes "trackpad stops working after pen use"
+    // Stylus release
     // =====================================================================
 
     private void InkArea_StylusOutOfRange(object sender, StylusEventArgs e)
@@ -500,8 +493,21 @@ public partial class MainWindow : Window
     private void ToggleFullscreen()
     {
         _fullscreenMode = !_fullscreenMode;
+
         if (TitleBarBorder is not null)
             TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
+
+        // The WindowChrome reserves the top 36px as a "caption" (drag) area.
+        // When the title bar is hidden, that reserved area would sit on top of
+        // the toolbar and swallow mouse/trackpad clicks. Zero it out in fullscreen
+        // and restore it on exit.
+        if (AppWindowChrome is not null)
+        {
+            AppWindowChrome.CaptionHeight = _fullscreenMode ? 0 : 36;
+            AppWindowChrome.ResizeBorderThickness = _fullscreenMode ? new Thickness(0) : new Thickness(6);
+        }
+
+        ReleaseAllCaptures();
 
         if (StatusText is not null)
             StatusText.Text = _fullscreenMode
@@ -889,7 +895,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Panning
+    // Panning — with bitmap cache for smooth motion on low-end hardware
     // =====================================================================
 
     private void PageBorder_MouseDown(object sender, MouseButtonEventArgs e)
@@ -905,6 +911,22 @@ public partial class MainWindow : Window
         _panStartTfX = PanTransform.X;
         _panStartTfY = PanTransform.Y;
         PageBorder.CaptureMouse();
+
+        // Cache the page as a single bitmap so each pan frame is a fast blit
+        // instead of a full re-render. Removed on pen-up.
+        try
+        {
+            var cache = new BitmapCache
+            {
+                SnapsToDevicePixels = true,
+                EnableClearType = false,
+                RenderAtScale = 1.0
+            };
+            cache.Freeze();
+            PageBorder.CacheMode = cache;
+        }
+        catch { }
+
         UpdateCursor();
         e.Handled = true;
     }
@@ -939,8 +961,14 @@ public partial class MainWindow : Window
         if (!_panning) return;
         _panning = false;
 
-        if (PageBorder is not null && PageBorder.IsMouseCaptured)
-            PageBorder.ReleaseMouseCapture();
+        if (PageBorder is not null)
+        {
+            if (PageBorder.IsMouseCaptured)
+                PageBorder.ReleaseMouseCapture();
+
+            // Drop the bitmap cache so the page re-renders normally (crisp) again.
+            try { PageBorder.CacheMode = null; } catch { }
+        }
 
         if (PageScroller is not null && PanTransform is not null)
         {
