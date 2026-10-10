@@ -26,11 +26,11 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    private const double PageWidthDefault = 800;
-    private const double PageHeightDefault = 1120;
-    private const double CanvasWorldSize = 10000;
-    private const double MinZoom = 0.01;      // 1%
-    private const double MaxZoom = 40.0;      // 4000%
+    private const double CanvasWorldSize = 1000000;
+    private const double DefaultViewX = 60;
+    private const double DefaultViewY = 60;
+    private const double MinZoom = 0.01;
+    private const double MaxZoom = 40.0;
     private const double ExportMaxDim = 3000;
     private const double SwipeMinDist = 250;
     private const double SwipeMaxDurationMs = 700;
@@ -48,7 +48,6 @@ public partial class MainWindow : Window
         public string? BackgroundColor { get; set; }
         public string? Template { get; set; }
         public double? Spacing { get; set; }
-        public string? Mode { get; set; }
         public string? Paper { get; set; }
     }
 
@@ -58,9 +57,6 @@ public partial class MainWindow : Window
         public string App { get; set; } = "Canvaas";
         public string AppVersion { get; set; } = "";
         public string SavedAtUtc { get; set; } = "";
-        public string? BackgroundColor { get; set; }
-        public string? Template { get; set; }
-        public double? Spacing { get; set; }
         public int CurrentPageIndex { get; set; }
         public List<PageManifest>? Pages { get; set; }
     }
@@ -104,8 +100,8 @@ public partial class MainWindow : Window
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
         public double ViewZoom { get; set; } = 1.0;
-        public double ViewPanX { get; set; } = 60;
-        public double ViewPanY { get; set; } = 60;
+        public double ViewPanX { get; set; } = DefaultViewX;
+        public double ViewPanY { get; set; } = DefaultViewY;
         public bool ViewInitialized { get; set; } = false;
     }
 
@@ -145,8 +141,8 @@ public partial class MainWindow : Window
     private DateTime _panStartTime;
 
     private double _viewZoom = 1.0;
-    private double _viewPanX = 60;
-    private double _viewPanY = 60;
+    private double _viewPanX = DefaultViewX;
+    private double _viewPanY = DefaultViewY;
 
     private bool _draggingFloatingZoom;
     private Point _floatingZoomDragStart;
@@ -154,7 +150,6 @@ public partial class MainWindow : Window
 
     private int _insertCounter = 0;
 
-    // ---- Custom lasso state ----
     private readonly List<UIElement> _selectedElements = new();
     private readonly List<Point> _lassoPointsScreen = new();
     private readonly List<Rectangle> _elementSelectionVisuals = new();
@@ -214,16 +209,9 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 WindowState = WindowState.Maximized;
-                // Give the layout a chance to fully settle before resetting the view
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    _viewZoom = 1.0;
-                    _viewPanX = 60;
-                    _viewPanY = 60;
-                    if (ViewTransform is not null)
-                        ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-                    if (ZoomText is not null)
-                        ZoomText.Text = "100%";
+                    ResetViewToOrigin();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
@@ -252,7 +240,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Settings (persisted between sessions)
+    // Settings
     // =====================================================================
 
     private void LoadSettings()
@@ -296,7 +284,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Cursor: hollow black ring + tiny black dot, size from _pointerSize
+    // Cursor: hollow black ring + tiny black dot
     // =====================================================================
 
     private void RebuildHollowRingCursor()
@@ -498,9 +486,7 @@ public partial class MainWindow : Window
                 || (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
 
             if (hasSelection)
-            {
                 ApplyColourToSelection(colour);
-            }
             else
             {
                 _penColor = colour;
@@ -772,46 +758,12 @@ public partial class MainWindow : Window
     private void ResetViewToOrigin()
     {
         _viewZoom = 1.0;
-        _viewPanX = 60;
-        _viewPanY = 60;
+        _viewPanX = DefaultViewX;
+        _viewPanY = DefaultViewY;
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = "100%";
-    }
-
-    private void FitBounds(Rect worldBounds, double margin = 40)
-    {
-        if (CanvasHostBorder is null) return;
-        double vw = CanvasHostBorder.ActualWidth;
-        double vh = CanvasHostBorder.ActualHeight;
-        if (vw < 10 || vh < 10) return;
-
-        if (worldBounds.Width <= 0 || worldBounds.Height <= 0)
-            worldBounds = new Rect(0, 0, PageWidthDefault, PageHeightDefault);
-
-        double z = Math.Min((vw - 2 * margin) / worldBounds.Width,
-                            (vh - 2 * margin) / worldBounds.Height);
-        z = Math.Clamp(z, MinZoom, MaxZoom);
-
-        double cx = worldBounds.X + worldBounds.Width / 2.0;
-        double cy = worldBounds.Y + worldBounds.Height / 2.0;
-
-        _viewZoom = z;
-        _viewPanX = vw / 2.0 - cx * z;
-        _viewPanY = vh / 2.0 - cy * z;
-
-        ApplyView();
-    }
-
-    private void FitContentToView()
-    {
-        if (InkArea is null) return;
-        Rect bounds = InkArea.Strokes.Count > 0
-            ? InkArea.Strokes.GetBounds()
-            : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
-        bounds.Inflate(80, 80);
-        FitBounds(bounds, 40);
     }
 
     private void SaveCurrentViewToPage()
@@ -941,13 +893,9 @@ public partial class MainWindow : Window
         UpdatePageNavigationUI();
 
         if (CurrentPage.ViewInitialized)
-        {
             RestoreViewFromPage();
-        }
         else
-        {
             ResetViewToOrigin();
-        }
     }
 
     private void UpdatePageNavigationUI()
@@ -1118,7 +1066,7 @@ public partial class MainWindow : Window
     {
         Rect world = page.Strokes.Count > 0
             ? page.Strokes.GetBounds()
-            : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+            : new Rect(0, 0, 800, 1120);
         world.Inflate(40, 40);
 
         double scale = 1.0;
@@ -1280,7 +1228,7 @@ public partial class MainWindow : Window
         UpdateCursor();
     }
 
-    // ---------------- Lasso logic ----------------
+    // ---------------- Lasso ----------------
 
     private void StartLasso(Point screenPt)
     {
@@ -1383,7 +1331,7 @@ public partial class MainWindow : Window
             : "Nothing selected.";
     }
 
-    // ---------------- Selection drag logic ----------------
+    // ---------------- Selection drag ----------------
 
     private bool IsPointOnSelectedElement(Point worldPt)
     {
@@ -1595,7 +1543,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Insert: Image / Text / Clipboard
+    // Insert
     // =====================================================================
 
     private void InsertImage_Click(object sender, RoutedEventArgs e)
@@ -2380,7 +2328,6 @@ public partial class MainWindow : Window
                         BackgroundColor = $"#{page.BackgroundColor.R:X2}{page.BackgroundColor.G:X2}{page.BackgroundColor.B:X2}",
                         Template = page.Template.ToString(),
                         Spacing = page.Spacing,
-                        Mode = "Infinite",
                         Paper = page.Paper.ToString()
                     });
                 }
@@ -2481,10 +2428,8 @@ public partial class MainWindow : Window
                 var page = new NotebookPage();
                 if (manifest.FormatVersion >= 2)
                 {
-                    if (!string.IsNullOrEmpty(manifest.BackgroundColor))
-                        page.BackgroundColor = ParseHexColor(manifest.BackgroundColor!, Colors.White);
-                    if (Enum.TryParse<PageTemplate>(manifest.Template, out var t)) page.Template = t;
-                    if (manifest.Spacing is double s && s > 0) page.Spacing = s;
+                    // old v1/v2 files didn't have these fields; keep defaults if absent
+                    if (Enum.TryParse<PageTemplate>("Blank", out var t)) page.Template = t;
                 }
 
                 var inkEntry = zip.GetEntry(LegacyInkEntryName);
@@ -2557,7 +2502,7 @@ public partial class MainWindow : Window
     private void UpdateTitle()
     {
         string name = _currentPath is null ? "Untitled" : System.IO.Path.GetFileNameWithoutExtension(_currentPath);
-        string text = $"{name}{(_dirty ?    private const double MaxZoom = 40.0;      // 4000%" *" : "")} - Canvaas";
+        string text = $"{name}{(_dirty ? " *" : "")} - Canvaas";
         Title = text;
         if (TitleBarText is not null) TitleBarText.Text = text;
     }
