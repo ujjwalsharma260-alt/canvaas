@@ -27,13 +27,10 @@ public partial class MainWindow : Window
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
     // === GROWING CANVAS ===
-    // The paper starts small and grows by one page-sized chunk each time the
-    // user picks "Extend canvas". We keep the total under WPF's rendering
-    // limits, so the paper always shows up correctly.
     private const double InitialCanvasWidth = 1500;
     private const double InitialCanvasHeight = 1000;
-    private const double CanvasGrowthStepX = 1500;   // growth per click (right / left / all)
-    private const double CanvasGrowthStepY = 1000;   // growth per click (up / down / all)
+    private const double CanvasGrowthStepX = 1500;
+    private const double CanvasGrowthStepY = 1000;
     private const double MaxCanvasDimension = 30_000;
 
     private const double MinZoom = 0.01;
@@ -43,7 +40,6 @@ public partial class MainWindow : Window
     private const double SwipeMaxDurationMs = 700;
     private const double ZoomStepFactor = 1.25;
 
-    // === GROWING CANVAS ===
     private enum ExpandDirection { Right, Left, Up, Down, All }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -59,7 +55,6 @@ public partial class MainWindow : Window
         public string? Template { get; set; }
         public double? Spacing { get; set; }
         public string? Paper { get; set; }
-        // === GROWING CANVAS ===
         public double? WorldWidth { get; set; }
         public double? WorldHeight { get; set; }
     }
@@ -112,7 +107,6 @@ public partial class MainWindow : Window
         public double Spacing { get; set; } = 40;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
-        // === GROWING CANVAS ===
         public double WorldWidth { get; set; } = InitialCanvasWidth;
         public double WorldHeight { get; set; } = InitialCanvasHeight;
 
@@ -228,7 +222,6 @@ public partial class MainWindow : Window
                 WindowState = WindowState.Maximized;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    // Re-center once the window has its real size.
                     if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
@@ -258,7 +251,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // === GROWING CANVAS: extend + size management ===
+    // === GROWING CANVAS ===
     // =====================================================================
 
     private void ApplyWorldSizeToCanvas()
@@ -274,6 +267,11 @@ public partial class MainWindow : Window
         PageBackground.Height = h;
         InkArea.Width = w;
         InkArea.Height = h;
+
+        // Force WPF to re-measure and re-draw everything.
+        CanvasHost.InvalidateMeasure();
+        CanvasHost.InvalidateArrange();
+        CanvasHost.InvalidateVisual();
     }
 
     private void ExpandCanvas(ExpandDirection dir)
@@ -305,8 +303,8 @@ public partial class MainWindow : Window
         }
 
         // If growing left/up, shift all content so existing drawing doesn't move.
-        double shiftX = addLeft;   // content moves right by this much
-        double shiftY = addTop;    // content moves down by this much
+        double shiftX = addLeft;
+        double shiftY = addTop;
         if (shiftX > 0 || shiftY > 0)
             ShiftCurrentPageContent(shiftX, shiftY);
 
@@ -318,10 +316,50 @@ public partial class MainWindow : Window
         _viewPanY -= shiftY * _viewZoom;
 
         ApplyWorldSizeToCanvas();
-        ApplyView();
 
+        // Force an immediate layout pass so the paper visibly grows.
+        if (CanvasHostBorder is not null)
+        {
+            CanvasHostBorder.InvalidateVisual();
+            CanvasHostBorder.UpdateLayout();
+        }
+
+        // Zoom out to fit the whole canvas, so the user SEES the growth.
+        ZoomToFitCanvas();
+
+        StatusText.Text = $"Canvas extended {dir.ToString().ToLower()} — new size: {newW:0} × {newH:0} world units.";
         MarkDirty();
-        StatusText.Text = $"Canvas extended {dir.ToString().ToLower()} → now {newW:0} × {newH:0}. Pan to reach new area.";
+    }
+
+    /// <summary>
+    /// Zoom and pan so the entire canvas fits inside the viewport with a small
+    /// margin. Called after every "extend" so the growth is obvious.
+    /// </summary>
+    private void ZoomToFitCanvas()
+    {
+        if (CanvasHostBorder is null) return;
+
+        double vw = CanvasHostBorder.ActualWidth;
+        double vh = CanvasHostBorder.ActualHeight;
+        if (vw < 10 || vh < 10) return;
+
+        double w = CurrentPage.WorldWidth;
+        double h = CurrentPage.WorldHeight;
+
+        // Fit with 10% margin so the whole paper is clearly visible.
+        double margin = 0.9;
+        double zoomX = vw * margin / w;
+        double zoomY = vh * margin / h;
+        double fitZoom = Math.Min(zoomX, zoomY);
+        fitZoom = Math.Clamp(fitZoom, MinZoom, 1.0); // don't zoom in past 100%
+
+        _viewZoom = fitZoom;
+
+        // Center the paper in the viewport.
+        _viewPanX = (vw - w * _viewZoom) / 2.0;
+        _viewPanY = (vh - h * _viewZoom) / 2.0;
+
+        ApplyView();
     }
 
     private void ExtendRight_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Right);
@@ -330,16 +368,11 @@ public partial class MainWindow : Window
     private void ExtendDown_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Down);
     private void ExtendAll_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.All);
 
-    /// <summary>
-    /// Shift every stroke and inserted element on the current page by (dx, dy)
-    /// in world coordinates. Also remaps the undo/redo stacks.
-    /// </summary>
     private void ShiftCurrentPageContent(double dx, double dy)
     {
         if (Math.Abs(dx) < 0.0001 && Math.Abs(dy) < 0.0001) return;
         if (InkArea is null) return;
 
-        // Build old -> new stroke mapping and the shifted collection.
         var strokeMap = new Dictionary<Stroke, Stroke>();
         var shifted = new StrokeCollection();
         foreach (var s in CurrentPage.Strokes)
@@ -357,7 +390,6 @@ public partial class MainWindow : Window
         }
         finally { _applyingHistory = false; }
 
-        // Shift inserted elements.
         foreach (var child in InkArea.Children)
         {
             if (child is not FrameworkElement fe) continue;
@@ -367,11 +399,9 @@ public partial class MainWindow : Window
             if (!double.IsNaN(t)) InkCanvas.SetTop(fe, t + dy);
         }
 
-        // Remap undo/redo entries so their stroke references stay valid.
         RemapHistoryStack(_undo, strokeMap, dx, dy);
         RemapHistoryStack(_redo, strokeMap, dx, dy);
 
-        // Old stroke objects are gone; drop the current selection cleanly.
         ClearElementSelection();
         InkArea.Select(new StrokeCollection());
 
@@ -390,7 +420,7 @@ public partial class MainWindow : Window
     {
         if (stack.Count == 0) return;
 
-        var items = stack.ToArray(); // top-first
+        var items = stack.ToArray();
         stack.Clear();
 
         for (int i = items.Length - 1; i >= 0; i--)
@@ -939,7 +969,6 @@ public partial class MainWindow : Window
         ZoomAt(new Point(vw / 2.0, vh / 2.0), factor);
     }
 
-    // === GROWING CANVAS ===
     private void CenterViewOnCanvas()
     {
         if (CanvasHostBorder is null) return;
@@ -1086,7 +1115,6 @@ public partial class MainWindow : Window
         InkArea.Strokes = CurrentPage.Strokes;
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
 
-        // === GROWING CANVAS ===
         ApplyWorldSizeToCanvas();
 
         _undo.Clear();
@@ -1167,7 +1195,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // === GROWING CANVAS === (renamed from AddPageButton_Click)
     private void AddPageButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button b && b.ContextMenu is ContextMenu cm)
@@ -2570,7 +2597,6 @@ public partial class MainWindow : Window
                         Template = page.Template.ToString(),
                         Spacing = page.Spacing,
                         Paper = page.Paper.ToString(),
-                        // === GROWING CANVAS ===
                         WorldWidth = page.WorldWidth,
                         WorldHeight = page.WorldHeight
                     });
@@ -2654,7 +2680,6 @@ public partial class MainWindow : Window
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;
 
-                    // === GROWING CANVAS === restore saved size
                     if (pm.WorldWidth is double ww && ww >= 100) page.WorldWidth = ww;
                     if (pm.WorldHeight is double wh && wh >= 100) page.WorldHeight = wh;
 
@@ -2666,7 +2691,6 @@ public partial class MainWindow : Window
                         buffer.Position = 0;
                         page.Strokes = new StrokeCollection(buffer);
 
-                        // Make sure the canvas fits the content.
                         if (page.Strokes.Count > 0)
                         {
                             var b = page.Strokes.GetBounds();
