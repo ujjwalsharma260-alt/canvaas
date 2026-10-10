@@ -287,7 +287,6 @@
             </DrawingBrush.Drawing>
         </DrawingBrush>
 
-        <!-- White crumpled paper preview -->
         <DrawingBrush x:Key="PreviewPaperCrumpled" TileMode="Tile" Viewport="0,0,30,30" ViewportUnits="Absolute">
             <DrawingBrush.Drawing>
                 <DrawingGroup>
@@ -343,7 +342,7 @@
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
-                    <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Infinite canvas" Click="InfiniteCanvasButton_Click"/>
+                    <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Toggle infinite canvas" Click="InfiniteCanvasButton_Click"/>
                     <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
                     <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert" Click="MenuButton_Click">
@@ -476,43 +475,41 @@
                 </ScrollViewer>
             </Border>
 
-            <ScrollViewer x:Name="PageScroller"
-                          HorizontalScrollBarVisibility="Auto"
-                          VerticalScrollBarVisibility="Auto"
-                          PreviewMouseWheel="PageScroller_PreviewMouseWheel"
-                          Background="#E6E6E6">
-                <Grid HorizontalAlignment="Center" VerticalAlignment="Top" Background="#E6E6E6">
+            <!-- INFINITE CANVAS: viewport with a transformed host grid -->
+            <Border x:Name="CanvasHostBorder"
+                    Background="#E6E6E6"
+                    ClipToBounds="True"
+                    PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
+                    PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
+                    PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
+                    PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
+                <Grid x:Name="CanvasHost"
+                      Width="10000" Height="10000"
+                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                      RenderTransformOrigin="0,0"
+                      Background="Transparent">
                     <Grid.RenderTransform>
-                        <TranslateTransform x:Name="PanTransform" X="0" Y="0"/>
+                        <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
-                    <Border x:Name="PageBorder"
-                            Background="White"
-                            BorderBrush="#B0B0B0"
-                            BorderThickness="1"
-                            Width="800"
-                            Height="1120"
-                            Margin="20"
-                            MouseDown="PageBorder_MouseDown"
-                            MouseMove="PageBorder_MouseMove"
-                            MouseLeftButtonUp="PageBorder_MouseLeftButtonUp"
-                            LostMouseCapture="PageBorder_LostMouseCapture">
-                        <Border.LayoutTransform>
-                            <ScaleTransform x:Name="PageScale" ScaleX="1" ScaleY="1"/>
-                        </Border.LayoutTransform>
-                        <Grid>
-                            <Rectangle x:Name="PageBackground" Fill="White"/>
-                            <InkCanvas x:Name="InkArea"
-                                       Background="Transparent"
-                                       ForceCursor="True"
-                                       Stylus.IsPressAndHoldEnabled="False"
-                                       Stylus.IsFlicksEnabled="False"
-                                       StylusOutOfRange="InkArea_StylusOutOfRange"
-                                       StrokeCollected="InkArea_StrokeCollected"
-                                       SelectionChanged="InkArea_SelectionChanged"/>
-                        </Grid>
-                    </Border>
+
+                    <Rectangle x:Name="PageBackground"
+                               Width="800" Height="1120"
+                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                               Fill="White" Stroke="#B0B0B0" StrokeThickness="1"
+                               IsHitTestVisible="False"/>
+
+                    <InkCanvas x:Name="InkArea"
+                               Width="10000" Height="10000"
+                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                               Background="Transparent"
+                               ForceCursor="True"
+                               Stylus.IsPressAndHoldEnabled="False"
+                               Stylus.IsFlicksEnabled="False"
+                               StylusOutOfRange="InkArea_StylusOutOfRange"
+                               StrokeCollected="InkArea_StrokeCollected"
+                               SelectionChanged="InkArea_SelectionChanged"/>
                 </Grid>
-            </ScrollViewer>
+            </Border>
         </DockPanel>
 
         <Border x:Name="FloatingZoom" Grid.Row="2"
@@ -555,7 +552,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="1–5 switch tools. Left/Right arrows change page."
+                    <TextBlock x:Name="StatusText" Text="1–5 switch tools. Left/Right arrows change page. Middle-mouse drag to pan."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>

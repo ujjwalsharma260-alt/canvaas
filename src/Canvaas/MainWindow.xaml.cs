@@ -26,18 +26,12 @@ public partial class MainWindow : Window
 
     private const double PageWidthDefault = 800;
     private const double PageHeightDefault = 1120;
-    private const double InfiniteSize = 6000;
+    private const double CanvasWorldSize = 10000;
     private const double MinZoom = 0.05;
     private const double MaxZoom = 6.00;
     private const double ExportMaxDim = 3000;
     private const double SwipeMinDist = 250;
     private const double SwipeMaxDurationMs = 700;
-
-    private static readonly double[] ZoomLevels =
-    {
-        0.05, 0.10, 0.15, 0.20, 0.25, 0.33, 0.50, 0.67, 0.75, 0.90,
-        1.00, 1.10, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00, 4.00, 5.00, 6.00
-    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -92,6 +86,12 @@ public partial class MainWindow : Window
         public double Spacing { get; set; } = 40;
         public CanvasMode Mode { get; set; } = CanvasMode.Page;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
+
+        // Per-page view state (in-memory; resets on file reload)
+        public double ViewZoom { get; set; } = 1.0;
+        public double ViewPanX { get; set; } = 0;
+        public double ViewPanY { get; set; } = 0;
+        public bool ViewInitialized { get; set; } = false;
     }
 
     public sealed class PageThumb
@@ -118,7 +118,6 @@ public partial class MainWindow : Window
     private string? _currentPath;
     private bool _dirty;
 
-    private double _zoom = 1.0;
     private bool _suppressPageListChange;
     private bool _suppressCounterChange;
     private bool _fullscreenMode;
@@ -134,8 +133,12 @@ public partial class MainWindow : Window
 
     private bool _panning;
     private Point _panStart;
-    private double _panStartTfX, _panStartTfY;
+    private double _panStartPanX, _panStartPanY;
     private DateTime _panStartTime;
+
+    private double _viewZoom = 1.0;
+    private double _viewPanX = 0;
+    private double _viewPanY = 0;
 
     private bool _draggingFloatingZoom;
     private Point _floatingZoomDragStart;
@@ -171,6 +174,7 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 WindowState = WindowState.Maximized;
+                Dispatcher.BeginInvoke(new Action(RefitView), DispatcherPriority.Background);
             }), DispatcherPriority.ApplicationIdle);
         };
 
@@ -195,7 +199,6 @@ public partial class MainWindow : Window
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
-        ApplyZoom();
         UpdateTitle();
 
         Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
@@ -413,8 +416,6 @@ public partial class MainWindow : Window
 
     private void UpdateCursor()
     {
-        if (PageBorder is null) return;
-
         Cursor c;
         if (_tool == ToolMode.Hand)
             c = Cursors.SizeAll;
@@ -431,7 +432,7 @@ public partial class MainWindow : Window
             };
         }
 
-        PageBorder.Cursor = c;
+        if (CanvasHostBorder is not null) CanvasHostBorder.Cursor = c;
         if (InkArea is not null) InkArea.Cursor = c;
     }
 
@@ -555,37 +556,119 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Zoom
+    // View — pan and zoom via viewport transform
     // =====================================================================
 
-    private void ZoomInButton_Click(object sender, RoutedEventArgs e) => StepZoom(+1);
-    private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => StepZoom(-1);
-    private void ZoomResetButton_Click(object sender, RoutedEventArgs e) { _zoom = 1.0; ApplyZoom(); }
-
-    private void StepZoom(int direction)
+    private void ApplyView()
     {
-        int current = 0;
-        double bestDist = double.MaxValue;
-        for (int i = 0; i < ZoomLevels.Length; i++)
-        {
-            double d = Math.Abs(ZoomLevels[i] - _zoom);
-            if (d < bestDist) { bestDist = d; current = i; }
-        }
-        int next = current + direction;
-        if (next < 0) next = 0;
-        if (next >= ZoomLevels.Length) next = ZoomLevels.Length - 1;
-        _zoom = ZoomLevels[next];
-        ApplyZoom();
-    }
-
-    private void ApplyZoom()
-    {
-        if (PageScale is null) return;
-        PageScale.ScaleX = _zoom;
-        PageScale.ScaleY = _zoom;
+        if (ViewTransform is null) return;
+        ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
-            ZoomText.Text = $"{(int)Math.Round(_zoom * 100)}%";
+            ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+        SaveCurrentViewToPage();
     }
+
+    private void ZoomAt(Point viewPoint, double factor)
+    {
+        double newZoom = Math.Clamp(_viewZoom * factor, MinZoom, MaxZoom);
+        if (Math.Abs(newZoom - _viewZoom) < 1e-9) return;
+
+        double wx = (viewPoint.X - _viewPanX) / _viewZoom;
+        double wy = (viewPoint.Y - _viewPanY) / _viewZoom;
+
+        _viewPanX = viewPoint.X - wx * newZoom;
+        _viewPanY = viewPoint.Y - wy * newZoom;
+        _viewZoom = newZoom;
+
+        ApplyView();
+    }
+
+    private void PanBy(double dxScreen, double dyScreen)
+    {
+        _viewPanX += dxScreen;
+        _viewPanY += dyScreen;
+        ApplyView();
+    }
+
+    private void ZoomAtViewCenter(double factor)
+    {
+        if (CanvasHostBorder is null) return;
+        double vw = CanvasHostBorder.ActualWidth;
+        double vh = CanvasHostBorder.ActualHeight;
+        if (vw < 10 || vh < 10) return;
+        ZoomAt(new Point(vw / 2.0, vh / 2.0), factor);
+    }
+
+    private void FitBounds(Rect worldBounds, double margin = 40)
+    {
+        if (CanvasHostBorder is null) return;
+        double vw = CanvasHostBorder.ActualWidth;
+        double vh = CanvasHostBorder.ActualHeight;
+        if (vw < 10 || vh < 10) return;
+
+        if (worldBounds.Width <= 0 || worldBounds.Height <= 0)
+            worldBounds = new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+
+        double z = Math.Min((vw - 2 * margin) / worldBounds.Width,
+                            (vh - 2 * margin) / worldBounds.Height);
+        z = Math.Clamp(z, MinZoom, MaxZoom);
+
+        double cx = worldBounds.X + worldBounds.Width / 2.0;
+        double cy = worldBounds.Y + worldBounds.Height / 2.0;
+
+        _viewZoom = z;
+        _viewPanX = vw / 2.0 - cx * z;
+        _viewPanY = vh / 2.0 - cy * z;
+
+        ApplyView();
+    }
+
+    private void FitPageToView()
+    {
+        FitBounds(new Rect(0, 0, PageWidthDefault, PageHeightDefault), 40);
+    }
+
+    private void FitContentToView()
+    {
+        if (InkArea is null) return;
+        Rect bounds = InkArea.Strokes.Count > 0
+            ? InkArea.Strokes.GetBounds()
+            : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+        bounds.Inflate(80, 80);
+        FitBounds(bounds, 40);
+    }
+
+    private void SaveCurrentViewToPage()
+    {
+        if (CurrentPage is null) return;
+        CurrentPage.ViewZoom = _viewZoom;
+        CurrentPage.ViewPanX = _viewPanX;
+        CurrentPage.ViewPanY = _viewPanY;
+        CurrentPage.ViewInitialized = true;
+    }
+
+    private void RestoreViewFromPage()
+    {
+        if (CurrentPage is null) return;
+        _viewZoom = CurrentPage.ViewZoom;
+        _viewPanX = CurrentPage.ViewPanX;
+        _viewPanY = CurrentPage.ViewPanY;
+        if (ViewTransform is not null)
+            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+        if (ZoomText is not null && !ZoomText.IsFocused)
+            ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+    }
+
+    private void RefitView()
+    {
+        if (CanvasHostBorder is null || CanvasHostBorder.ActualWidth < 10) return;
+        if (CurrentPage.Mode == CanvasMode.Infinite) FitContentToView();
+        else FitPageToView();
+    }
+
+    private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(1.25);
+    private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(0.8);
+    private void ZoomResetButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(1.0 / _viewZoom);
 
     private void ZoomText_KeyDown(object sender, KeyEventArgs e)
     {
@@ -600,19 +683,33 @@ public partial class MainWindow : Window
         string raw = ZoomText.Text.Trim().TrimEnd('%').Trim();
         if (double.TryParse(raw, out var pct))
         {
-            double z = pct / 100.0;
-            if (z < MinZoom) z = MinZoom;
-            if (z > MaxZoom) z = MaxZoom;
-            _zoom = z;
+            double target = Math.Clamp(pct / 100.0, MinZoom, MaxZoom);
+            double factor = target / _viewZoom;
+            ZoomAtViewCenter(factor);
         }
-        ApplyZoom();
+        if (!ZoomText.IsFocused)
+            ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
     }
 
-    private void PageScroller_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    private void CanvasHostBorder_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (CanvasHostBorder is null) return;
+
         if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
-            StepZoom(e.Delta > 0 ? +1 : -1);
+            double factor = e.Delta > 0 ? 1.15 : 1.0 / 1.15;
+            var p = e.GetPosition(CanvasHostBorder);
+            ZoomAt(p, factor);
+            e.Handled = true;
+        }
+        else if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+        {
+            PanBy(-e.Delta, 0);
+            e.Handled = true;
+        }
+        else
+        {
+            PanBy(0, -e.Delta);
             e.Handled = true;
         }
     }
@@ -683,20 +780,11 @@ public partial class MainWindow : Window
 
     private void ApplyCanvasMode()
     {
-        if (PageBorder is null) return;
+        if (PageBackground is null) return;
 
-        if (CurrentPage.Mode == CanvasMode.Infinite)
-        {
-            PageBorder.BorderThickness = new Thickness(0);
-            PageBorder.Width = InfiniteSize;
-            PageBorder.Height = InfiniteSize;
-        }
-        else
-        {
-            PageBorder.BorderThickness = new Thickness(1);
-            PageBorder.Width = PageWidthDefault;
-            PageBorder.Height = PageHeightDefault;
-        }
+        PageBackground.Visibility = CurrentPage.Mode == CanvasMode.Infinite
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         if (InfiniteCanvasButton is not null)
         {
@@ -704,14 +792,20 @@ public partial class MainWindow : Window
                 ? new SolidColorBrush(Color.FromRgb(0xDC, 0xE9, 0xF9))
                 : Brushes.Transparent;
         }
+
+        if (CurrentPage.ViewInitialized && CurrentPage.Mode == CanvasMode.Page)
+            RestoreViewFromPage();
+        else
+            Dispatcher.BeginInvoke(new Action(RefitView), DispatcherPriority.Background);
     }
 
     private void InfiniteCanvasButton_Click(object sender, RoutedEventArgs e)
     {
         CurrentPage.Mode = CurrentPage.Mode == CanvasMode.Page ? CanvasMode.Infinite : CanvasMode.Page;
+        CurrentPage.ViewInitialized = false;
         ApplyCanvasMode();
         StatusText.Text = CurrentPage.Mode == CanvasMode.Infinite
-            ? "Infinite canvas mode."
+            ? "Infinite canvas mode. Middle-mouse drag or Hand tool to pan. Ctrl+wheel to zoom."
             : "Fixed page mode.";
         MarkDirty();
         ScheduleThumbnailRefresh();
@@ -876,23 +970,47 @@ public partial class MainWindow : Window
 
     private ImageSource RenderThumbnail(NotebookPage page, int w, int h)
     {
+        // Determine the world rect to show
+        Rect world;
+        if (page.Mode == CanvasMode.Infinite)
+        {
+            world = page.Strokes.Count > 0
+                ? page.Strokes.GetBounds()
+                : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+            world.Inflate(40, 40);
+        }
+        else
+        {
+            world = new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+        }
+
+        double scale = Math.Min(w / world.Width, h / world.Height);
+
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
             dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, new Rect(0, 0, w, h));
-
-            double pageW = page.Mode == CanvasMode.Infinite ? InfiniteSize : PageWidthDefault;
-            double pageH = page.Mode == CanvasMode.Infinite ? InfiniteSize : PageHeightDefault;
-            double scale = Math.Min(w / pageW, h / pageH);
-
             dc.PushClip(new RectangleGeometry(new Rect(0, 0, w, h)));
+            dc.PushTransform(new TranslateTransform(-world.X * scale, -world.Y * scale));
             dc.PushTransform(new ScaleTransform(scale, scale));
+
+            if (page.Mode == CanvasMode.Page)
+            {
+                dc.DrawRectangle(BuildPageBrush(page), null,
+                    new Rect(0, 0, PageWidthDefault, PageHeightDefault));
+            }
+            else
+            {
+                dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
+            }
+
             try
             {
                 foreach (var stroke in page.Strokes)
                     stroke.Draw(dc);
             }
             catch { }
+            dc.Pop();
             dc.Pop();
             dc.Pop();
         }
@@ -964,23 +1082,46 @@ public partial class MainWindow : Window
 
     private void ExportPageToPng(NotebookPage page, string path)
     {
-        double pageW = page.Mode == CanvasMode.Infinite ? InfiniteSize : PageWidthDefault;
-        double pageH = page.Mode == CanvasMode.Infinite ? InfiniteSize : PageHeightDefault;
+        Rect world;
+        if (page.Mode == CanvasMode.Infinite)
+        {
+            world = page.Strokes.Count > 0
+                ? page.Strokes.GetBounds()
+                : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+            world.Inflate(40, 40);
+        }
+        else
+        {
+            world = new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+        }
 
         double scale = 1.0;
-        if (pageW > ExportMaxDim) scale = ExportMaxDim / pageW;
-        if (pageH * scale > ExportMaxDim) scale = ExportMaxDim / pageH;
+        if (world.Width > ExportMaxDim) scale = ExportMaxDim / world.Width;
+        if (world.Height * scale > ExportMaxDim) scale = ExportMaxDim / world.Height;
 
-        int pxW = Math.Max(1, (int)Math.Round(pageW * scale));
-        int pxH = Math.Max(1, (int)Math.Round(pageH * scale));
+        int pxW = Math.Max(1, (int)Math.Round(world.Width * scale));
+        int pxH = Math.Max(1, (int)Math.Round(world.Height * scale));
 
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
+            dc.PushTransform(new TranslateTransform(-world.X * scale, -world.Y * scale));
             dc.PushTransform(new ScaleTransform(scale, scale));
-            dc.DrawRectangle(BuildPageBrush(page), null, new Rect(0, 0, pageW, pageH));
+
+            if (page.Mode == CanvasMode.Page)
+            {
+                dc.DrawRectangle(BuildPageBrush(page), null,
+                    new Rect(0, 0, PageWidthDefault, PageHeightDefault));
+            }
+            else
+            {
+                dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
+            }
+
             foreach (var s in page.Strokes)
                 s.Draw(dc);
+
+            dc.Pop();
             dc.Pop();
         }
 
@@ -997,55 +1138,55 @@ public partial class MainWindow : Window
     // Panning + swipe page turn
     // =====================================================================
 
-    private void PageBorder_MouseDown(object sender, MouseButtonEventArgs e)
+    private void CanvasHostBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
         bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
 
         if (!middleDrag && !handDrag) return;
-        if (PageScroller is null || PageBorder is null || PanTransform is null) return;
+        if (CanvasHostBorder is null) return;
 
         _panning = true;
-        _panStart = e.GetPosition(PageScroller);
-        _panStartTfX = PanTransform.X;
-        _panStartTfY = PanTransform.Y;
+        _panStart = e.GetPosition(CanvasHostBorder);
+        _panStartPanX = _viewPanX;
+        _panStartPanY = _viewPanY;
         _panStartTime = DateTime.UtcNow;
-        PageBorder.CaptureMouse();
+        CanvasHostBorder.CaptureMouse();
 
         try
         {
-            var cache = new BitmapCache
+            if (CanvasHost is not null)
             {
-                SnapsToDevicePixels = true,
-                EnableClearType = false,
-                RenderAtScale = 1.0
-            };
-            cache.Freeze();
-            PageBorder.CacheMode = cache;
+                var cache = new BitmapCache
+                {
+                    SnapsToDevicePixels = true,
+                    EnableClearType = false,
+                    RenderAtScale = 1.0
+                };
+                cache.Freeze();
+                CanvasHost.CacheMode = cache;
+            }
         }
         catch { }
 
         e.Handled = true;
     }
 
-    private void PageBorder_MouseMove(object sender, MouseEventArgs e)
+    private void CanvasHostBorder_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_panning || PageScroller is null || PanTransform is null) return;
-        var p = e.GetPosition(PageScroller);
-        PanTransform.X = _panStartTfX + (p.X - _panStart.X);
-        PanTransform.Y = _panStartTfY + (p.Y - _panStart.Y);
+        if (!_panning || CanvasHostBorder is null) return;
+        var p = e.GetPosition(CanvasHostBorder);
+        _viewPanX = _panStartPanX + (p.X - _panStart.X);
+        _viewPanY = _panStartPanY + (p.Y - _panStart.Y);
+        if (ViewTransform is not null)
+            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         e.Handled = true;
     }
 
-    private void PageBorder_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    private void CanvasHostBorder_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
         EndPan();
         e.Handled = true;
-    }
-
-    private void PageBorder_LostMouseCapture(object sender, MouseEventArgs e)
-    {
-        if (_panning) EndPan();
     }
 
     private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
@@ -1058,43 +1199,38 @@ public partial class MainWindow : Window
         if (!_panning) return;
         _panning = false;
 
-        if (PageBorder is not null)
+        if (CanvasHostBorder is not null)
         {
-            if (PageBorder.IsMouseCaptured)
-                PageBorder.ReleaseMouseCapture();
+            if (CanvasHostBorder.IsMouseCaptured)
+                CanvasHostBorder.ReleaseMouseCapture();
 
-            try { PageBorder.CacheMode = null; } catch { }
-        }
-
-        if (PageScroller is not null && PanTransform is not null)
-        {
-            double tx = PanTransform.X;
-            double ty = PanTransform.Y;
-
-            double elapsedMs = (DateTime.UtcNow - _panStartTime).TotalMilliseconds;
-            if (_tool == ToolMode.Hand
-                && Math.Abs(tx) >= SwipeMinDist
-                && Math.Abs(tx) > Math.Abs(ty) * 2.5
-                && elapsedMs <= SwipeMaxDurationMs)
+            if (CanvasHost is not null)
             {
-                PanTransform.X = 0;
-                PanTransform.Y = 0;
-                if (tx < 0) NextPageButton_Click(this, new RoutedEventArgs());
-                else PrevPageButton_Click(this, new RoutedEventArgs());
-                UpdateCursor();
-                return;
-            }
-
-            if (Math.Abs(tx) > 0.01 || Math.Abs(ty) > 0.01)
-            {
-                PageScroller.ScrollToHorizontalOffset(PageScroller.HorizontalOffset - tx);
-                PageScroller.ScrollToVerticalOffset(PageScroller.VerticalOffset - ty);
-                PageScroller.UpdateLayout();
-                PanTransform.X = 0;
-                PanTransform.Y = 0;
+                try { CanvasHost.CacheMode = null; } catch { }
             }
         }
 
+        double dx = _viewPanX - _panStartPanX;
+        double dy = _viewPanY - _panStartPanY;
+        double elapsedMs = (DateTime.UtcNow - _panStartTime).TotalMilliseconds;
+
+        if (_tool == ToolMode.Hand
+            && Math.Abs(dx) >= SwipeMinDist
+            && Math.Abs(dx) > 2.5 * Math.Abs(dy)
+            && elapsedMs <= SwipeMaxDurationMs)
+        {
+            _viewPanX = _panStartPanX;
+            _viewPanY = _panStartPanY;
+            if (ViewTransform is not null)
+                ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+
+            if (dx < 0) NextPageButton_Click(this, new RoutedEventArgs());
+            else PrevPageButton_Click(this, new RoutedEventArgs());
+            UpdateCursor();
+            return;
+        }
+
+        ApplyView();
         UpdateCursor();
     }
 
@@ -1270,8 +1406,24 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        double left = 60;
-        double top = 60 + (_insertCounter % 22) * 42;
+        // Determine world coordinates to place the element at.
+        // If a fixed page, we start at the top-left of the page.
+        // If infinite, we place at the current view's top-left + a small offset.
+        double left, top;
+
+        if (CurrentPage.Mode == CanvasMode.Infinite && CanvasHostBorder is not null)
+        {
+            // Visible world top-left corner
+            double visLeft = -_viewPanX / _viewZoom;
+            double visTop = -_viewPanY / _viewZoom;
+            left = visLeft + 60;
+            top = visTop + 60 + (_insertCounter % 22) * 42;
+        }
+        else
+        {
+            left = 60;
+            top = 60 + (_insertCounter % 22) * 42;
+        }
         _insertCounter++;
 
         InkCanvas.SetLeft(element, left);
