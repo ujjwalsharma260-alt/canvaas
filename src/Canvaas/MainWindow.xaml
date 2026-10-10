@@ -327,6 +327,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- Title bar -->
         <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#7B2FBE" Height="36">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -338,18 +339,28 @@
             </DockPanel>
         </Border>
 
+        <!-- Toolbar -->
         <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
-                    <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Toggle infinite canvas" Click="InfiniteCanvasButton_Click"/>
-                    <Button x:Name="ColourButton" Style="{StaticResource ToolIconButton}" Content="&#xE2B1;" ToolTip="Colour: selection or pen" Click="ColourButton_Click">
-                        <Button.ContextMenu>
-                            <ContextMenu x:Name="ColourMenu"/>
-                        </Button.ContextMenu>
-                    </Button>
+
                     <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
+
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
+
+                    <Button x:Name="PrevPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76B;" ToolTip="Previous page (Left arrow)" Click="PrevPageButton_Click"/>
+                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="4,0" MinWidth="76">
+                        <TextBox x:Name="PageCounterBox" Text="1 / 1"
+                                 Width="64" BorderThickness="0" Background="Transparent"
+                                 Padding="0" FontSize="12" Foreground="#333333"
+                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                 KeyDown="PageCounterBox_KeyDown" LostFocus="PageCounterBox_LostFocus"/>
+                    </Border>
+                    <Button x:Name="NextPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
+                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="6,0,2,0" Click="AddPageButton_Click"/>
+
+                    <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
+
                     <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert" Click="MenuButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
@@ -378,9 +389,12 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
+
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
+
                     <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen" Click="FullscreenButton_Click"/>
                 </StackPanel>
+
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen (1)" Click="PenButton_Click"/>
                     <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter (2)" Click="HighlighterButton_Click"/>
@@ -395,40 +409,46 @@
             </DockPanel>
         </Border>
 
-        <DockPanel Grid.Row="2">
-            <Border x:Name="LeftPanel" DockPanel.Dock="Left" Width="180"
-                    Background="#FAFAFA" BorderBrush="#E0E0E0" BorderThickness="0,0,1,0">
-                <DockPanel>
-                    <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
-                        <DockPanel Margin="6,4">
-                            <Button x:Name="SidebarAddPageButton" DockPanel.Dock="Right"
-                                    Style="{StaticResource SmallIconButton}"
-                                    Content="&#xE710;" ToolTip="Add page" Click="AddPageButton_Click"/>
-                            <TextBlock Text="Pages" FontWeight="SemiBold" FontSize="12"
-                                       Foreground="#333333" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                        </DockPanel>
-                    </Border>
-                    <ScrollViewer VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Disabled">
-                        <ListBox x:Name="PageListBox" Background="Transparent" BorderThickness="0"
-                                 SelectionChanged="PageListBox_SelectionChanged"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.PanningMode="VerticalOnly">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="4">
-                                        <Border BorderBrush="#CCCCCC" BorderThickness="1" Background="White">
-                                            <Image Width="120" Height="168" Source="{Binding Thumbnail}" Stretch="Fill"/>
-                                        </Border>
-                                        <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" FontSize="11" Margin="0,4,0,0" Foreground="#333333"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </ScrollViewer>
-                </DockPanel>
+        <!-- Canvas area (sidebar removed) -->
+        <Grid Grid.Row="2">
+            <Border x:Name="CanvasHostBorder"
+                    Background="#E6E6E6"
+                    ClipToBounds="True"
+                    PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
+                    PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
+                    PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
+                    PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
+                <Grid x:Name="CanvasHost"
+                      Width="10000" Height="10000"
+                      HorizontalAlignment="Left" VerticalAlignment="Top"
+                      RenderTransformOrigin="0,0"
+                      Background="Transparent">
+                    <Grid.RenderTransform>
+                        <MatrixTransform x:Name="ViewTransform"/>
+                    </Grid.RenderTransform>
+
+                    <Rectangle x:Name="PageBackground"
+                               Width="800" Height="1120"
+                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                               Fill="White" Stroke="#B0B0B0" StrokeThickness="1"
+                               IsHitTestVisible="False"
+                               Visibility="Collapsed"/>
+
+                    <InkCanvas x:Name="InkArea"
+                               Width="10000" Height="10000"
+                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                               Background="Transparent"
+                               ForceCursor="True"
+                               Stylus.IsPressAndHoldEnabled="False"
+                               Stylus.IsFlicksEnabled="False"
+                               StylusOutOfRange="InkArea_StylusOutOfRange"
+                               StrokeCollected="InkArea_StrokeCollected"
+                               SelectionChanged="InkArea_SelectionChanged"/>
+                </Grid>
             </Border>
 
-            <Border x:Name="SidePanel" DockPanel.Dock="Right" Width="320"
+            <!-- Right side palette panel (overlays canvas right edge) -->
+            <Border x:Name="SidePanel" HorizontalAlignment="Right" Width="320"
                     Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
                     Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -476,46 +496,23 @@
                             <ComboBoxItem Content="Hollow ring + dot"/>
                             <ComboBoxItem Content="Hidden (use pen tip)"/>
                         </ComboBox>
+
+                        <TextBlock Text="Pointer size" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,18,0,6"/>
+                        <DockPanel>
+                            <TextBlock x:Name="PointerSizeText" DockPanel.Dock="Right" Text="12"
+                                       Width="32" TextAlignment="Right"
+                                       VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
+                            <Slider x:Name="PointerSizeSlider" Minimum="6" Maximum="32" Value="12"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="PointerSizeSlider_ValueChanged"/>
+                        </DockPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
+        </Grid>
 
-            <Border x:Name="CanvasHostBorder"
-                    Background="#E6E6E6"
-                    ClipToBounds="True"
-                    PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
-                    PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
-                    PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
-                    PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
-                <Grid x:Name="CanvasHost"
-                      Width="10000" Height="10000"
-                      HorizontalAlignment="Left" VerticalAlignment="Top"
-                      RenderTransformOrigin="0,0"
-                      Background="Transparent">
-                    <Grid.RenderTransform>
-                        <MatrixTransform x:Name="ViewTransform"/>
-                    </Grid.RenderTransform>
-
-                    <Rectangle x:Name="PageBackground"
-                               Width="800" Height="1120"
-                               HorizontalAlignment="Left" VerticalAlignment="Top"
-                               Fill="White" Stroke="#B0B0B0" StrokeThickness="1"
-                               IsHitTestVisible="False"/>
-
-                    <InkCanvas x:Name="InkArea"
-                               Width="10000" Height="10000"
-                               HorizontalAlignment="Left" VerticalAlignment="Top"
-                               Background="Transparent"
-                               ForceCursor="True"
-                               Stylus.IsPressAndHoldEnabled="False"
-                               Stylus.IsFlicksEnabled="False"
-                               StylusOutOfRange="InkArea_StylusOutOfRange"
-                               StrokeCollected="InkArea_StrokeCollected"
-                               SelectionChanged="InkArea_SelectionChanged"/>
-                </Grid>
-            </Border>
-        </DockPanel>
-
+        <!-- Floating zoom widget -->
         <Border x:Name="FloatingZoom" Grid.Row="2"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                 Margin="0,0,28,28"
@@ -549,33 +546,18 @@
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="34">
+        <!-- Status bar -->
+        <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="30">
             <Grid Margin="10,3">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock x:Name="StatusText" Text="1–5 switch tools. Left/Right arrows change page. Middle-mouse drag to pan."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page (Left arrow)" Click="PrevPageButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="6,0" MinWidth="72">
-                        <TextBox x:Name="PageCounterBox" Text="1 / 1"
-                                 Width="60" BorderThickness="0" Background="Transparent"
-                                 Padding="0" FontSize="12" Foreground="#333333"
-                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                 KeyDown="PageCounterBox_KeyDown" LostFocus="PageCounterBox_LostFocus"/>
-                    </Border>
-                    <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
-                    <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
-                    <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="1,0,0,0" Click="AddPageButton_Click"/>
-                </StackPanel>
             </Grid>
         </Border>
 
+        <!-- Tool options popup (pen palette + thickness) -->
         <Popup x:Name="ToolOptionsPopup"
                Placement="Bottom"
                StaysOpen="False"

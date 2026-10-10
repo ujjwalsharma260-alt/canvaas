@@ -64,6 +64,12 @@ public partial class MainWindow : Window
         public List<PageManifest>? Pages { get; set; }
     }
 
+    private sealed class AppSettings
+    {
+        public double PointerSize { get; set; } = 12.0;
+        public int CursorStyleIndex { get; set; } = 2;
+    }
+
     private sealed class StrokeChange
     {
         public StrokeCollection Added { get; }
@@ -84,7 +90,6 @@ public partial class MainWindow : Window
     }
 
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
-    private enum CanvasMode { Page, Infinite }
     private enum PenCursorStyle { Arrow, Cross, HollowRingDot, Hidden }
     private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand }
     private enum PaperStyle { White, Crumpled }
@@ -95,20 +100,12 @@ public partial class MainWindow : Window
         public Color BackgroundColor { get; set; } = Colors.White;
         public PageTemplate Template { get; set; } = PageTemplate.Blank;
         public double Spacing { get; set; } = 40;
-        public CanvasMode Mode { get; set; } = CanvasMode.Page;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
         public double ViewZoom { get; set; } = 1.0;
         public double ViewPanX { get; set; } = 0;
         public double ViewPanY { get; set; } = 0;
         public bool ViewInitialized { get; set; } = false;
-    }
-
-    public sealed class PageThumb
-    {
-        public int Index { get; set; }
-        public string Label => $"Page {Index + 1}";
-        public ImageSource? Thumbnail { get; set; }
     }
 
     public sealed class PopupColorItem
@@ -128,7 +125,6 @@ public partial class MainWindow : Window
     private string? _currentPath;
     private bool _dirty;
 
-    private bool _suppressPageListChange;
     private bool _suppressCounterChange;
     private bool _fullscreenMode;
     private bool _uiReady;
@@ -138,6 +134,7 @@ public partial class MainWindow : Window
     private double _penSize = 2.5;
     private bool _pressureEnabled = true;
     private PenCursorStyle _cursorStyle = PenCursorStyle.HollowRingDot;
+    private double _pointerSize = 12.0;
 
     private Cursor? _hollowRingCursor;
 
@@ -154,7 +151,6 @@ public partial class MainWindow : Window
     private Point _floatingZoomDragStart;
     private double _floatingZoomStartX, _floatingZoomStartY;
 
-    private DispatcherTimer? _thumbnailTimer;
     private int _insertCounter = 0;
 
     // ---- Custom lasso state ----
@@ -170,6 +166,11 @@ public partial class MainWindow : Window
     private StrokeCollection? _dragPreviewStrokes;
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
+
+    private static string SettingsFilePath
+        => System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Canvaas", "settings.json");
 
     public MainWindow()
     {
@@ -189,7 +190,23 @@ public partial class MainWindow : Window
 
         _uiReady = true;
 
+        LoadSettings();
         RebuildHollowRingCursor();
+
+        if (PointerSizeSlider is not null)
+            PointerSizeSlider.Value = _pointerSize;
+        if (PointerSizeText is not null)
+            PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
+
+        if (CursorCombo is not null)
+            CursorCombo.SelectedIndex = _cursorStyle switch
+            {
+                PenCursorStyle.Arrow => 0,
+                PenCursorStyle.Cross => 1,
+                PenCursorStyle.HollowRingDot => 2,
+                PenCursorStyle.Hidden => 3,
+                _ => 2
+            };
 
         Loaded += (s, e) =>
         {
@@ -213,7 +230,6 @@ public partial class MainWindow : Window
         ColorWhite.IsChecked = true;
         TemplateBlank.IsChecked = true;
         PaperWhite.IsChecked = true;
-        CursorCombo.SelectedIndex = 2;
 
         ApplyPenAttributes();
         UpdateCursor();
@@ -222,29 +238,77 @@ public partial class MainWindow : Window
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
         UpdateTitle();
-
-        Dispatcher.BeginInvoke(new Action(RefreshThumbnails), DispatcherPriority.Background);
     }
 
     // =====================================================================
-    // Cursor: hollow black ring + tiny black dot
+    // Settings (persisted between sessions)
+    // =====================================================================
+
+    private void LoadSettings()
+    {
+        try
+        {
+            var path = SettingsFilePath;
+            if (!File.Exists(path)) return;
+            var json = File.ReadAllText(path);
+            var s = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+            if (s is null) return;
+            _pointerSize = Math.Clamp(s.PointerSize, 6.0, 32.0);
+            _cursorStyle = s.CursorStyleIndex switch
+            {
+                0 => PenCursorStyle.Arrow,
+                1 => PenCursorStyle.Cross,
+                2 => PenCursorStyle.HollowRingDot,
+                3 => PenCursorStyle.Hidden,
+                _ => PenCursorStyle.HollowRingDot
+            };
+        }
+        catch { }
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            var path = SettingsFilePath;
+            var dir = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+            var s = new AppSettings
+            {
+                PointerSize = _pointerSize,
+                CursorStyleIndex = (int)_cursorStyle
+            };
+            File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOptions));
+        }
+        catch { }
+    }
+
+    // =====================================================================
+    // Cursor: hollow black ring + tiny black dot, size from _pointerSize
     // =====================================================================
 
     private void RebuildHollowRingCursor()
     {
         try
         {
-            const int size = 40;
+            double ringRadius = _pointerSize / 2.0;
+            double dotRadius = Math.Max(1.0, ringRadius * 0.17);
+            int size = (int)Math.Ceiling(_pointerSize + 8);
+            if (size < 20) size = 20;
+            if (size > 60) size = 60;
+            double center = size / 2.0;
+
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
                 var ringPen = new Pen(Brushes.Black, 1.3);
-                dc.DrawEllipse(null, ringPen, new Point(20, 20), 9, 9);
-                dc.DrawEllipse(Brushes.Black, null, new Point(20, 20), 1.6, 1.6);
+                dc.DrawEllipse(null, ringPen, new Point(center, center), ringRadius, ringRadius);
+                dc.DrawEllipse(Brushes.Black, null, new Point(center, center), dotRadius, dotRadius);
             }
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
-            _hollowRingCursor = CreateCursorFromBitmap(rtb, 20, 20);
+            _hollowRingCursor = CreateCursorFromBitmap(rtb, size / 2, size / 2);
         }
         catch { _hollowRingCursor = Cursors.Cross; }
     }
@@ -292,6 +356,17 @@ public partial class MainWindow : Window
         return new Cursor(ms);
     }
 
+    private void PointerSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady) return;
+        _pointerSize = e.NewValue;
+        if (PointerSizeText is not null)
+            PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
+        RebuildHollowRingCursor();
+        UpdateCursor();
+        SaveSettings();
+    }
+
     // =====================================================================
     // Stylus release
     // =====================================================================
@@ -316,7 +391,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Colour palette for the tool popup
+    // Colour palette data
     // =====================================================================
 
     private void PopulateToolColorGrid()
@@ -438,50 +513,6 @@ public partial class MainWindow : Window
         ApplyPenAttributes();
     }
 
-    // =====================================================================
-    // Colour button (toolbar)
-    // =====================================================================
-
-    private void ColourButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button b && b.ContextMenu is ContextMenu cm)
-        {
-            if (cm.Items.Count == 0) BuildColourMenu(cm);
-            cm.PlacementTarget = b;
-            cm.Placement = PlacementMode.Bottom;
-            cm.IsOpen = true;
-        }
-    }
-
-    private void BuildColourMenu(ContextMenu cm)
-    {
-        if (ToolColorGrid?.ItemsSource is not System.Collections.IEnumerable items) return;
-        foreach (var obj in items)
-        {
-            if (obj is not PopupColorItem item) continue;
-            var mi = new MenuItem
-            {
-                Header = item.Name,
-                Icon = new Rectangle
-                {
-                    Width = 14, Height = 14,
-                    Fill = item.Brush,
-                    Stroke = Brushes.LightGray, StrokeThickness = 1
-                },
-                Tag = item.Hex
-            };
-            mi.Click += (s, e) =>
-            {
-                if (s is MenuItem m && m.Tag is string hex)
-                {
-                    var c = ParseHexColor(hex, Colors.Black);
-                    ApplyColourToSelection(c);
-                }
-            };
-            cm.Items.Add(mi);
-        }
-    }
-
     private void ApplyColourToSelection(Color newColour)
     {
         if (InkArea is null) return;
@@ -528,7 +559,6 @@ public partial class MainWindow : Window
         if (any)
         {
             MarkDirty();
-            ScheduleThumbnailRefresh();
             StatusText.Text = "Recoloured selection.";
         }
         else
@@ -752,9 +782,6 @@ public partial class MainWindow : Window
         ApplyView();
     }
 
-    private void FitPageToView()
-        => FitBounds(new Rect(0, 0, PageWidthDefault, PageHeightDefault), 40);
-
     private void FitContentToView()
     {
         if (InkArea is null) return;
@@ -789,8 +816,7 @@ public partial class MainWindow : Window
     private void RefitView()
     {
         if (CanvasHostBorder is null || CanvasHostBorder.ActualWidth < 10) return;
-        if (CurrentPage.Mode == CanvasMode.Infinite) FitContentToView();
-        else FitPageToView();
+        FitContentToView();
     }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(1.25);
@@ -895,49 +921,17 @@ public partial class MainWindow : Window
 
         ClearElementSelection();
 
-        ApplyCanvasMode();
+        // Infinite-only: hide the fixed-page rectangle
+        if (PageBackground is not null)
+            PageBackground.Visibility = Visibility.Collapsed;
+
         SyncUIWithSettings();
         UpdatePageNavigationUI();
 
-        if (PageListBox is not null && _currentPageIndex < PageListBox.Items.Count)
-        {
-            _suppressPageListChange = true;
-            PageListBox.SelectedIndex = _currentPageIndex;
-            _suppressPageListChange = false;
-        }
-    }
-
-    private void ApplyCanvasMode()
-    {
-        if (PageBackground is null) return;
-
-        PageBackground.Visibility = CurrentPage.Mode == CanvasMode.Infinite
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-
-        if (InfiniteCanvasButton is not null)
-        {
-            InfiniteCanvasButton.Background = CurrentPage.Mode == CanvasMode.Infinite
-                ? new SolidColorBrush(Color.FromRgb(0xDC, 0xE9, 0xF9))
-                : Brushes.Transparent;
-        }
-
-        if (CurrentPage.ViewInitialized && CurrentPage.Mode == CanvasMode.Page)
+        if (CurrentPage.ViewInitialized)
             RestoreViewFromPage();
         else
             Dispatcher.BeginInvoke(new Action(RefitView), DispatcherPriority.Background);
-    }
-
-    private void InfiniteCanvasButton_Click(object sender, RoutedEventArgs e)
-    {
-        CurrentPage.Mode = CurrentPage.Mode == CanvasMode.Page ? CanvasMode.Infinite : CanvasMode.Page;
-        CurrentPage.ViewInitialized = false;
-        ApplyCanvasMode();
-        StatusText.Text = CurrentPage.Mode == CanvasMode.Infinite
-            ? "Infinite canvas mode. Middle-mouse drag or Hand tool to pan. Ctrl+wheel to zoom."
-            : "Fixed page mode.";
-        MarkDirty();
-        ScheduleThumbnailRefresh();
     }
 
     private void UpdatePageNavigationUI()
@@ -1010,7 +1004,6 @@ public partial class MainWindow : Window
             BackgroundColor = CurrentPage.BackgroundColor,
             Template = CurrentPage.Template,
             Spacing = CurrentPage.Spacing,
-            Mode = CanvasMode.Page,
             Paper = CurrentPage.Paper
         };
 
@@ -1018,7 +1011,6 @@ public partial class MainWindow : Window
         _currentPageIndex++;
         LoadCurrentPageIntoCanvas();
         MarkDirty();
-        RefreshThumbnails();
         StatusText.Text = $"Added page {_currentPageIndex + 1} of {_pages.Count}.";
     }
 
@@ -1044,100 +1036,7 @@ public partial class MainWindow : Window
 
         LoadCurrentPageIntoCanvas();
         MarkDirty();
-        RefreshThumbnails();
         StatusText.Text = $"Deleted. Now on page {_currentPageIndex + 1} of {_pages.Count}.";
-    }
-
-    private void PageListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_suppressPageListChange) return;
-        if (PageListBox is null) return;
-        if (PageListBox.SelectedIndex >= 0 && PageListBox.SelectedIndex != _currentPageIndex)
-        {
-            _currentPageIndex = PageListBox.SelectedIndex;
-            LoadCurrentPageIntoCanvas();
-        }
-    }
-
-    private void RefreshThumbnails()
-    {
-        if (PageListBox is null) return;
-        var items = new List<PageThumb>();
-        for (int i = 0; i < _pages.Count; i++)
-        {
-            items.Add(new PageThumb
-            {
-                Index = i,
-                Thumbnail = RenderThumbnail(_pages[i], 120, 168)
-            });
-        }
-        _suppressPageListChange = true;
-        PageListBox.ItemsSource = items;
-        if (_currentPageIndex >= 0 && _currentPageIndex < items.Count)
-            PageListBox.SelectedIndex = _currentPageIndex;
-        _suppressPageListChange = false;
-    }
-
-    private void ScheduleThumbnailRefresh()
-    {
-        if (_thumbnailTimer is null)
-        {
-            _thumbnailTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-            _thumbnailTimer.Tick += (s, e) =>
-            {
-                _thumbnailTimer!.Stop();
-                RefreshThumbnails();
-            };
-        }
-        _thumbnailTimer.Stop();
-        _thumbnailTimer.Start();
-    }
-
-    private ImageSource RenderThumbnail(NotebookPage page, int w, int h)
-    {
-        Rect world;
-        if (page.Mode == CanvasMode.Infinite)
-        {
-            world = page.Strokes.Count > 0
-                ? page.Strokes.GetBounds()
-                : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
-            world.Inflate(40, 40);
-        }
-        else
-        {
-            world = new Rect(0, 0, PageWidthDefault, PageHeightDefault);
-        }
-
-        double scale = Math.Min(w / world.Width, h / world.Height);
-
-        var visual = new DrawingVisual();
-        using (var dc = visual.RenderOpen())
-        {
-            dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, new Rect(0, 0, w, h));
-            dc.PushClip(new RectangleGeometry(new Rect(0, 0, w, h)));
-            dc.PushTransform(new TranslateTransform(-world.X * scale, -world.Y * scale));
-            dc.PushTransform(new ScaleTransform(scale, scale));
-
-            if (page.Mode == CanvasMode.Page)
-                dc.DrawRectangle(BuildPageBrush(page), null, new Rect(0, 0, PageWidthDefault, PageHeightDefault));
-            else
-                dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
-
-            try
-            {
-                foreach (var stroke in page.Strokes)
-                    stroke.Draw(dc);
-            }
-            catch { }
-            dc.Pop();
-            dc.Pop();
-            dc.Pop();
-        }
-
-        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
-        rtb.Render(visual);
-        rtb.Freeze();
-        return rtb;
     }
 
     // =====================================================================
@@ -1201,18 +1100,10 @@ public partial class MainWindow : Window
 
     private void ExportPageToPng(NotebookPage page, string path)
     {
-        Rect world;
-        if (page.Mode == CanvasMode.Infinite)
-        {
-            world = page.Strokes.Count > 0
-                ? page.Strokes.GetBounds()
-                : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
-            world.Inflate(40, 40);
-        }
-        else
-        {
-            world = new Rect(0, 0, PageWidthDefault, PageHeightDefault);
-        }
+        Rect world = page.Strokes.Count > 0
+            ? page.Strokes.GetBounds()
+            : new Rect(0, 0, PageWidthDefault, PageHeightDefault);
+        world.Inflate(40, 40);
 
         double scale = 1.0;
         if (world.Width > ExportMaxDim) scale = ExportMaxDim / world.Width;
@@ -1226,11 +1117,7 @@ public partial class MainWindow : Window
         {
             dc.PushTransform(new TranslateTransform(-world.X * scale, -world.Y * scale));
             dc.PushTransform(new ScaleTransform(scale, scale));
-
-            if (page.Mode == CanvasMode.Page)
-                dc.DrawRectangle(BuildPageBrush(page), null, new Rect(0, 0, PageWidthDefault, PageHeightDefault));
-            else
-                dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
+            dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
 
             foreach (var s in page.Strokes)
                 s.Draw(dc);
@@ -1609,7 +1496,6 @@ public partial class MainWindow : Window
         _dragPreviewStrokes = null;
 
         MarkDirty();
-        ScheduleThumbnailRefresh();
     }
 
     // ---------------- Element selection visuals ----------------
@@ -1661,16 +1547,8 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Sidebar and title bar buttons
+    // Title bar buttons
     // =====================================================================
-
-    private void SidebarButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (LeftPanel is null) return;
-        LeftPanel.Visibility = LeftPanel.Visibility == Visibility.Visible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-    }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
@@ -1829,20 +1707,12 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        double left, top;
+        // Always infinite now — place near the visible top-left of the current view.
+        double visLeft = -_viewPanX / _viewZoom;
+        double visTop = -_viewPanY / _viewZoom;
 
-        if (CurrentPage.Mode == CanvasMode.Infinite && CanvasHostBorder is not null)
-        {
-            double visLeft = -_viewPanX / _viewZoom;
-            double visTop = -_viewPanY / _viewZoom;
-            left = visLeft + 60;
-            top = visTop + 60 + (_insertCounter % 22) * 42;
-        }
-        else
-        {
-            left = 60;
-            top = 60 + (_insertCounter % 22) * 42;
-        }
+        double left = visLeft + 60;
+        double top = visTop + 60 + (_insertCounter % 22) * 42;
         _insertCounter++;
 
         InkCanvas.SetLeft(element, left);
@@ -1853,7 +1723,6 @@ public partial class MainWindow : Window
         InkArea.Children.Add(element);
 
         MarkDirty();
-        ScheduleThumbnailRefresh();
     }
 
     private void PaletteButton_Click(object sender, RoutedEventArgs e)
@@ -1875,7 +1744,6 @@ public partial class MainWindow : Window
             CurrentPage.Paper = ps;
             UpdatePageBackground();
             MarkDirty();
-            ScheduleThumbnailRefresh();
             StatusText.Text = $"Paper: {rb.ToolTip}";
         }
     }
@@ -1888,7 +1756,6 @@ public partial class MainWindow : Window
             UpdatePageBackground();
             StatusText.Text = $"Background: {rb.ToolTip}";
             MarkDirty();
-            ScheduleThumbnailRefresh();
         }
     }
 
@@ -1901,7 +1768,6 @@ public partial class MainWindow : Window
             UpdatePageBackground();
             StatusText.Text = $"Template: {rb.ToolTip}";
             MarkDirty();
-            ScheduleThumbnailRefresh();
         }
     }
 
@@ -1928,6 +1794,7 @@ public partial class MainWindow : Window
             _ => PenCursorStyle.Arrow
         };
         UpdateCursor();
+        SaveSettings();
     }
 
     private void UpdatePageBackground()
@@ -2152,7 +2019,7 @@ public partial class MainWindow : Window
         }
         UpdateCursor();
         if (StatusText is not null)
-            StatusText.Text = "Lasso select (4): drag around ink/items to select. Drag inside selection to move.";
+            StatusText.Text = "Lasso select (4): drag around ink/items to select. Drag inside selection to move. Tap a colour to recolour.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2162,7 +2029,7 @@ public partial class MainWindow : Window
         int n = InkArea.GetSelectedStrokes().Count;
         int m = _selectedElements.Count;
         if ((n > 0 || m > 0) && StatusText is not null)
-            StatusText.Text = $"Selected {n} stroke(s) and {m} item(s).";
+            StatusText.Text = $"Selected {n} stroke(s) and {m} item(s). Tap a colour to recolour.";
     }
 
     private void SelectAll_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -2237,8 +2104,6 @@ public partial class MainWindow : Window
 
         if (!e.Stroke.DrawingAttributes.IsHighlighter)
             SmoothCompletedStroke(e.Stroke);
-
-        ScheduleThumbnailRefresh();
     }
 
     private void SmoothCompletedStroke(Stroke original)
@@ -2369,7 +2234,6 @@ public partial class MainWindow : Window
         ReverseChange(change);
         _redo.Push(change);
         MarkDirty();
-        ScheduleThumbnailRefresh();
     }
 
     private void Redo_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -2379,7 +2243,6 @@ public partial class MainWindow : Window
         ForwardChange(change);
         _undo.Push(change);
         MarkDirty();
-        ScheduleThumbnailRefresh();
     }
 
     private void ReverseChange(object change)
@@ -2438,7 +2301,6 @@ public partial class MainWindow : Window
         _currentPath = null;
         _dirty = false;
         UpdateTitle();
-        RefreshThumbnails();
         StatusText.Text = "New blank note.";
     }
 
@@ -2503,7 +2365,7 @@ public partial class MainWindow : Window
                         BackgroundColor = $"#{page.BackgroundColor.R:X2}{page.BackgroundColor.G:X2}{page.BackgroundColor.B:X2}",
                         Template = page.Template.ToString(),
                         Spacing = page.Spacing,
-                        Mode = page.Mode.ToString(),
+                        Mode = "Infinite",
                         Paper = page.Paper.ToString()
                     });
                 }
@@ -2584,8 +2446,8 @@ public partial class MainWindow : Window
                         Spacing = pm.Spacing is double s && s > 0 ? s : 40
                     };
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
-                    if (Enum.TryParse<CanvasMode>(pm.Mode, out var m)) page.Mode = m;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;
+                    // Note: old Mode is intentionally ignored — everything is infinite now.
 
                     var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
                     if (inkEntry is not null)
@@ -2638,7 +2500,6 @@ public partial class MainWindow : Window
         _pages.AddRange(loadedPages);
         _currentPageIndex = loadedCurrentPage;
         LoadCurrentPageIntoCanvas();
-        RefreshThumbnails();
 
         _currentPath = path;
         _dirty = false;
