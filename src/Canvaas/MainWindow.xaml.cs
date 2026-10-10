@@ -26,9 +26,9 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    private const double CanvasWorldSize = 1000000;
-    private const double DefaultViewX = 60;
-    private const double DefaultViewY = 60;
+    private const double CanvasWorldSize = 4000000;
+    private const double DefaultViewX = -2000000;
+    private const double DefaultViewY = -2000000;
     private const double MinZoom = 0.01;
     private const double MaxZoom = 40.0;
     private const double ExportMaxDim = 3000;
