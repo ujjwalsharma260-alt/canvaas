@@ -982,7 +982,7 @@ public partial class MainWindow : Window
         // Ctrl+A: select all.
         if (!textBoxFocused && ctrl && e.Key == Key.A)
         {
-            SelectAll_Executed(this, new ExecutedRoutedEventArgs(ApplicationCommands.SelectAll, null));
+            ApplicationCommands.SelectAll.Execute(null, this);
             e.Handled = true;
             return;
         }
@@ -1751,10 +1751,7 @@ public partial class MainWindow : Window
         var hits = selected.HitTest(new[] { worldPt }, 6);
         if (hits.Count > 0) return true;
 
-        // 2) Bounding-box fallback — clicked inside the lasso area (empty
-        //    space between strokes). This is what makes dragging the whole
-        //    selection intuitive: any click inside the dotted rectangle
-        //    starts a drag.
+        // 2) Bounding-box fallback — clicked inside the lasso area.
         var bounds = selected.GetBounds();
         bounds.Inflate(12, 12);
         return bounds.Contains(worldPt);
