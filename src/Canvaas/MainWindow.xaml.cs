@@ -29,8 +29,6 @@ public partial class MainWindow : Window
     // A4 at 96 DPI = 794 x 1123 world units.
     private const double A4Width = 794;
     private const double A4Height = 1123;
-
-    // Allow up to ~25 A4 sheets in either direction.
     private const double MaxCanvasDimension = 25_000;
 
     private const double MinZoom = 0.01;
@@ -40,7 +38,6 @@ public partial class MainWindow : Window
     private const double SwipeMaxDurationMs = 700;
     private const double ZoomStepFactor = 1.25;
 
-    // Edge + button dimensions.
     private const double EdgeBtnSize = 30;
     private const double EdgeBtnMargin = 8;
     private const double EdgeBtnPad = 4;
@@ -160,7 +157,6 @@ public partial class MainWindow : Window
     private double _viewPanX = 0;
     private double _viewPanY = 0;
 
-    // Coalesces rapid rebuild requests so we don't thrash layout.
     private bool _rebuildEdgeScheduled;
 
     private bool _draggingFloatingZoom;
@@ -275,14 +271,18 @@ public partial class MainWindow : Window
 
         CanvasHost.Width = w;
         CanvasHost.Height = h;
+
         PageBackground.Width = w;
         PageBackground.Height = h;
+        Canvas.SetLeft(PageBackground, 0);
+        Canvas.SetTop(PageBackground, 0);
+
         InkArea.Width = w;
         InkArea.Height = h;
+        Canvas.SetLeft(InkArea, 0);
+        Canvas.SetTop(InkArea, 0);
 
-        CanvasHost.InvalidateMeasure();
-        CanvasHost.InvalidateArrange();
-        CanvasHost.InvalidateVisual();
+        CanvasHost.UpdateLayout();
     }
 
     private void ExpandCanvas(ExpandDirection dir)
@@ -309,7 +309,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // If growing left/up, shift all content so existing drawing doesn't move.
         double shiftX = addLeft;
         double shiftY = addTop;
         if (shiftX > 0 || shiftY > 0)
@@ -318,7 +317,6 @@ public partial class MainWindow : Window
         CurrentPage.WorldWidth = newW;
         CurrentPage.WorldHeight = newH;
 
-        // Adjust pan so the drawing appears at the same screen position.
         _viewPanX -= shiftX * _viewZoom;
         _viewPanY -= shiftY * _viewZoom;
 
@@ -330,16 +328,15 @@ public partial class MainWindow : Window
             CanvasHostBorder.UpdateLayout();
         }
 
-        // Zoom is preserved — only the transform matrix is refreshed.
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
 
         SaveCurrentViewToPage();
         ScheduleRebuildEdgeButtons();
 
-        int totalSheets = (int)Math.Round((newW / A4Width) * (newH / A4Height));
-        StatusText.Text = $"Added an A4 sheet {dir.ToString().ToLower()}. " +
-                          $"Sheet: {newW:0} × {newH:0}  ({totalSheets} A4 area{(totalSheets == 1 ? "" : "s")}).";
+        int cols = (int)Math.Round(newW / A4Width);
+        int rows = (int)Math.Round(newH / A4Height);
+        StatusText.Text = $"Added A4 sheet {dir.ToString().ToLower()}. Sheet now: {newW:0} × {newH:0}  ({cols} × {rows} A4 sheets).";
         MarkDirty();
     }
 
@@ -348,11 +345,6 @@ public partial class MainWindow : Window
     private void ExtendUp_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Up);
     private void ExtendDown_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Down);
 
-    /// <summary>
-    /// Coalesces multiple rebuild requests so we run this at most once per
-    /// dispatcher tick. This is what lets the user click a "+" without the
-    /// button-overlay rebuild swallowing the next click.
-    /// </summary>
     private void ScheduleRebuildEdgeButtons()
     {
         if (_rebuildEdgeScheduled) return;
@@ -366,9 +358,8 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Rebuild the round "+" buttons. One per A4 segment along each edge.
-    /// If an edge's buttons would all fall outside the viewport, a single
-    /// fallback button is pinned to that side of the viewport so the user
-    /// can still click it.
+    /// A button is only placed when it sits EXACTLY on the visible sheet edge
+    /// and fully fits inside the viewport. No clamping. No fallback buttons.
     /// </summary>
     private void RebuildEdgeButtons()
     {
@@ -378,8 +369,6 @@ public partial class MainWindow : Window
         double vh = CanvasHostBorder.ActualHeight;
         if (vw < 40 || vh < 40) return;
 
-        // Detach any click handlers from the old buttons first — this ensures
-        // no stale handler can fire on a detached button.
         foreach (var c in EdgeButtonOverlay.Children)
         {
             if (c is Button oldBtn) oldBtn.Click -= EdgeButton_Click;
@@ -399,87 +388,57 @@ public partial class MainWindow : Window
         double colW = (sheetR - sheetL) / cols;
         double rowH = (sheetB - sheetT) / rows;
 
-        int topAdded = 0, bottomAdded = 0, leftAdded = 0, rightAdded = 0;
-
-        // TOP — one per column
-        for (int i = 0; i < cols; i++)
+        // TOP edge — one per column. Only if the entire button row fits.
+        double topY = sheetT - EdgeBtnSize - EdgeBtnMargin;
+        if (topY >= EdgeBtnPad && topY + EdgeBtnSize <= vh - EdgeBtnPad)
         {
-            double cx = sheetL + colW * (i + 0.5);
-            double bx = cx - EdgeBtnSize / 2.0;
-            double by = sheetT - EdgeBtnSize - EdgeBtnMargin;
-            if (IsOnScreen(bx, by, vw, vh))
+            for (int i = 0; i < cols; i++)
             {
-                AddEdgeButton(bx, by, ExpandDirection.Up, "Add an A4 sheet above");
-                topAdded++;
+                double cx = sheetL + colW * (i + 0.5);
+                double bx = cx - EdgeBtnSize / 2.0;
+                if (bx >= EdgeBtnPad && bx + EdgeBtnSize <= vw - EdgeBtnPad)
+                    AddEdgeButton(bx, topY, ExpandDirection.Up, "Add an A4 sheet above");
             }
         }
-        if (topAdded == 0)
-        {
-            AddEdgeButton(vw / 2.0 - EdgeBtnSize / 2.0, EdgeBtnPad,
-                ExpandDirection.Up, "Add an A4 sheet above");
-        }
 
-        // BOTTOM — one per column
-        for (int i = 0; i < cols; i++)
+        // BOTTOM edge — one per column.
+        double botY = sheetB + EdgeBtnMargin;
+        if (botY >= EdgeBtnPad && botY + EdgeBtnSize <= vh - EdgeBtnPad)
         {
-            double cx = sheetL + colW * (i + 0.5);
-            double bx = cx - EdgeBtnSize / 2.0;
-            double by = sheetB + EdgeBtnMargin;
-            if (IsOnScreen(bx, by, vw, vh))
+            for (int i = 0; i < cols; i++)
             {
-                AddEdgeButton(bx, by, ExpandDirection.Down, "Add an A4 sheet below");
-                bottomAdded++;
+                double cx = sheetL + colW * (i + 0.5);
+                double bx = cx - EdgeBtnSize / 2.0;
+                if (bx >= EdgeBtnPad && bx + EdgeBtnSize <= vw - EdgeBtnPad)
+                    AddEdgeButton(bx, botY, ExpandDirection.Down, "Add an A4 sheet below");
             }
         }
-        if (bottomAdded == 0)
-        {
-            AddEdgeButton(vw / 2.0 - EdgeBtnSize / 2.0, vh - EdgeBtnSize - EdgeBtnPad,
-                ExpandDirection.Down, "Add an A4 sheet below");
-        }
 
-        // LEFT — one per row
-        for (int j = 0; j < rows; j++)
+        // LEFT edge — one per row.
+        double leftX = sheetL - EdgeBtnSize - EdgeBtnMargin;
+        if (leftX >= EdgeBtnPad && leftX + EdgeBtnSize <= vw - EdgeBtnPad)
         {
-            double cy = sheetT + rowH * (j + 0.5);
-            double bx = sheetL - EdgeBtnSize - EdgeBtnMargin;
-            double by = cy - EdgeBtnSize / 2.0;
-            if (IsOnScreen(bx, by, vw, vh))
+            for (int j = 0; j < rows; j++)
             {
-                AddEdgeButton(bx, by, ExpandDirection.Left, "Add an A4 sheet to the left");
-                leftAdded++;
+                double cy = sheetT + rowH * (j + 0.5);
+                double by = cy - EdgeBtnSize / 2.0;
+                if (by >= EdgeBtnPad && by + EdgeBtnSize <= vh - EdgeBtnPad)
+                    AddEdgeButton(leftX, by, ExpandDirection.Left, "Add an A4 sheet to the left");
             }
         }
-        if (leftAdded == 0)
-        {
-            AddEdgeButton(EdgeBtnPad, vh / 2.0 - EdgeBtnSize / 2.0,
-                ExpandDirection.Left, "Add an A4 sheet to the left");
-        }
 
-        // RIGHT — one per row
-        for (int j = 0; j < rows; j++)
+        // RIGHT edge — one per row.
+        double rightX = sheetR + EdgeBtnMargin;
+        if (rightX >= EdgeBtnPad && rightX + EdgeBtnSize <= vw - EdgeBtnPad)
         {
-            double cy = sheetT + rowH * (j + 0.5);
-            double bx = sheetR + EdgeBtnMargin;
-            double by = cy - EdgeBtnSize / 2.0;
-            if (IsOnScreen(bx, by, vw, vh))
+            for (int j = 0; j < rows; j++)
             {
-                AddEdgeButton(bx, by, ExpandDirection.Right, "Add an A4 sheet to the right");
-                rightAdded++;
+                double cy = sheetT + rowH * (j + 0.5);
+                double by = cy - EdgeBtnSize / 2.0;
+                if (by >= EdgeBtnPad && by + EdgeBtnSize <= vh - EdgeBtnPad)
+                    AddEdgeButton(rightX, by, ExpandDirection.Right, "Add an A4 sheet to the right");
             }
         }
-        if (rightAdded == 0)
-        {
-            AddEdgeButton(vw - EdgeBtnSize - EdgeBtnPad, vh / 2.0 - EdgeBtnSize / 2.0,
-                ExpandDirection.Right, "Add an A4 sheet to the right");
-        }
-    }
-
-    private static bool IsOnScreen(double x, double y, double vw, double vh)
-    {
-        return x >= EdgeBtnPad
-            && y >= EdgeBtnPad
-            && x + EdgeBtnSize <= vw - EdgeBtnPad
-            && y + EdgeBtnSize <= vh - EdgeBtnPad;
     }
 
     private void AddEdgeButton(double x, double y, ExpandDirection dir, string tooltip)
@@ -497,12 +456,6 @@ public partial class MainWindow : Window
         EdgeButtonOverlay.Children.Add(btn);
     }
 
-    /// <summary>
-    /// IMPORTANT: This handler defers the actual expand so the Click event
-    /// finishes cleanly before we rebuild the overlay. Without this deferral,
-    /// rebuilding the overlay during the button's own Click event can cause
-    /// subsequent clicks to be swallowed on some Windows builds.
-    /// </summary>
     private void EdgeButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button b && b.Tag is ExpandDirection dir)
@@ -1125,14 +1078,18 @@ public partial class MainWindow : Window
             vh = ActualHeight > 200 ? ActualHeight - 140 : 700;
         }
 
-        _viewZoom = 1.0;
-        _viewPanX = vw / 2.0 - (CurrentPage.WorldWidth / 2.0) * _viewZoom;
-        _viewPanY = vh / 2.0 - (CurrentPage.WorldHeight / 2.0) * _viewZoom;
+        // Fit-to-view with margin, but never zoom past 100%.
+        double fitX = (vw - 80) / CurrentPage.WorldWidth;
+        double fitY = (vh - 80) / CurrentPage.WorldHeight;
+        _viewZoom = Math.Clamp(Math.Min(fitX, fitY), MinZoom, 1.0);
+
+        _viewPanX = (vw - CurrentPage.WorldWidth * _viewZoom) / 2.0;
+        _viewPanY = (vh - CurrentPage.WorldHeight * _viewZoom) / 2.0;
 
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
-            ZoomText.Text = "100%";
+            ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         ScheduleRebuildEdgeButtons();
     }
 

@@ -108,7 +108,6 @@
             </Setter>
         </Style>
 
-        <!-- Style for the round "+" buttons on the edges of the sheet -->
         <Style x:Key="EdgeAddButton" TargetType="Button">
             <Setter Property="Width" Value="30"/>
             <Setter Property="Height" Value="30"/>
@@ -451,24 +450,22 @@
                     PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
-                <Grid x:Name="CanvasHost"
-                      Width="794" Height="1123"
-                      HorizontalAlignment="Left" VerticalAlignment="Top"
-                      RenderTransformOrigin="0,0"
-                      Background="Transparent">
-                    <Grid.RenderTransform>
+                <Canvas x:Name="CanvasHost"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        RenderTransformOrigin="0,0">
+                    <Canvas.RenderTransform>
                         <MatrixTransform x:Name="ViewTransform"/>
-                    </Grid.RenderTransform>
+                    </Canvas.RenderTransform>
 
+                    <!-- The A4 sheet. Has a thin outline so you can see its edges. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="794" Height="1123"
-                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                               Canvas.Left="0" Canvas.Top="0"
                                Fill="White"
+                               Stroke="#C8C8C8" StrokeThickness="1"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="794" Height="1123"
-                               HorizontalAlignment="Left" VerticalAlignment="Top"
+                               Canvas.Left="0" Canvas.Top="0"
                                Background="Transparent"
                                ForceCursor="True"
                                Stylus.IsPressAndHoldEnabled="False"
@@ -476,7 +473,7 @@
                                StylusOutOfRange="InkArea_StylusOutOfRange"
                                StrokeCollected="InkArea_StrokeCollected"
                                SelectionChanged="InkArea_SelectionChanged"/>
-                </Grid>
+                </Canvas>
             </Border>
 
             <!-- Overlay Canvas. The + buttons are created at runtime so we can
@@ -583,7 +580,7 @@
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="30">
             <Grid Margin="10,3">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="Click a + on any edge to add an A4 sheet in that direction. 1–5 switch tools."
+                    <TextBlock x:Name="StatusText" Text="Click a + on any edge to add an A4 sheet. 1–5 switch tools."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>
