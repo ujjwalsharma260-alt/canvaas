@@ -409,7 +409,7 @@
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
                 <Grid x:Name="CanvasHost"
-                      Width="4000000" Height="4000000"
+                      Width="40000" Height="40000"
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       RenderTransformOrigin="0,0"
                       Background="Transparent">
@@ -419,13 +419,13 @@
 
                     <!-- Paper: 1 million x 1 million, no border. Effectively infinite. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="4000000" Height="4000000"
+                               Width="40000" Height="40000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Fill="White"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="4000000" Height="4000000"
+                               Width="40000" Height="40000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Background="Transparent"
                                ForceCursor="True"
