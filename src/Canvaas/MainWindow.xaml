@@ -310,7 +310,7 @@
                 <DrawingGroup>
                     <GeometryDrawing Brush="#E5D3A7"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,14,14"/></GeometryDrawing.Geometry></GeometryDrawing>
                     <GeometryDrawing>
-                        <GeometryDrawing.Pen><Pen Brush="#BFA477" Thickness="0.6" Opacity="0.7"/></GeometryDrawing.Pen>
+                        <GeometryDrawing.Pen><Pen Brush="#B3BFA477" Thickness="0.6"/></GeometryDrawing.Pen>
                         <GeometryDrawing.Geometry>
                             <GeometryGroup>
                                 <LineGeometry StartPoint="0,4" EndPoint="14,4"/>
