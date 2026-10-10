@@ -312,41 +312,49 @@ public partial class MainWindow : Window
         catch { _hollowRingCursor = Cursors.Cross; }
     }
 
+    // === BUG FIX #2: Cursor bitmap stride must be DWORD-aligned ===
     private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
     {
         int width = bmp.PixelWidth;
         int height = bmp.PixelHeight;
 
+        // 32-bpp DIB rows must be DWORD-aligned.
+        int stride = ((width * 32 + 31) / 32) * 4;
+        int imageSize = stride * height;
+
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
 
+        // ICONDIR
         bw.Write((short)0);
         bw.Write((short)2);
         bw.Write((short)1);
 
+        // ICONDIRENTRY
         bw.Write((byte)width);
         bw.Write((byte)height);
         bw.Write((byte)0);
         bw.Write((byte)0);
         bw.Write((short)hotX);
         bw.Write((short)hotY);
-        bw.Write(width * height * 4 + 40);
-        bw.Write(22);
+        bw.Write(imageSize + 40);   // bytes of image data + BITMAPINFOHEADER
+        bw.Write(22);               // offset to image data
 
+        // BITMAPINFOHEADER
         bw.Write(40);
         bw.Write(width);
-        bw.Write(height * 2);
+        bw.Write(height * 2);       // XOR + AND mask heights
         bw.Write((short)1);
         bw.Write((short)32);
         bw.Write(0);
-        bw.Write(width * height * 4);
+        bw.Write(imageSize);        // <- stride-aligned size, not width*height*4
         bw.Write(0);
         bw.Write(0);
         bw.Write(0);
         bw.Write(0);
 
-        int stride = width * 4;
-        var pixels = new byte[stride * height];
+        // Pixel data — BMP is stored bottom-up.
+        var pixels = new byte[imageSize];
         bmp.CopyPixels(pixels, stride, 0);
         for (int y = height - 1; y >= 0; y--)
             bw.Write(pixels, y * stride, stride);
@@ -629,22 +637,19 @@ public partial class MainWindow : Window
     // Keyboard shortcuts
     // =====================================================================
 
+    // === BUG FIX #4: F11/Escape now works even while a TextBox has focus ===
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.FocusedElement is TextBox) return;
+        // Fullscreen toggle works even when a TextBox has focus.
+        if (e.Key == Key.F11 || (e.Key == Key.Escape && _fullscreenMode))
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+            return;
+        }
 
-        if (e.Key == Key.Escape && _fullscreenMode)
-        {
-            ToggleFullscreen();
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.F11)
-        {
-            ToggleFullscreen();
-            e.Handled = true;
-            return;
-        }
+        // Other shortcuts are suppressed while typing in a text field.
+        if (Keyboard.FocusedElement is TextBox) return;
 
         switch (e.Key)
         {
@@ -1355,6 +1360,7 @@ public partial class MainWindow : Window
         return hits.Count > 0;
     }
 
+    // === BUG FIX #1: Selection drag no longer leaves a frozen duplicate ===
     private void StartSelectionDrag(Point worldPt)
     {
         _draggingSelection = true;
@@ -1369,7 +1375,10 @@ public partial class MainWindow : Window
         {
             _dragOriginalStrokes = new StrokeCollection();
             foreach (var s in sel) _dragOriginalStrokes.Add(s);
-            _dragPreviewStrokes = null;
+
+            // Point _dragPreviewStrokes at the originals so the FIRST move
+            // removes them (rather than leaving a frozen copy behind).
+            _dragPreviewStrokes = _dragOriginalStrokes;
         }
         else
         {
@@ -1378,6 +1387,7 @@ public partial class MainWindow : Window
         }
     }
 
+    // === BUG FIX #1: Selection drag no longer leaves a frozen duplicate ===
     private void UpdateSelectionDrag(double dx, double dy)
     {
         if (CanvasHost is null) return;
@@ -1405,6 +1415,8 @@ public partial class MainWindow : Window
             _applyingHistory = true;
             try
             {
+                // Remove whatever we currently have on the canvas that represents
+                // this selection (the originals on the first move, then the last preview).
                 if (_dragPreviewStrokes is not null && _dragPreviewStrokes.Count > 0)
                     InkArea.Strokes.Remove(_dragPreviewStrokes);
 
@@ -1419,6 +1431,7 @@ public partial class MainWindow : Window
         UpdateElementSelectionVisuals();
     }
 
+    // === BUG FIX #1: Selection drag no longer leaves a frozen duplicate ===
     private void EndSelectionDrag()
     {
         if (!_draggingSelection) return;
@@ -1427,13 +1440,15 @@ public partial class MainWindow : Window
         if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
             CanvasHostBorder.ReleaseMouseCapture();
 
-        if (InkArea is not null && _dragOriginalStrokes is not null && _dragPreviewStrokes is not null)
+        // Only record an undo entry if the strokes actually moved.
+        if (InkArea is not null
+            && _dragOriginalStrokes is not null
+            && _dragPreviewStrokes is not null
+            && !ReferenceEquals(_dragPreviewStrokes, _dragOriginalStrokes)
+            && _dragOriginalStrokes.Count > 0)
         {
-            if (_dragOriginalStrokes.Count > 0)
-            {
-                _undo.Push(new StrokeChange(_dragPreviewStrokes, _dragOriginalStrokes));
-                _redo.Clear();
-            }
+            _undo.Push(new StrokeChange(_dragPreviewStrokes, _dragOriginalStrokes));
+            _redo.Clear();
         }
 
         foreach (var el in _selectedElements)
@@ -2069,8 +2084,11 @@ public partial class MainWindow : Window
             SmoothCompletedStroke(e.Stroke);
     }
 
+    // === BUG FIX #3: Smoothing no longer assumes undo entry is on top ===
     private void SmoothCompletedStroke(Stroke original)
     {
+        if (InkArea is null) return;
+
         var pts = original.StylusPoints;
         int n = pts.Count;
         if (n < 3) return;
@@ -2158,14 +2176,37 @@ public partial class MainWindow : Window
             _applyingHistory = false;
         }
 
-        if (_undo.Count > 0)
+        ReplaceStrokeInUndoStack(original, smoothed);
+    }
+
+    // === BUG FIX #3: helper that walks the undo stack to swap original -> smoothed ===
+    private void ReplaceStrokeInUndoStack(Stroke original, Stroke smoothed)
+    {
+        if (_undo.Count == 0) return;
+
+        var drained = new List<object>();
+        bool replaced = false;
+
+        while (_undo.Count > 0)
         {
-            var last = _undo.Pop();
-            if (last is StrokeChange sc && sc.Removed.Count == 0 && sc.Added.Count == 1 && sc.Added[0] == original)
-                _undo.Push(new StrokeChange(new StrokeCollection { smoothed }, sc.Removed));
-            else
-                _undo.Push(last);
+            var c = _undo.Pop();
+
+            if (!replaced && c is StrokeChange sc && sc.Added.Contains(original))
+            {
+                var newAdded = new StrokeCollection();
+                foreach (var s in sc.Added)
+                    newAdded.Add(s == original ? smoothed : s);
+                drained.Add(new StrokeChange(newAdded, sc.Removed));
+                replaced = true;
+                break;
+            }
+
+            drained.Add(c);
         }
+
+        // drained is in top-down order; push back so the original order is restored.
+        for (int i = drained.Count - 1; i >= 0; i--)
+            _undo.Push(drained[i]);
     }
 
     private static float Clamp01(float v)
