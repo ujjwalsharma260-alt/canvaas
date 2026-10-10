@@ -27,14 +27,13 @@ public partial class MainWindow : Window
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
     // === INFINITE CANVAS ===
-    // The world is 1,000,000 x 1,000,000 (25x bigger than before). Whenever the
-    // view center drifts more than RecenterThreshold away from the home center,
-    // all strokes/items are silently shifted back toward home so the user never
-    // sees the edge. Net effect: an effectively infinite canvas.
-    private const double CanvasWorldSize = 1_000_000;
-    private const double HomeCenterX = CanvasWorldSize / 2.0;   // 500,000
-    private const double HomeCenterY = CanvasWorldSize / 2.0;   // 500,000
-    private const double RecenterThreshold = 300_000;
+    // Reduced from 1,000,000 to 100,000 because WPF cannot render visuals that
+    // are several million pixels wide — the paper disappears. 100,000 x 100,000
+    // is still plenty, and the app recenters content as you pan, so it feels infinite.
+    private const double CanvasWorldSize = 100_000;
+    private const double HomeCenterX = CanvasWorldSize / 2.0;   // 50,000
+    private const double HomeCenterY = CanvasWorldSize / 2.0;   // 50,000
+    private const double RecenterThreshold = 25_000;
 
     private const double DefaultViewX = -HomeCenterX;
     private const double DefaultViewY = -HomeCenterY;

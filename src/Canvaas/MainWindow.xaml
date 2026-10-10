@@ -409,7 +409,7 @@
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
                 <Grid x:Name="CanvasHost"
-                      Width="1000000" Height="1000000"
+                      Width="100000" Height="100000"
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       RenderTransformOrigin="0,0"
                       Background="Transparent">
@@ -417,15 +417,15 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
 
-                    <!-- Huge world. The app auto-recenters content so it feels infinite. -->
+                    <!-- Paper: 100,000 x 100,000, no border. The app auto-recenters content so it feels infinite. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="1000000" Height="1000000"
+                               Width="100000" Height="100000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Fill="White"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="1000000" Height="1000000"
+                               Width="100000" Height="100000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Background="Transparent"
                                ForceCursor="True"
