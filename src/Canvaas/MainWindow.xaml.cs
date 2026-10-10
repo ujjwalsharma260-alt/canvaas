@@ -82,7 +82,7 @@ public partial class MainWindow : Window
     private enum CanvasMode { Page, Infinite }
     private enum PenCursorStyle { Arrow, Cross, RingDot, Hidden }
     private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand }
-    private enum PaperStyle { White, Crumpled, OldLetter }
+    private enum PaperStyle { White, Crumpled }
 
     private sealed class NotebookPage
     {
@@ -142,6 +142,7 @@ public partial class MainWindow : Window
     private double _floatingZoomStartX, _floatingZoomStartY;
 
     private DispatcherTimer? _thumbnailTimer;
+    private int _insertCounter = 0;
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
@@ -201,7 +202,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Ring + dot cursor (built from current pen colour)
+    // Yellow ring + pen-coloured dot cursor
     // =====================================================================
 
     private void RebuildRingDotCursor()
@@ -212,12 +213,13 @@ public partial class MainWindow : Window
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                var ringFill = new SolidColorBrush(_penColor);
-                var blackPen = new Pen(Brushes.Black, 1.6);
+                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
+                var outline = new Pen(Brushes.Black, 1.4);
+                dc.DrawEllipse(yellow, outline, new Point(20, 20), 10, 10);
 
-                dc.DrawEllipse(null, blackPen, new Point(20, 20), 14, 14);
-                dc.DrawEllipse(ringFill, null, new Point(20, 20), 11, 11);
-                dc.DrawEllipse(Brushes.Black, null, new Point(20, 20), 2.2, 2.2);
+                var dot = new SolidColorBrush(_penColor);
+                var dotOutline = new Pen(Brushes.Black, 0.6);
+                dc.DrawEllipse(dot, dotOutline, new Point(20, 20), 2.4, 2.4);
             }
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
@@ -1251,10 +1253,10 @@ public partial class MainWindow : Window
             TextWrapping = TextWrapping.Wrap,
             FontSize = 18,
             Width = 260,
-            MinHeight = 36,
+            MinHeight = 32,
             Padding = new Thickness(4, 2, 4, 2),
-            Background = new SolidColorBrush(Color.FromArgb(20, 0, 0, 0)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(120, 26, 115, 232)),
+            Background = Brushes.Transparent,
+            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 26, 115, 232)),
             BorderThickness = new Thickness(1),
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
@@ -1268,8 +1270,9 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        double left = 60 + (InkArea.Children.Count % 6) * 24;
-        double top = 60 + (InkArea.Children.Count % 6) * 24;
+        double left = 60;
+        double top = 60 + (_insertCounter % 22) * 42;
+        _insertCounter++;
 
         InkCanvas.SetLeft(element, left);
         InkCanvas.SetTop(element, top);
@@ -1413,50 +1416,29 @@ public partial class MainWindow : Window
         if (paper == PaperStyle.White)
             return new SolidColorBrush(Colors.White);
 
-        if (paper == PaperStyle.Crumpled)
+        var group = new DrawingGroup();
+        group.Children.Add(new GeometryDrawing(
+            new SolidColorBrush(Color.FromRgb(0xFC, 0xFC, 0xFA)), null,
+            new RectangleGeometry(new Rect(0, 0, 60, 60))));
+
+        var crinklePen = new Pen(new SolidColorBrush(Color.FromArgb(90, 0xD0, 0xD0, 0xCC)), 0.8);
+        var crinkles = new GeometryGroup();
+        crinkles.Children.Add(new LineGeometry(new Point(0, 12), new Point(38, 28)));
+        crinkles.Children.Add(new LineGeometry(new Point(10, 0), new Point(46, 60)));
+        crinkles.Children.Add(new LineGeometry(new Point(0, 44), new Point(60, 36)));
+        crinkles.Children.Add(new LineGeometry(new Point(28, 0), new Point(52, 60)));
+        crinkles.Children.Add(new LineGeometry(new Point(0, 56), new Point(60, 52)));
+        crinkles.Children.Add(new LineGeometry(new Point(42, 0), new Point(60, 24)));
+        crinkles.Children.Add(new LineGeometry(new Point(18, 0), new Point(0, 30)));
+        group.Children.Add(new GeometryDrawing(null, crinklePen, crinkles));
+
+        return new DrawingBrush(group)
         {
-            var group = new DrawingGroup();
-            group.Children.Add(new GeometryDrawing(
-                new SolidColorBrush(Color.FromRgb(0xEF, 0xE9, 0xDA)), null,
-                new RectangleGeometry(new Rect(0, 0, 12, 12))));
-            var pen = new Pen(new SolidColorBrush(Color.FromRgb(0xD9, 0xCF, 0xBB)), 0.7);
-            var g = new GeometryGroup();
-            g.Children.Add(new LineGeometry(new Point(0, 3), new Point(12, 8)));
-            g.Children.Add(new LineGeometry(new Point(2, 0), new Point(10, 12)));
-            g.Children.Add(new LineGeometry(new Point(0, 9), new Point(12, 5)));
-            group.Children.Add(new GeometryDrawing(null, pen, g));
-
-            return new DrawingBrush(group)
-            {
-                TileMode = TileMode.Tile,
-                Viewport = new Rect(0, 0, 12, 12),
-                ViewportUnits = BrushMappingMode.Absolute,
-                Stretch = Stretch.None
-            };
-        }
-
-        if (paper == PaperStyle.OldLetter)
-        {
-            var group = new DrawingGroup();
-            group.Children.Add(new GeometryDrawing(
-                new SolidColorBrush(Color.FromRgb(0xE5, 0xD3, 0xA7)), null,
-                new RectangleGeometry(new Rect(0, 0, 14, 14))));
-            var pen = new Pen(new SolidColorBrush(Color.FromArgb(0xB3, 0xBF, 0xA4, 0x77)), 0.6);
-            var g = new GeometryGroup();
-            g.Children.Add(new LineGeometry(new Point(0, 4), new Point(14, 4)));
-            g.Children.Add(new LineGeometry(new Point(0, 11), new Point(14, 11)));
-            group.Children.Add(new GeometryDrawing(null, pen, g));
-
-            return new DrawingBrush(group)
-            {
-                TileMode = TileMode.Tile,
-                Viewport = new Rect(0, 0, 14, 14),
-                ViewportUnits = BrushMappingMode.Absolute,
-                Stretch = Stretch.None
-            };
-        }
-
-        return new SolidColorBrush(Colors.White);
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, 60, 60),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
     }
 
     private static Color GetLineColor(Color bg)
@@ -1482,12 +1464,11 @@ public partial class MainWindow : Window
     {
         if (!_uiReady) return;
 
-        if (PaperWhite is not null && PaperCrumpled is not null && PaperOld is not null)
+        if (PaperWhite is not null && PaperCrumpled is not null)
         {
             RadioButton paperBtn = CurrentPage.Paper switch
             {
                 PaperStyle.Crumpled => PaperCrumpled,
-                PaperStyle.OldLetter => PaperOld,
                 _ => PaperWhite
             };
             paperBtn.IsChecked = true;

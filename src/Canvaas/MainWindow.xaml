@@ -176,7 +176,7 @@
         </Style>
 
         <Style x:Key="PaperThumb" TargetType="RadioButton">
-            <Setter Property="Width" Value="70"/>
+            <Setter Property="Width" Value="92"/>
             <Setter Property="Height" Value="90"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Template">
@@ -283,38 +283,25 @@
 
         <DrawingBrush x:Key="PreviewPaperWhite" TileMode="None">
             <DrawingBrush.Drawing>
-                <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,70,90"/></GeometryDrawing.Geometry></GeometryDrawing>
+                <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,92,90"/></GeometryDrawing.Geometry></GeometryDrawing>
             </DrawingBrush.Drawing>
         </DrawingBrush>
 
-        <DrawingBrush x:Key="PreviewPaperCrumpled" TileMode="Tile" Viewport="0,0,12,12" ViewportUnits="Absolute">
+        <!-- White crumpled paper preview -->
+        <DrawingBrush x:Key="PreviewPaperCrumpled" TileMode="Tile" Viewport="0,0,30,30" ViewportUnits="Absolute">
             <DrawingBrush.Drawing>
                 <DrawingGroup>
-                    <GeometryDrawing Brush="#EFE9DA"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,12,12"/></GeometryDrawing.Geometry></GeometryDrawing>
+                    <GeometryDrawing Brush="#FCFCFA"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,30,30"/></GeometryDrawing.Geometry></GeometryDrawing>
                     <GeometryDrawing>
-                        <GeometryDrawing.Pen><Pen Brush="#D9CFBB" Thickness="0.7"/></GeometryDrawing.Pen>
+                        <GeometryDrawing.Pen><Pen Brush="#D8D8D2" Thickness="0.7"/></GeometryDrawing.Pen>
                         <GeometryDrawing.Geometry>
                             <GeometryGroup>
-                                <LineGeometry StartPoint="0,3" EndPoint="12,8"/>
-                                <LineGeometry StartPoint="2,0" EndPoint="10,12"/>
-                                <LineGeometry StartPoint="0,9" EndPoint="12,5"/>
-                            </GeometryGroup>
-                        </GeometryDrawing.Geometry>
-                    </GeometryDrawing>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
-        </DrawingBrush>
-
-        <DrawingBrush x:Key="PreviewPaperOld" TileMode="Tile" Viewport="0,0,14,14" ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="#E5D3A7"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,14,14"/></GeometryDrawing.Geometry></GeometryDrawing>
-                    <GeometryDrawing>
-                        <GeometryDrawing.Pen><Pen Brush="#B3BFA477" Thickness="0.6"/></GeometryDrawing.Pen>
-                        <GeometryDrawing.Geometry>
-                            <GeometryGroup>
-                                <LineGeometry StartPoint="0,4" EndPoint="14,4"/>
-                                <LineGeometry StartPoint="0,11" EndPoint="14,11"/>
+                                <LineGeometry StartPoint="0,6" EndPoint="18,14"/>
+                                <LineGeometry StartPoint="6,0" EndPoint="24,30"/>
+                                <LineGeometry StartPoint="0,22" EndPoint="30,18"/>
+                                <LineGeometry StartPoint="14,0" EndPoint="26,30"/>
+                                <LineGeometry StartPoint="0,28" EndPoint="30,26"/>
+                                <LineGeometry StartPoint="22,0" EndPoint="30,12"/>
                             </GeometryGroup>
                         </GeometryDrawing.Geometry>
                     </GeometryDrawing>
@@ -444,10 +431,9 @@
                     <StackPanel Margin="18,16">
 
                         <TextBlock Text="Paper" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
-                        <UniformGrid Columns="3">
+                        <UniformGrid Columns="2">
                             <RadioButton x:Name="PaperWhite" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperWhite}" ToolTip="Plain white" Click="PaperThumb_Click" Tag="White"/>
                             <RadioButton x:Name="PaperCrumpled" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperCrumpled}" ToolTip="Crumpled" Click="PaperThumb_Click" Tag="Crumpled"/>
-                            <RadioButton x:Name="PaperOld" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperOld}" ToolTip="Old letter" Click="PaperThumb_Click" Tag="OldLetter"/>
                         </UniformGrid>
 
                         <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
@@ -483,7 +469,7 @@
                         <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
                             <ComboBoxItem Content="Arrow"/>
                             <ComboBoxItem Content="Crosshair"/>
-                            <ComboBoxItem Content="Ring + dot (pen colour)"/>
+                            <ComboBoxItem Content="Yellow ring + pen dot"/>
                             <ComboBoxItem Content="Hidden (use pen tip)"/>
                         </ComboBox>
                     </StackPanel>
