@@ -409,7 +409,7 @@
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
                 <Grid x:Name="CanvasHost"
-                      Width="40000" Height="40000"
+                      Width="1000000" Height="1000000"
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       RenderTransformOrigin="0,0"
                       Background="Transparent">
@@ -417,15 +417,15 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
 
-                    <!-- Paper: 1 million x 1 million, no border. Effectively infinite. -->
+                    <!-- Huge world. The app auto-recenters content so it feels infinite. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="40000" Height="40000"
+                               Width="1000000" Height="1000000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Fill="White"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="40000" Height="40000"
+                               Width="1000000" Height="1000000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Background="Transparent"
                                ForceCursor="True"
@@ -537,7 +537,7 @@
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="30">
             <Grid Margin="10,3">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="1–5 switch tools. Left/Right arrows change page. Middle-mouse drag to pan."
+                    <TextBlock x:Name="StatusText" Text="Infinite canvas. 1–5 switch tools. Left/Right arrows change page. Middle-mouse drag to pan."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>

@@ -26,9 +26,18 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    private const double CanvasWorldSize = 40000;
-    private const double DefaultViewX = -20000;
-    private const double DefaultViewY = -20000;
+    // === INFINITE CANVAS ===
+    // The world is 1,000,000 x 1,000,000 (25x bigger than before). Whenever the
+    // view center drifts more than RecenterThreshold away from the home center,
+    // all strokes/items are silently shifted back toward home so the user never
+    // sees the edge. Net effect: an effectively infinite canvas.
+    private const double CanvasWorldSize = 1_000_000;
+    private const double HomeCenterX = CanvasWorldSize / 2.0;   // 500,000
+    private const double HomeCenterY = CanvasWorldSize / 2.0;   // 500,000
+    private const double RecenterThreshold = 300_000;
+
+    private const double DefaultViewX = -HomeCenterX;
+    private const double DefaultViewY = -HomeCenterY;
     private const double MinZoom = 0.01;
     private const double MaxZoom = 40.0;
     private const double ExportMaxDim = 3000;
@@ -144,6 +153,10 @@ public partial class MainWindow : Window
     private double _viewPanX = DefaultViewX;
     private double _viewPanY = DefaultViewY;
 
+    // === INFINITE CANVAS ===
+    // Coalesces many view changes into a single recenter check.
+    private bool _recenterScheduled;
+
     private bool _draggingFloatingZoom;
     private Point _floatingZoomDragStart;
     private double _floatingZoomStartX, _floatingZoomStartY;
@@ -171,6 +184,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // === INFINITE CANVAS ===
+        // Make the world / paper / ink layer huge at runtime, so we don't have to
+        // repeat the number in XAML.
+        if (CanvasHost is not null) { CanvasHost.Width = CanvasWorldSize; CanvasHost.Height = CanvasWorldSize; }
+        if (PageBackground is not null) { PageBackground.Width = CanvasWorldSize; PageBackground.Height = CanvasWorldSize; }
+        if (InkArea is not null) { InkArea.Width = CanvasWorldSize; InkArea.Height = CanvasWorldSize; }
 
         if (InkArea is not null)
         {
@@ -237,6 +257,175 @@ public partial class MainWindow : Window
         VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
 
         UpdateTitle();
+    }
+
+    // =====================================================================
+    // === INFINITE CANVAS: recentering ===
+    // =====================================================================
+
+    /// <summary>
+    /// Called (coalesced) after every view change. If the view has drifted too
+    /// far from home, shift all content back toward home so the user never sees
+    /// the edge of the world. Transparent to the user.
+    /// </summary>
+    private void RecenterIfNeeded()
+    {
+        // Don't interfere with an in-progress gesture.
+        if (_panning || _lassoActive || _draggingSelection) return;
+        if (CanvasHostBorder is null) return;
+
+        double vw = CanvasHostBorder.ActualWidth;
+        double vh = CanvasHostBorder.ActualHeight;
+        if (vw < 1 || vh < 1) return;
+
+        // Viewport center in world coordinates.
+        var centerScreen = new Point(vw / 2.0, vh / 2.0);
+        double cx = (centerScreen.X - _viewPanX) / _viewZoom;
+        double cy = (centerScreen.Y - _viewPanY) / _viewZoom;
+
+        double loX = HomeCenterX - RecenterThreshold;
+        double hiX = HomeCenterX + RecenterThreshold;
+        double loY = HomeCenterY - RecenterThreshold;
+        double hiY = HomeCenterY + RecenterThreshold;
+
+        double dx = 0, dy = 0;
+        if (cx < loX) dx = loX - cx;
+        else if (cx > hiX) dx = hiX - cx;
+        if (cy < loY) dy = loY - cy;
+        else if (cy > hiY) dy = hiY - cy;
+
+        if (Math.Abs(dx) < 0.01 && Math.Abs(dy) < 0.01) return;
+
+        // Shift the current page's strokes and inserted items by (dx, dy).
+        ShiftCurrentPageContent(dx, dy);
+
+        // Adjust the pan so the shift is invisible on screen:
+        //   S = W*zoom + pan  =>  new pan = old pan - shift*zoom
+        _viewPanX -= dx * _viewZoom;
+        _viewPanY -= dy * _viewZoom;
+
+        if (ViewTransform is not null)
+            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+
+        SaveCurrentViewToPage();
+    }
+
+    private void ScheduleRecenterCheck()
+    {
+        if (_recenterScheduled) return;
+        _recenterScheduled = true;
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _recenterScheduled = false;
+            RecenterIfNeeded();
+        }), DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// Shift every stroke and inserted element on the current page by (dx, dy)
+    /// in world coordinates. Also remaps the undo/redo stacks so they keep
+    /// referring to the (new) shifted strokes.
+    /// </summary>
+    private void ShiftCurrentPageContent(double dx, double dy)
+    {
+        if (Math.Abs(dx) < 0.0001 && Math.Abs(dy) < 0.0001) return;
+        if (InkArea is null) return;
+
+        // Build old -> new stroke mapping and the shifted collection.
+        var strokeMap = new Dictionary<Stroke, Stroke>();
+        var shifted = new StrokeCollection();
+        foreach (var s in CurrentPage.Strokes)
+        {
+            var ns = ShiftStroke(s, dx, dy);
+            strokeMap[s] = ns;
+            shifted.Add(ns);
+        }
+
+        // Replace strokes in place (CurrentPage.Strokes and InkArea.Strokes are
+        // the SAME collection reference, so this updates both and preserves the
+        // StrokesChanged event handler).
+        _applyingHistory = true;
+        try
+        {
+            CurrentPage.Strokes.Clear();
+            foreach (var s in shifted) CurrentPage.Strokes.Add(s);
+        }
+        finally { _applyingHistory = false; }
+
+        // Shift inserted elements.
+        foreach (var child in InkArea.Children)
+        {
+            if (child is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            if (!double.IsNaN(l)) InkCanvas.SetLeft(fe, l + dx);
+            if (!double.IsNaN(t)) InkCanvas.SetTop(fe, t + dy);
+        }
+
+        // Remap undo/redo entries so their stroke references stay valid.
+        RemapHistoryStack(_undo, strokeMap, dx, dy);
+        RemapHistoryStack(_redo, strokeMap, dx, dy);
+
+        // Old stroke objects are gone; drop the current selection cleanly.
+        ClearElementSelection();
+        InkArea.Select(new StrokeCollection());
+
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private static Stroke ShiftStroke(Stroke s, double dx, double dy)
+    {
+        var pts = new StylusPointCollection();
+        foreach (var p in s.StylusPoints)
+            pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
+        return new Stroke(pts, s.DrawingAttributes.Clone());
+    }
+
+    /// <summary>
+    /// Rebuild a history stack so that any stroke references it contains point
+    /// at the new (shifted) strokes, and element-move entries have their
+    /// positions shifted to match.
+    /// </summary>
+    private static void RemapHistoryStack(Stack<object> stack, Dictionary<Stroke, Stroke> map, double dx, double dy)
+    {
+        if (stack.Count == 0) return;
+
+        var items = stack.ToArray(); // top-first
+        stack.Clear();
+
+        // Iterate in reverse so the rebuilt stack preserves the original order.
+        for (int i = items.Length - 1; i >= 0; i--)
+        {
+            var item = items[i];
+
+            if (item is StrokeChange sc)
+            {
+                var newAdded = new StrokeCollection();
+                foreach (var s in sc.Added)
+                    newAdded.Add(map.TryGetValue(s, out var ns) ? ns : s);
+
+                var newRemoved = new StrokeCollection();
+                foreach (var s in sc.Removed)
+                    newRemoved.Add(map.TryGetValue(s, out var ns) ? ns : s);
+
+                stack.Push(new StrokeChange(newAdded, newRemoved));
+            }
+            else if (item is ElementMoveChange emc)
+            {
+                stack.Push(new ElementMoveChange
+                {
+                    Element = emc.Element,
+                    OldLeft = emc.OldLeft + dx,
+                    OldTop = emc.OldTop + dy,
+                    NewLeft = emc.NewLeft + dx,
+                    NewTop = emc.NewTop + dy
+                });
+            }
+            else
+            {
+                stack.Push(item);
+            }
+        }
     }
 
     // =====================================================================
@@ -312,7 +501,6 @@ public partial class MainWindow : Window
         catch { _hollowRingCursor = Cursors.Cross; }
     }
 
-    // === BUG FIX #2: Cursor bitmap stride must be DWORD-aligned ===
     private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
     {
         int width = bmp.PixelWidth;
@@ -337,17 +525,17 @@ public partial class MainWindow : Window
         bw.Write((byte)0);
         bw.Write((short)hotX);
         bw.Write((short)hotY);
-        bw.Write(imageSize + 40);   // bytes of image data + BITMAPINFOHEADER
-        bw.Write(22);               // offset to image data
+        bw.Write(imageSize + 40);
+        bw.Write(22);
 
         // BITMAPINFOHEADER
         bw.Write(40);
         bw.Write(width);
-        bw.Write(height * 2);       // XOR + AND mask heights
+        bw.Write(height * 2);
         bw.Write((short)1);
         bw.Write((short)32);
         bw.Write(0);
-        bw.Write(imageSize);        // <- stride-aligned size, not width*height*4
+        bw.Write(imageSize);
         bw.Write(0);
         bw.Write(0);
         bw.Write(0);
@@ -637,10 +825,8 @@ public partial class MainWindow : Window
     // Keyboard shortcuts
     // =====================================================================
 
-    // === BUG FIX #4: F11/Escape now works even while a TextBox has focus ===
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Fullscreen toggle works even when a TextBox has focus.
         if (e.Key == Key.F11 || (e.Key == Key.Escape && _fullscreenMode))
         {
             ToggleFullscreen();
@@ -648,7 +834,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Other shortcuts are suppressed while typing in a text field.
         if (Keyboard.FocusedElement is TextBox) return;
 
         switch (e.Key)
@@ -727,6 +912,10 @@ public partial class MainWindow : Window
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         SaveCurrentViewToPage();
+
+        // === INFINITE CANVAS ===
+        // Every view change schedules a recenter check (coalesced).
+        ScheduleRecenterCheck();
     }
 
     private void ZoomAt(Point viewPoint, double factor)
@@ -1360,7 +1549,6 @@ public partial class MainWindow : Window
         return hits.Count > 0;
     }
 
-    // === BUG FIX #1: Selection drag no longer leaves a frozen duplicate ===
     private void StartSelectionDrag(Point worldPt)
     {
         _draggingSelection = true;
@@ -1387,7 +1575,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // === BUG FIX #1: Selection drag no longer leaves a frozen duplicate ===
     private void UpdateSelectionDrag(double dx, double dy)
     {
         if (CanvasHost is null) return;
@@ -1415,8 +1602,6 @@ public partial class MainWindow : Window
             _applyingHistory = true;
             try
             {
-                // Remove whatever we currently have on the canvas that represents
-                // this selection (the originals on the first move, then the last preview).
                 if (_dragPreviewStrokes is not null && _dragPreviewStrokes.Count > 0)
                     InkArea.Strokes.Remove(_dragPreviewStrokes);
 
@@ -1431,7 +1616,6 @@ public partial class MainWindow : Window
         UpdateElementSelectionVisuals();
     }
 
-    // === BUG FIX #1: Selection drag no longer leaves a frozen duplicate ===
     private void EndSelectionDrag()
     {
         if (!_draggingSelection) return;
@@ -1440,7 +1624,6 @@ public partial class MainWindow : Window
         if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
             CanvasHostBorder.ReleaseMouseCapture();
 
-        // Only record an undo entry if the strokes actually moved.
         if (InkArea is not null
             && _dragOriginalStrokes is not null
             && _dragPreviewStrokes is not null
@@ -2084,7 +2267,6 @@ public partial class MainWindow : Window
             SmoothCompletedStroke(e.Stroke);
     }
 
-    // === BUG FIX #3: Smoothing no longer assumes undo entry is on top ===
     private void SmoothCompletedStroke(Stroke original)
     {
         if (InkArea is null) return;
@@ -2179,7 +2361,6 @@ public partial class MainWindow : Window
         ReplaceStrokeInUndoStack(original, smoothed);
     }
 
-    // === BUG FIX #3: helper that walks the undo stack to swap original -> smoothed ===
     private void ReplaceStrokeInUndoStack(Stroke original, Stroke smoothed)
     {
         if (_undo.Count == 0) return;
@@ -2204,7 +2385,6 @@ public partial class MainWindow : Window
             drained.Add(c);
         }
 
-        // drained is in top-down order; push back so the original order is restored.
         for (int i = drained.Count - 1; i >= 0; i--)
             _undo.Push(drained[i]);
     }
@@ -2469,7 +2649,6 @@ public partial class MainWindow : Window
                 var page = new NotebookPage();
                 if (manifest.FormatVersion >= 2)
                 {
-                    // old v1/v2 files didn't have these fields; keep defaults if absent
                     if (Enum.TryParse<PageTemplate>("Blank", out var t)) page.Template = t;
                 }
 
