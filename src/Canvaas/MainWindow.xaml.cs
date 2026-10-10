@@ -175,6 +175,8 @@ public partial class MainWindow : Window
     private readonly Dictionary<UIElement, (double L, double T)> _elementStartPositions = new();
     private StrokeCollection? _dragOriginalStrokes;
     private StrokeCollection? _dragPreviewStrokes;
+    private StrokeCollection? _clipboardStrokes;
+    private int _pasteCounter = 0;
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
@@ -356,11 +358,6 @@ public partial class MainWindow : Window
         }), DispatcherPriority.Background);
     }
 
-    /// <summary>
-    /// Rebuild the round "+" buttons. One per A4 segment along each edge.
-    /// A button is only placed when it sits EXACTLY on the visible sheet edge
-    /// and fully fits inside the viewport. No clamping. No fallback buttons.
-    /// </summary>
     private void RebuildEdgeButtons()
     {
         if (CanvasHostBorder is null || EdgeButtonOverlay is null) return;
@@ -388,7 +385,7 @@ public partial class MainWindow : Window
         double colW = (sheetR - sheetL) / cols;
         double rowH = (sheetB - sheetT) / rows;
 
-        // TOP edge — one per column. Only if the entire button row fits.
+        // TOP edge — one per column.
         double topY = sheetT - EdgeBtnSize - EdgeBtnMargin;
         if (topY >= EdgeBtnPad && topY + EdgeBtnSize <= vh - EdgeBtnPad)
         {
@@ -947,6 +944,7 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Fullscreen toggle works even when a TextBox has focus.
         if (e.Key == Key.F11 || (e.Key == Key.Escape && _fullscreenMode))
         {
             ToggleFullscreen();
@@ -954,7 +952,56 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Keyboard.FocusedElement is TextBox) return;
+        bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        bool textBoxFocused = Keyboard.FocusedElement is TextBox;
+
+        // Delete / Backspace: remove selected strokes and inserted elements.
+        if (!textBoxFocused && (e.Key == Key.Delete || e.Key == Key.Back))
+        {
+            if (DeleteSelection()) { e.Handled = true; return; }
+        }
+
+        // Ctrl+C: copy selection.
+        if (!textBoxFocused && ctrl && e.Key == Key.C)
+        {
+            if (CopySelection()) { e.Handled = true; return; }
+        }
+
+        // Ctrl+X: cut selection.
+        if (!textBoxFocused && ctrl && e.Key == Key.X)
+        {
+            if (CutSelection()) { e.Handled = true; return; }
+        }
+
+        // Ctrl+V: paste.
+        if (!textBoxFocused && ctrl && e.Key == Key.V)
+        {
+            if (PasteClipboard()) { e.Handled = true; return; }
+        }
+
+        // Ctrl+A: select all.
+        if (!textBoxFocused && ctrl && e.Key == Key.A)
+        {
+            SelectAll_Executed(this, new ExecutedRoutedEventArgs(ApplicationCommands.SelectAll, null));
+            e.Handled = true;
+            return;
+        }
+
+        // Escape: clear selection (when not in fullscreen).
+        if (!textBoxFocused && e.Key == Key.Escape)
+        {
+            if (_selectedElements.Count > 0
+                || (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0))
+            {
+                ClearElementSelection();
+                InkArea?.Select(new StrokeCollection());
+                StatusText.Text = "Selection cleared.";
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (textBoxFocused) return;
 
         switch (e.Key)
         {
@@ -984,12 +1031,10 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             case Key.Left:
-                PrevPageButton_Click(PrevPageButton, new RoutedEventArgs());
-                e.Handled = true;
+                if (!ctrl) { PrevPageButton_Click(PrevPageButton, new RoutedEventArgs()); e.Handled = true; }
                 return;
             case Key.Right:
-                NextPageButton_Click(NextPageButton, new RoutedEventArgs());
-                e.Handled = true;
+                if (!ctrl) { NextPageButton_Click(NextPageButton, new RoutedEventArgs()); e.Handled = true; }
                 return;
         }
     }
@@ -1078,7 +1123,6 @@ public partial class MainWindow : Window
             vh = ActualHeight > 200 ? ActualHeight - 140 : 700;
         }
 
-        // Fit-to-view with margin, but never zoom past 100%.
         double fitX = (vw - 80) / CurrentPage.WorldWidth;
         double fitY = (vh - 80) / CurrentPage.WorldHeight;
         _viewZoom = Math.Clamp(Math.Min(fitX, fitY), MinZoom, 1.0);
@@ -1678,7 +1722,7 @@ public partial class MainWindow : Window
 
         int total = strokesIn.Count + _selectedElements.Count;
         StatusText.Text = total > 0
-            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Tap a colour to recolour."
+            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Drag inside to move. Delete to remove. Tap a colour to recolour."
             : "Nothing selected.";
     }
 
@@ -1702,8 +1746,18 @@ public partial class MainWindow : Window
     {
         var selected = InkArea?.GetSelectedStrokes();
         if (selected is null || selected.Count == 0) return false;
-        var hits = selected.HitTest(new[] { worldPt }, 4);
-        return hits.Count > 0;
+
+        // 1) Precise hit test — clicked directly on a stroke.
+        var hits = selected.HitTest(new[] { worldPt }, 6);
+        if (hits.Count > 0) return true;
+
+        // 2) Bounding-box fallback — clicked inside the lasso area (empty
+        //    space between strokes). This is what makes dragging the whole
+        //    selection intuitive: any click inside the dotted rectangle
+        //    starts a drag.
+        var bounds = selected.GetBounds();
+        bounds.Inflate(12, 12);
+        return bounds.Contains(worldPt);
     }
 
     private void StartSelectionDrag(Point worldPt)
@@ -1812,6 +1866,106 @@ public partial class MainWindow : Window
         _dragPreviewStrokes = null;
 
         MarkDirty();
+    }
+
+    // ---------------- Selection clipboard / delete / copy / paste ----------------
+
+    private bool DeleteSelection()
+    {
+        if (InkArea is null) return false;
+
+        var selectedStrokes = InkArea.GetSelectedStrokes();
+        bool didAnything = false;
+
+        if (selectedStrokes.Count > 0)
+        {
+            _applyingHistory = true;
+            try
+            {
+                var toRemove = new StrokeCollection();
+                foreach (var s in selectedStrokes) toRemove.Add(s);
+                InkArea.Strokes.Remove(toRemove);
+            }
+            finally { _applyingHistory = false; }
+
+            _undo.Push(new StrokeChange(new StrokeCollection(), selectedStrokes));
+            _redo.Clear();
+            didAnything = true;
+        }
+
+        if (_selectedElements.Count > 0)
+        {
+            var removed = new List<UIElement>(_selectedElements);
+            foreach (var el in removed)
+            {
+                if (InkArea.Children.Contains(el)) InkArea.Children.Remove(el);
+            }
+            ClearElementSelection();
+            didAnything = true;
+        }
+
+        if (didAnything)
+        {
+            MarkDirty();
+            StatusText.Text = "Deleted selection.";
+        }
+        return didAnything;
+    }
+
+    private bool CopySelection()
+    {
+        if (InkArea is null) return false;
+
+        var selectedStrokes = InkArea.GetSelectedStrokes();
+        if (selectedStrokes.Count == 0) return false;
+
+        _clipboardStrokes = new StrokeCollection();
+        foreach (var s in selectedStrokes) _clipboardStrokes.Add(s);
+        _pasteCounter = 0;
+
+        StatusText.Text = $"Copied {selectedStrokes.Count} stroke(s).";
+        return true;
+    }
+
+    private bool CutSelection()
+    {
+        if (!CopySelection()) return false;
+        DeleteSelection();
+        StatusText.Text = "Cut selection.";
+        return true;
+    }
+
+    private bool PasteClipboard()
+    {
+        if (InkArea is null) return false;
+        if (_clipboardStrokes is null || _clipboardStrokes.Count == 0) return false;
+
+        _pasteCounter++;
+        double offset = 24.0 * _pasteCounter;
+
+        var pasted = new StrokeCollection();
+        foreach (var s in _clipboardStrokes)
+        {
+            var pts = new StylusPointCollection();
+            foreach (var p in s.StylusPoints)
+                pts.Add(new StylusPoint((float)(p.X + offset), (float)(p.Y + offset), p.PressureFactor));
+            pasted.Add(new Stroke(pts, s.DrawingAttributes.Clone()));
+        }
+
+        _applyingHistory = true;
+        try
+        {
+            InkArea.Strokes.Add(pasted);
+        }
+        finally { _applyingHistory = false; }
+
+        InkArea.Select(pasted);
+        _undo.Push(new StrokeChange(pasted, new StrokeCollection()));
+        _redo.Clear();
+        MarkDirty();
+
+        StatusText.Text = $"Pasted {pasted.Count} stroke(s).";
+        return true;
     }
 
     // ---------------- Element selection visuals ----------------
@@ -2335,7 +2489,7 @@ public partial class MainWindow : Window
         }
         UpdateCursor();
         if (StatusText is not null)
-            StatusText.Text = "Lasso select (4): drag around ink/items to select. Drag inside selection to move. Tap a colour to recolour.";
+            StatusText.Text = "Lasso (4): drag around ink to select. Drag inside selection to move. Delete removes it. Ctrl+C / Ctrl+V copies / pastes.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2345,7 +2499,7 @@ public partial class MainWindow : Window
         int n = InkArea.GetSelectedStrokes().Count;
         int m = _selectedElements.Count;
         if ((n > 0 || m > 0) && StatusText is not null)
-            StatusText.Text = $"Selected {n} stroke(s) and {m} item(s). Tap a colour to recolour.";
+            StatusText.Text = $"Selected {n} stroke(s) and {m} item(s). Drag to move. Delete to remove. Ctrl+C to copy.";
     }
 
     private void SelectAll_Executed(object sender, ExecutedRoutedEventArgs e)
