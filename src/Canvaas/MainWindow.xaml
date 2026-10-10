@@ -343,6 +343,11 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
                     <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Toggle infinite canvas" Click="InfiniteCanvasButton_Click"/>
+                    <Button x:Name="ColourButton" Style="{StaticResource ToolIconButton}" Content="&#xE2B1;" ToolTip="Colour: selection or pen" Click="ColourButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="ColourMenu"/>
+                        </Button.ContextMenu>
+                    </Button>
                     <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
                     <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert" Click="MenuButton_Click">
@@ -468,14 +473,13 @@
                         <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
                             <ComboBoxItem Content="Arrow"/>
                             <ComboBoxItem Content="Crosshair"/>
-                            <ComboBoxItem Content="Yellow ring + pen dot"/>
+                            <ComboBoxItem Content="Hollow ring + dot"/>
                             <ComboBoxItem Content="Hidden (use pen tip)"/>
                         </ComboBox>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
-            <!-- INFINITE CANVAS: viewport with a transformed host grid -->
             <Border x:Name="CanvasHostBorder"
                     Background="#E6E6E6"
                     ClipToBounds="True"

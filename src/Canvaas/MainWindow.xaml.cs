@@ -10,6 +10,7 @@ using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Microsoft.Win32;
 
@@ -72,9 +73,18 @@ public partial class MainWindow : Window
         }
     }
 
+    private sealed class ElementMoveChange
+    {
+        public UIElement Element { get; set; } = null!;
+        public double OldLeft { get; set; }
+        public double OldTop { get; set; }
+        public double NewLeft { get; set; }
+        public double NewTop { get; set; }
+    }
+
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
-    private enum PenCursorStyle { Arrow, Cross, RingDot, Hidden }
+    private enum PenCursorStyle { Arrow, Cross, HollowRingDot, Hidden }
     private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand }
     private enum PaperStyle { White, Crumpled }
 
@@ -87,7 +97,6 @@ public partial class MainWindow : Window
         public CanvasMode Mode { get; set; } = CanvasMode.Page;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
-        // Per-page view state (in-memory; resets on file reload)
         public double ViewZoom { get; set; } = 1.0;
         public double ViewPanX { get; set; } = 0;
         public double ViewPanY { get; set; } = 0;
@@ -111,8 +120,8 @@ public partial class MainWindow : Window
     private readonly List<NotebookPage> _pages = new();
     private int _currentPageIndex;
 
-    private readonly Stack<StrokeChange> _undo = new();
-    private readonly Stack<StrokeChange> _redo = new();
+    private readonly Stack<object> _undo = new();
+    private readonly Stack<object> _redo = new();
     private bool _applyingHistory;
 
     private string? _currentPath;
@@ -127,9 +136,9 @@ public partial class MainWindow : Window
     private Color _penColor = Colors.Black;
     private double _penSize = 2.5;
     private bool _pressureEnabled = true;
-    private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
+    private PenCursorStyle _cursorStyle = PenCursorStyle.HollowRingDot;
 
-    private Cursor? _ringDotCursor;
+    private Cursor? _hollowRingCursor;
 
     private bool _panning;
     private Point _panStart;
@@ -146,6 +155,18 @@ public partial class MainWindow : Window
 
     private DispatcherTimer? _thumbnailTimer;
     private int _insertCounter = 0;
+
+    // ---- Custom lasso state ----
+    private readonly List<UIElement> _selectedElements = new();
+    private readonly List<Point> _lassoPointsScreen = new();
+    private readonly List<Path> _elementSelectionVisuals = new();
+    private Path? _lassoVisual;
+    private bool _lassoActive;
+    private bool _draggingSelection;
+    private Point _dragStartWorld;
+    private readonly Dictionary<UIElement, (double L, double T)> _elementStartPositions = new();
+    private StrokeCollection? _dragOriginalStrokes;
+    private StrokeCollection? _dragPreviewStrokes;
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
@@ -167,7 +188,7 @@ public partial class MainWindow : Window
 
         _uiReady = true;
 
-        RebuildRingDotCursor();
+        RebuildHollowRingCursor();
 
         Loaded += (s, e) =>
         {
@@ -191,7 +212,7 @@ public partial class MainWindow : Window
         ColorWhite.IsChecked = true;
         TemplateBlank.IsChecked = true;
         PaperWhite.IsChecked = true;
-        CursorCombo.SelectedIndex = 0;
+        CursorCombo.SelectedIndex = 2;   // Hollow ring + dot
 
         ApplyPenAttributes();
         UpdateCursor();
@@ -205,10 +226,10 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Yellow ring + pen-coloured dot cursor
+    // Cursor: hollow black ring + tiny black dot
     // =====================================================================
 
-    private void RebuildRingDotCursor()
+    private void RebuildHollowRingCursor()
     {
         try
         {
@@ -216,19 +237,18 @@ public partial class MainWindow : Window
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
-                var outline = new Pen(Brushes.Black, 1.4);
-                dc.DrawEllipse(yellow, outline, new Point(20, 20), 10, 10);
+                // Hollow black ring — no fill, transparent interior
+                var ringPen = new Pen(Brushes.Black, 1.3);
+                dc.DrawEllipse(null, ringPen, new Point(20, 20), 9, 9);
 
-                var dot = new SolidColorBrush(_penColor);
-                var dotOutline = new Pen(Brushes.Black, 0.6);
-                dc.DrawEllipse(dot, dotOutline, new Point(20, 20), 2.4, 2.4);
+                // Tiny black dot at the centre
+                dc.DrawEllipse(Brushes.Black, null, new Point(20, 20), 1.6, 1.6);
             }
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
-            _ringDotCursor = CreateCursorFromBitmap(rtb, 20, 20);
+            _hollowRingCursor = CreateCursorFromBitmap(rtb, 20, 20);
         }
-        catch { _ringDotCursor = Cursors.Cross; }
+        catch { _hollowRingCursor = Cursors.Cross; }
     }
 
     private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
@@ -388,11 +408,22 @@ public partial class MainWindow : Window
     {
         if (sender is Button b && b.Tag is string hex)
         {
-            _penColor = ParseHexColor(hex, Colors.Black);
-            ApplyPenAttributes();
-            UpdateThicknessPreview();
-            RebuildRingDotCursor();
-            UpdateCursor();
+            var colour = ParseHexColor(hex, Colors.Black);
+
+            // If a selection exists, recolour it. Otherwise just change pen colour.
+            bool hasSelection = (_selectedElements.Count > 0)
+                || (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
+
+            if (hasSelection)
+            {
+                ApplyColourToSelection(colour);
+            }
+            else
+            {
+                _penColor = colour;
+                ApplyPenAttributes();
+                UpdateThicknessPreview();
+            }
         }
     }
 
@@ -411,6 +442,110 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
+    // Colour button (toolbar)
+    // =====================================================================
+
+    private void ColourButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.ContextMenu is ContextMenu cm)
+        {
+            if (cm.Items.Count == 0) BuildColourMenu(cm);
+            cm.PlacementTarget = b;
+            cm.Placement = PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void BuildColourMenu(ContextMenu cm)
+    {
+        if (ToolColorGrid?.ItemsSource is not System.Collections.IEnumerable items) return;
+        foreach (var obj in items)
+        {
+            if (obj is not PopupColorItem item) continue;
+            var mi = new MenuItem
+            {
+                Header = item.Name,
+                Icon = new Rectangle
+                {
+                    Width = 14, Height = 14,
+                    Fill = item.Brush,
+                    Stroke = Brushes.LightGray, StrokeThickness = 1
+                },
+                Tag = item.Hex
+            };
+            mi.Click += (s, e) =>
+            {
+                if (s is MenuItem m && m.Tag is string hex)
+                {
+                    var c = ParseHexColor(hex, Colors.Black);
+                    ApplyColourToSelection(c);
+                }
+            };
+            cm.Items.Add(mi);
+        }
+    }
+
+    private void ApplyColourToSelection(Color newColour)
+    {
+        if (InkArea is null) return;
+        bool any = false;
+
+        // Strokes
+        var selectedStrokes = InkArea.GetSelectedStrokes();
+        if (selectedStrokes.Count > 0)
+        {
+            _applyingHistory = true;
+            StrokeCollection added;
+            StrokeCollection removed;
+            try
+            {
+                removed = new StrokeCollection();
+                added = new StrokeCollection();
+                foreach (var s in selectedStrokes.ToList())
+                {
+                    var da = s.DrawingAttributes.Clone();
+                    da.Color = newColour;
+                    var ns = new Stroke(s.StylusPoints, da);
+                    removed.Add(s);
+                    added.Add(ns);
+                }
+                InkArea.Strokes.Remove(removed);
+                InkArea.Strokes.Add(added);
+            }
+            finally { _applyingHistory = false; }
+
+            InkArea.Select(added);
+            _undo.Push(new StrokeChange(added, removed));
+            _redo.Clear();
+            any = true;
+        }
+
+        // Text elements
+        foreach (var el in _selectedElements)
+        {
+            if (el is TextBox tb)
+            {
+                tb.Foreground = new SolidColorBrush(newColour);
+                any = true;
+            }
+        }
+
+        if (any)
+        {
+            MarkDirty();
+            ScheduleThumbnailRefresh();
+            StatusText.Text = "Recoloured selection.";
+        }
+        else
+        {
+            _penColor = newColour;
+            ApplyPenAttributes();
+            UpdateThicknessPreview();
+            StatusText.Text = "Pen colour changed.";
+        }
+    }
+
+    // =====================================================================
     // Cursor
     // =====================================================================
 
@@ -426,7 +561,7 @@ public partial class MainWindow : Window
             c = _cursorStyle switch
             {
                 PenCursorStyle.Cross => Cursors.Cross,
-                PenCursorStyle.RingDot => _ringDotCursor ?? Cursors.Cross,
+                PenCursorStyle.HollowRingDot => _hollowRingCursor ?? Cursors.Cross,
                 PenCursorStyle.Hidden => Cursors.None,
                 _ => Cursors.Arrow
             };
@@ -474,8 +609,7 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.FocusedElement is TextBox)
-            return;
+        if (Keyboard.FocusedElement is TextBox) return;
 
         if (e.Key == Key.Escape && _fullscreenMode)
         {
@@ -556,7 +690,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // View — pan and zoom via viewport transform
+    // View — pan and zoom
     // =====================================================================
 
     private void ApplyView()
@@ -624,9 +758,7 @@ public partial class MainWindow : Window
     }
 
     private void FitPageToView()
-    {
-        FitBounds(new Rect(0, 0, PageWidthDefault, PageHeightDefault), 40);
-    }
+        => FitBounds(new Rect(0, 0, PageWidthDefault, PageHeightDefault), 40);
 
     private void FitContentToView()
     {
@@ -766,6 +898,8 @@ public partial class MainWindow : Window
         _redo.Clear();
         CommandManager.InvalidateRequerySuggested();
 
+        ClearElementSelection();
+
         ApplyCanvasMode();
         SyncUIWithSettings();
         UpdatePageNavigationUI();
@@ -823,11 +957,7 @@ public partial class MainWindow : Window
 
     private void PageCounterBox_KeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
-        {
-            ApplyPageCounterText();
-            e.Handled = true;
-        }
+        if (e.Key == Key.Enter) { ApplyPageCounterText(); e.Handled = true; }
     }
 
     private void PageCounterBox_LostFocus(object sender, RoutedEventArgs e)
@@ -970,7 +1100,6 @@ public partial class MainWindow : Window
 
     private ImageSource RenderThumbnail(NotebookPage page, int w, int h)
     {
-        // Determine the world rect to show
         Rect world;
         if (page.Mode == CanvasMode.Infinite)
         {
@@ -995,14 +1124,9 @@ public partial class MainWindow : Window
             dc.PushTransform(new ScaleTransform(scale, scale));
 
             if (page.Mode == CanvasMode.Page)
-            {
-                dc.DrawRectangle(BuildPageBrush(page), null,
-                    new Rect(0, 0, PageWidthDefault, PageHeightDefault));
-            }
+                dc.DrawRectangle(BuildPageBrush(page), null, new Rect(0, 0, PageWidthDefault, PageHeightDefault));
             else
-            {
                 dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
-            }
 
             try
             {
@@ -1109,14 +1233,9 @@ public partial class MainWindow : Window
             dc.PushTransform(new ScaleTransform(scale, scale));
 
             if (page.Mode == CanvasMode.Page)
-            {
-                dc.DrawRectangle(BuildPageBrush(page), null,
-                    new Rect(0, 0, PageWidthDefault, PageHeightDefault));
-            }
+                dc.DrawRectangle(BuildPageBrush(page), null, new Rect(0, 0, PageWidthDefault, PageHeightDefault));
             else
-            {
                 dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
-            }
 
             foreach (var s in page.Strokes)
                 s.Draw(dc);
@@ -1135,63 +1254,99 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Panning + swipe page turn
+    // Panning + custom lasso
     // =====================================================================
+
+    private Point ScreenToWorld(Point p)
+        => new Point((p.X - _viewPanX) / _viewZoom, (p.Y - _viewPanY) / _viewZoom);
 
     private void CanvasHostBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
-        bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
-
-        if (!middleDrag && !handDrag) return;
         if (CanvasHostBorder is null) return;
 
-        _panning = true;
-        _panStart = e.GetPosition(CanvasHostBorder);
-        _panStartPanX = _viewPanX;
-        _panStartPanY = _viewPanY;
-        _panStartTime = DateTime.UtcNow;
-        CanvasHostBorder.CaptureMouse();
+        bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
+        bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
+        bool lassoDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Lasso;
 
-        try
+        if (middleDrag || handDrag)
         {
-            if (CanvasHost is not null)
-            {
-                var cache = new BitmapCache
-                {
-                    SnapsToDevicePixels = true,
-                    EnableClearType = false,
-                    RenderAtScale = 1.0
-                };
-                cache.Freeze();
-                CanvasHost.CacheMode = cache;
-            }
+            _panning = true;
+            _panStart = e.GetPosition(CanvasHostBorder);
+            _panStartPanX = _viewPanX;
+            _panStartPanY = _viewPanY;
+            _panStartTime = DateTime.UtcNow;
+            CanvasHostBorder.CaptureMouse();
+            e.Handled = true;
+            return;
         }
-        catch { }
 
-        e.Handled = true;
+        if (lassoDrag)
+        {
+            var screenPt = e.GetPosition(CanvasHostBorder);
+            var worldPt = ScreenToWorld(screenPt);
+
+            // If the click is inside the current selection, start a move-drag.
+            if (IsPointOnSelectedElement(worldPt) || IsPointOnSelectedStroke(worldPt))
+            {
+                StartSelectionDrag(worldPt);
+                CanvasHostBorder.CaptureMouse();
+                e.Handled = true;
+                return;
+            }
+
+            // Otherwise, start a new lasso.
+            StartLasso(screenPt);
+            CanvasHostBorder.CaptureMouse();
+            e.Handled = true;
+        }
     }
 
     private void CanvasHostBorder_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_panning || CanvasHostBorder is null) return;
-        var p = e.GetPosition(CanvasHostBorder);
-        _viewPanX = _panStartPanX + (p.X - _panStart.X);
-        _viewPanY = _panStartPanY + (p.Y - _panStart.Y);
-        if (ViewTransform is not null)
-            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-        e.Handled = true;
+        if (CanvasHostBorder is null) return;
+
+        var screenPt = e.GetPosition(CanvasHostBorder);
+
+        if (_panning)
+        {
+            _viewPanX = _panStartPanX + (screenPt.X - _panStart.X);
+            _viewPanY = _panStartPanY + (screenPt.Y - _panStart.Y);
+            if (ViewTransform is not null)
+                ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+            e.Handled = true;
+            return;
+        }
+
+        if (_lassoActive)
+        {
+            _lassoPointsScreen.Add(screenPt);
+            UpdateLassoVisual();
+            e.Handled = true;
+            return;
+        }
+
+        if (_draggingSelection)
+        {
+            var worldPt = ScreenToWorld(screenPt);
+            double dx = worldPt.X - _dragStartWorld.X;
+            double dy = worldPt.Y - _dragStartWorld.Y;
+            UpdateSelectionDrag(dx, dy);
+            e.Handled = true;
+        }
     }
 
     private void CanvasHostBorder_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
-        EndPan();
-        e.Handled = true;
+        if (_panning) { EndPan(); e.Handled = true; return; }
+        if (_lassoActive) { EndLasso(); e.Handled = true; return; }
+        if (_draggingSelection) { EndSelectionDrag(); e.Handled = true; }
     }
 
     private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
         if (_panning) EndPan();
+        else if (_lassoActive) EndLasso();
+        else if (_draggingSelection) EndSelectionDrag();
     }
 
     private void EndPan()
@@ -1201,13 +1356,8 @@ public partial class MainWindow : Window
 
         if (CanvasHostBorder is not null)
         {
-            if (CanvasHostBorder.IsMouseCaptured)
-                CanvasHostBorder.ReleaseMouseCapture();
-
-            if (CanvasHost is not null)
-            {
-                try { CanvasHost.CacheMode = null; } catch { }
-            }
+            if (CanvasHostBorder.IsMouseCaptured) CanvasHostBorder.ReleaseMouseCapture();
+            if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
         }
 
         double dx = _viewPanX - _panStartPanX;
@@ -1234,6 +1384,308 @@ public partial class MainWindow : Window
         UpdateCursor();
     }
 
+    // ---------------- Lasso logic ----------------
+
+    private void StartLasso(Point screenPt)
+    {
+        if (CanvasHost is null) return;
+
+        ClearElementSelection();
+        if (InkArea is not null) InkArea.Select(new StrokeCollection());
+
+        _lassoActive = true;
+        _lassoPointsScreen.Clear();
+        _lassoPointsScreen.Add(screenPt);
+
+        // Lasso visual is added to CanvasHost so it uses world coords
+        _lassoVisual = new Path
+        {
+            Stroke = new SolidColorBrush(Color.FromArgb(180, 26, 115, 232)),
+            StrokeThickness = 1.5,
+            StrokeDashArray = new DoubleCollection { 3, 2 },
+            Fill = new SolidColorBrush(Color.FromArgb(18, 26, 115, 232)),
+            IsHitTestVisible = false,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Stretch = Stretch.None
+        };
+        CanvasHost.Children.Add(_lassoVisual);
+    }
+
+    private void UpdateLassoVisual()
+    {
+        if (_lassoVisual is null || _lassoPointsScreen.Count < 2) return;
+
+        // Lasso visual lives inside CanvasHost, so use world coordinates
+        var geo = new StreamGeometry();
+        using (var gc = geo.Open())
+        {
+            var first = ScreenToWorld(_lassoPointsScreen[0]);
+            gc.BeginFigure(first, true, true);
+            for (int i = 1; i < _lassoPointsScreen.Count; i++)
+                gc.LineTo(ScreenToWorld(_lassoPointsScreen[i]), true, false);
+        }
+        geo.Freeze();
+        _lassoVisual.Data = geo;
+        _lassoVisual.StrokeThickness = 1.5 / _viewZoom;
+    }
+
+    private void EndLasso()
+    {
+        if (!_lassoActive) return;
+        _lassoActive = false;
+
+        if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
+            CanvasHostBorder.ReleaseMouseCapture();
+
+        if (_lassoVisual is not null)
+        {
+            if (_lassoVisual.Parent is Panel p) p.Children.Remove(_lassoVisual);
+            _lassoVisual = null;
+        }
+
+        if (_lassoPointsScreen.Count < 3 || InkArea is null) return;
+
+        // Build world polygon
+        var worldPoly = new List<Point>(_lassoPointsScreen.Count);
+        foreach (var sp in _lassoPointsScreen)
+            worldPoly.Add(ScreenToWorld(sp));
+
+        var geometry = new StreamGeometry();
+        using (var gc = geometry.Open())
+        {
+            gc.BeginFigure(worldPoly[0], true, true);
+            for (int i = 1; i < worldPoly.Count; i++)
+                gc.LineTo(worldPoly[i], true, false);
+        }
+        geometry.Freeze();
+
+        // Strokes whose centre is inside
+        var strokesIn = new StrokeCollection();
+        foreach (var s in InkArea.Strokes)
+        {
+            var b = s.GetBounds();
+            var center = new Point(b.X + b.Width / 2.0, b.Y + b.Height / 2.0);
+            if (geometry.FillContains(center))
+                strokesIn.Add(s);
+        }
+        if (strokesIn.Count > 0) InkArea.Select(strokesIn);
+
+        // Elements whose centre is inside
+        foreach (var child in InkArea.Children)
+        {
+            if (child is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            if (double.IsNaN(l) || double.IsNaN(t)) continue;
+            double cx = l + (fe.ActualWidth > 0 ? fe.ActualWidth / 2 : 60);
+            double cy = t + (fe.ActualHeight > 0 ? fe.ActualHeight / 2 : 20);
+            if (geometry.FillContains(new Point(cx, cy)))
+                _selectedElements.Add(fe);
+        }
+
+        UpdateElementSelectionVisuals();
+
+        int total = strokesIn.Count + _selectedElements.Count;
+        StatusText.Text = total > 0
+            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s)."
+            : "Nothing selected.";
+    }
+
+    // ---------------- Selection drag logic ----------------
+
+    private bool IsPointOnSelectedElement(Point worldPt)
+    {
+        foreach (var el in _selectedElements)
+        {
+            if (el is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            double w = fe.ActualWidth > 0 ? fe.ActualWidth : 200;
+            double h = fe.ActualHeight > 0 ? fe.ActualHeight : 30;
+            if (new Rect(l, t, w, h).Contains(worldPt)) return true;
+        }
+        return false;
+    }
+
+    private bool IsPointOnSelectedStroke(Point worldPt)
+    {
+        var selected = InkArea?.GetSelectedStrokes();
+        if (selected is null || selected.Count == 0) return false;
+        var hits = selected.HitTest(new[] { worldPt }, 4);
+        return hits.Count > 0;
+    }
+
+    private void StartSelectionDrag(Point worldPt)
+    {
+        _draggingSelection = true;
+        _dragStartWorld = worldPt;
+
+        _elementStartPositions.Clear();
+        foreach (var el in _selectedElements)
+            _elementStartPositions[el] = (InkCanvas.GetLeft(el), InkCanvas.GetTop(el));
+
+        // Snapshot the original strokes so we can rebuild at any offset
+        var sel = InkArea?.GetSelectedStrokes();
+        if (sel is not null && sel.Count > 0)
+        {
+            _dragOriginalStrokes = new StrokeCollection();
+            foreach (var s in sel) _dragOriginalStrokes.Add(s);
+            _dragPreviewStrokes = null;
+        }
+        else
+        {
+            _dragOriginalStrokes = null;
+            _dragPreviewStrokes = null;
+        }
+    }
+
+    private void UpdateSelectionDrag(double dx, double dy)
+    {
+        if (CanvasHost is null) return;
+
+        // Move elements
+        foreach (var el in _selectedElements)
+        {
+            if (_elementStartPositions.TryGetValue(el, out var s))
+            {
+                InkCanvas.SetLeft(el, s.L + dx);
+                InkCanvas.SetTop(el, s.T + dy);
+            }
+        }
+
+        // Move strokes: rebuild from originals at dx/dy
+        if (InkArea is not null && _dragOriginalStrokes is not null && _dragOriginalStrokes.Count > 0)
+        {
+            var rebuilt = new StrokeCollection();
+            foreach (var orig in _dragOriginalStrokes)
+            {
+                var pts = new StylusPointCollection();
+                foreach (var p in orig.StylusPoints)
+                    pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
+                rebuilt.Add(new Stroke(pts, orig.DrawingAttributes.Clone()));
+            }
+
+            _applyingHistory = true;
+            try
+            {
+                // Remove previous preview if any
+                if (_dragPreviewStrokes is not null && _dragPreviewStrokes.Count > 0)
+                    InkArea.Strokes.Remove(_dragPreviewStrokes);
+
+                InkArea.Strokes.Add(rebuilt);
+                InkArea.Select(rebuilt);
+            }
+            finally { _applyingHistory = false; }
+
+            _dragPreviewStrokes = rebuilt;
+        }
+
+        // Reposition element selection rectangles
+        UpdateElementSelectionVisuals();
+    }
+
+    private void EndSelectionDrag()
+    {
+        if (!_draggingSelection) return;
+        _draggingSelection = false;
+
+        if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
+            CanvasHostBorder.ReleaseMouseCapture();
+
+        // Commit stroke move as a single undo entry
+        if (InkArea is not null && _dragOriginalStrokes is not null && _dragPreviewStrokes is not null)
+        {
+            if (_dragOriginalStrokes.Count > 0)
+            {
+                _undo.Push(new StrokeChange(_dragPreviewStrokes, _dragOriginalStrokes));
+                _redo.Clear();
+            }
+        }
+
+        // Commit element move as undo entries
+        foreach (var el in _selectedElements)
+        {
+            if (_elementStartPositions.TryGetValue(el, out var start))
+            {
+                double nowL = InkCanvas.GetLeft(el);
+                double nowT = InkCanvas.GetTop(el);
+                if (Math.Abs(nowL - start.L) > 0.1 || Math.Abs(nowT - start.T) > 0.1)
+                {
+                    _undo.Push(new ElementMoveChange
+                    {
+                        Element = el,
+                        OldLeft = start.L, OldTop = start.T,
+                        NewLeft = nowL, NewTop = nowT
+                    });
+                    _redo.Clear();
+                }
+            }
+        }
+
+        _elementStartPositions.Clear();
+        _dragOriginalStrokes = null;
+        _dragPreviewStrokes = null;
+
+        MarkDirty();
+        ScheduleThumbnailRefresh();
+    }
+
+    // ---------------- Element selection visuals ----------------
+
+    private void ClearElementSelection()
+    {
+        _selectedElements.Clear();
+        if (CanvasHost is null) return;
+        foreach (var v in _elementSelectionVisuals)
+        {
+            if (v.Parent is Panel p) p.Children.Remove(v);
+        }
+        _elementSelectionVisuals.Clear();
+    }
+
+    private void UpdateElementSelectionVisuals()
+    {
+        if (CanvasHost is null) return;
+
+        foreach (var v in _elementSelectionVisuals)
+            if (v.Parent is Panel p) p.Children.Remove(v);
+        _elementSelectionVisuals.Clear();
+
+        foreach (var el in _selectedElements)
+        {
+            if (el is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            double w = fe.ActualWidth > 0 ? fe.ActualWidth : 200;
+            double h = fe.ActualHeight > 0 ? fe.ActualHeight : 30;
+
+            var r = new Rectangle
+            {
+                Width = w,
+                Height = h,
+                Stroke = new SolidColorBrush(Color.FromArgb(200, 26, 115, 232)),
+                StrokeThickness = 1.5 / Math.Max(_viewZoom, 0.01),
+                StrokeDashArray = new DoubleCollection { 3, 2 },
+                Fill = Brushes.Transparent,
+                IsHitTestVisible = false,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            Canvas.SetLeft(r, l);
+            Canvas.SetTop(r, t);
+            // Note: Grid layout doesn't respect Canvas.Left/Top. Use Margin instead.
+            r.Margin = new Thickness(l, t, 0, 0);
+
+            CanvasHost.Children.Add(r);
+            _elementSelectionVisuals.Add(r);
+        }
+    }
+
+    // =====================================================================
+    // Sidebar and title bar buttons
+    // =====================================================================
+
     private void SidebarButton_Click(object sender, RoutedEventArgs e)
     {
         if (LeftPanel is null) return;
@@ -1241,10 +1693,6 @@ public partial class MainWindow : Window
             ? Visibility.Collapsed
             : Visibility.Visible;
     }
-
-    // =====================================================================
-    // Title bar buttons
-    // =====================================================================
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
@@ -1273,9 +1721,6 @@ public partial class MainWindow : Window
             cm.IsOpen = true;
         }
     }
-
-    private void AddText_Click(object sender, RoutedEventArgs e)
-        => StatusText.Text = "Add Text is coming in a future update.";
 
     // =====================================================================
     // Insert: Image / Text / Clipboard
@@ -1406,14 +1851,10 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        // Determine world coordinates to place the element at.
-        // If a fixed page, we start at the top-left of the page.
-        // If infinite, we place at the current view's top-left + a small offset.
         double left, top;
 
         if (CurrentPage.Mode == CanvasMode.Infinite && CanvasHostBorder is not null)
         {
-            // Visible world top-left corner
             double visLeft = -_viewPanX / _viewZoom;
             double visTop = -_viewPanY / _viewZoom;
             left = visLeft + 60;
@@ -1504,7 +1945,7 @@ public partial class MainWindow : Window
         _cursorStyle = CursorCombo.SelectedIndex switch
         {
             1 => PenCursorStyle.Cross,
-            2 => PenCursorStyle.RingDot,
+            2 => PenCursorStyle.HollowRingDot,
             3 => PenCursorStyle.Hidden,
             _ => PenCursorStyle.Arrow
         };
@@ -1526,7 +1967,6 @@ public partial class MainWindow : Window
 
         double spacing = page.Spacing;
         var group = new DrawingGroup();
-
         group.Children.Add(new GeometryDrawing(baseBrush, null,
             new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
 
@@ -1677,6 +2117,7 @@ public partial class MainWindow : Window
     {
         _tool = ToolMode.Pen;
         EndPan();
+        ClearElementSelection();
         if (InkArea is not null)
         {
             InkArea.IsHitTestVisible = true;
@@ -1692,6 +2133,7 @@ public partial class MainWindow : Window
     {
         _tool = ToolMode.Highlighter;
         EndPan();
+        ClearElementSelection();
         if (InkArea is not null)
         {
             InkArea.IsHitTestVisible = true;
@@ -1707,6 +2149,7 @@ public partial class MainWindow : Window
     {
         _tool = ToolMode.Eraser;
         EndPan();
+        ClearElementSelection();
         if (InkArea is not null)
         {
             InkArea.IsHitTestVisible = true;
@@ -1721,14 +2164,18 @@ public partial class MainWindow : Window
     {
         _tool = ToolMode.Lasso;
         EndPan();
+
+        // Clear any stale cache from previous panning
+        if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
+
         if (InkArea is not null)
         {
             InkArea.IsHitTestVisible = true;
-            InkArea.EditingMode = InkCanvasEditingMode.Select;
+            InkArea.EditingMode = InkCanvasEditingMode.None;  // we handle input ourselves
         }
         UpdateCursor();
         if (StatusText is not null)
-            StatusText.Text = "Lasso select (4): drag around ink to select, then drag to move or resize.";
+            StatusText.Text = "Lasso select (4): drag around ink/items to select. Drag inside selection to move.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -1736,8 +2183,9 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
         int n = InkArea.GetSelectedStrokes().Count;
-        if (n > 0 && StatusText is not null)
-            StatusText.Text = $"Selected {n} stroke{(n == 1 ? "" : "s")}. Drag to move, drag a handle to resize, Delete to remove.";
+        int m = _selectedElements.Count;
+        if ((n > 0 || m > 0) && StatusText is not null)
+            StatusText.Text = $"Selected {n} stroke(s) and {m} item(s).";
     }
 
     private void SelectAll_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -1747,15 +2195,23 @@ public partial class MainWindow : Window
         {
             _tool = ToolMode.Lasso;
             if (LassoButton is not null) LassoButton.IsChecked = true;
-            InkArea.EditingMode = InkCanvasEditingMode.Select;
+            InkArea.EditingMode = InkCanvasEditingMode.None;
         }
         InkArea.Select(InkArea.Strokes);
+
+        _selectedElements.Clear();
+        foreach (var c in InkArea.Children)
+            if (c is FrameworkElement fe) _selectedElements.Add(fe);
+        UpdateElementSelectionVisuals();
+
+        StatusText.Text = $"Selected all {InkArea.Strokes.Count} stroke(s) and {_selectedElements.Count} item(s).";
         e.Handled = true;
     }
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Hand;
+        ClearElementSelection();
         if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
         if (StatusText is not null)
@@ -1900,8 +2356,8 @@ public partial class MainWindow : Window
         if (_undo.Count > 0)
         {
             var last = _undo.Pop();
-            if (last.Removed.Count == 0 && last.Added.Count == 1 && last.Added[0] == original)
-                _undo.Push(new StrokeChange(new StrokeCollection { smoothed }, last.Removed));
+            if (last is StrokeChange sc && sc.Removed.Count == 0 && sc.Added.Count == 1 && sc.Added[0] == original)
+                _undo.Push(new StrokeChange(new StrokeCollection { smoothed }, sc.Removed));
             else
                 _undo.Push(last);
         }
@@ -1933,7 +2389,7 @@ public partial class MainWindow : Window
     {
         if (_undo.Count == 0) return;
         var change = _undo.Pop();
-        ApplyChange(change, reverse: true);
+        ReverseChange(change);
         _redo.Push(change);
         MarkDirty();
         ScheduleThumbnailRefresh();
@@ -1943,28 +2399,49 @@ public partial class MainWindow : Window
     {
         if (_redo.Count == 0) return;
         var change = _redo.Pop();
-        ApplyChange(change, reverse: false);
+        ForwardChange(change);
         _undo.Push(change);
         MarkDirty();
         ScheduleThumbnailRefresh();
     }
 
-    private void ApplyChange(StrokeChange change, bool reverse)
+    private void ReverseChange(object change)
     {
         if (InkArea is null) return;
-
-        var toRemove = reverse ? change.Added : change.Removed;
-        var toAdd = reverse ? change.Removed : change.Added;
-
-        _applyingHistory = true;
-        try
+        if (change is StrokeChange sc)
         {
-            if (toRemove.Count > 0) InkArea.Strokes.Remove(toRemove);
-            if (toAdd.Count > 0) InkArea.Strokes.Add(toAdd);
+            _applyingHistory = true;
+            try
+            {
+                if (sc.Added.Count > 0) InkArea.Strokes.Remove(sc.Added);
+                if (sc.Removed.Count > 0) InkArea.Strokes.Add(sc.Removed);
+            }
+            finally { _applyingHistory = false; }
         }
-        finally
+        else if (change is ElementMoveChange emc)
         {
-            _applyingHistory = false;
+            InkCanvas.SetLeft(emc.Element, emc.OldLeft);
+            InkCanvas.SetTop(emc.Element, emc.OldTop);
+        }
+    }
+
+    private void ForwardChange(object change)
+    {
+        if (InkArea is null) return;
+        if (change is StrokeChange sc)
+        {
+            _applyingHistory = true;
+            try
+            {
+                if (sc.Removed.Count > 0) InkArea.Strokes.Remove(sc.Removed);
+                if (sc.Added.Count > 0) InkArea.Strokes.Add(sc.Added);
+            }
+            finally { _applyingHistory = false; }
+        }
+        else if (change is ElementMoveChange emc)
+        {
+            InkCanvas.SetLeft(emc.Element, emc.NewLeft);
+            InkCanvas.SetTop(emc.Element, emc.NewTop);
         }
     }
 
@@ -2129,12 +2606,9 @@ public partial class MainWindow : Window
                         BackgroundColor = ParseHexColor(pm.BackgroundColor ?? "#FFFFFF", Colors.White),
                         Spacing = pm.Spacing is double s && s > 0 ? s : 40
                     };
-                    if (Enum.TryParse<PageTemplate>(pm.Template, out var t))
-                        page.Template = t;
-                    if (Enum.TryParse<CanvasMode>(pm.Mode, out var m))
-                        page.Mode = m;
-                    if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps))
-                        page.Paper = ps;
+                    if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
+                    if (Enum.TryParse<CanvasMode>(pm.Mode, out var m)) page.Mode = m;
+                    if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;
 
                     var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
                     if (inkEntry is not null)
