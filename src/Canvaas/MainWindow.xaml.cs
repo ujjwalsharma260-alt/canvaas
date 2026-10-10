@@ -2,12 +2,14 @@ using System.ComponentModel;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Ink;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -41,6 +43,16 @@ public partial class MainWindow : Window
     private const double EdgeBtnSize = 30;
     private const double EdgeBtnMargin = 8;
     private const double EdgeBtnPad = 4;
+
+    // === FULLSCREEN (Win32) ===
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+                                            int X, int Y, int cx, int cy, uint uFlags);
+
+    private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+    private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint SWP_NOACTIVATE = 0x0010;
 
     private enum ExpandDirection { Right, Left, Up, Down }
 
@@ -136,8 +148,12 @@ public partial class MainWindow : Window
     private bool _dirty;
 
     private bool _suppressCounterChange;
+    private bool _suppressSpacingChange;
     private bool _fullscreenMode;
     private bool _uiReady;
+
+    private WindowState _preFullscreenWindowState = WindowState.Maximized;
+    private bool _preFullscreenTopmost = false;
 
     private ToolMode _tool = ToolMode.Pen;
     private Color _penColor = Colors.Black;
@@ -385,7 +401,6 @@ public partial class MainWindow : Window
         double colW = (sheetR - sheetL) / cols;
         double rowH = (sheetB - sheetT) / rows;
 
-        // TOP edge — one per column.
         double topY = sheetT - EdgeBtnSize - EdgeBtnMargin;
         if (topY >= EdgeBtnPad && topY + EdgeBtnSize <= vh - EdgeBtnPad)
         {
@@ -398,7 +413,6 @@ public partial class MainWindow : Window
             }
         }
 
-        // BOTTOM edge — one per column.
         double botY = sheetB + EdgeBtnMargin;
         if (botY >= EdgeBtnPad && botY + EdgeBtnSize <= vh - EdgeBtnPad)
         {
@@ -411,7 +425,6 @@ public partial class MainWindow : Window
             }
         }
 
-        // LEFT edge — one per row.
         double leftX = sheetL - EdgeBtnSize - EdgeBtnMargin;
         if (leftX >= EdgeBtnPad && leftX + EdgeBtnSize <= vw - EdgeBtnPad)
         {
@@ -424,7 +437,6 @@ public partial class MainWindow : Window
             }
         }
 
-        // RIGHT edge — one per row.
         double rightX = sheetR + EdgeBtnMargin;
         if (rightX >= EdgeBtnPad && rightX + EdgeBtnSize <= vw - EdgeBtnPad)
         {
@@ -944,7 +956,6 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Fullscreen toggle works even when a TextBox has focus.
         if (e.Key == Key.F11 || (e.Key == Key.Escape && _fullscreenMode))
         {
             ToggleFullscreen();
@@ -955,31 +966,26 @@ public partial class MainWindow : Window
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
         bool textBoxFocused = Keyboard.FocusedElement is TextBox;
 
-        // Delete / Backspace: remove selected strokes and inserted elements.
         if (!textBoxFocused && (e.Key == Key.Delete || e.Key == Key.Back))
         {
             if (DeleteSelection()) { e.Handled = true; return; }
         }
 
-        // Ctrl+C: copy selection.
         if (!textBoxFocused && ctrl && e.Key == Key.C)
         {
             if (CopySelection()) { e.Handled = true; return; }
         }
 
-        // Ctrl+X: cut selection.
         if (!textBoxFocused && ctrl && e.Key == Key.X)
         {
             if (CutSelection()) { e.Handled = true; return; }
         }
 
-        // Ctrl+V: paste.
         if (!textBoxFocused && ctrl && e.Key == Key.V)
         {
             if (PasteClipboard()) { e.Handled = true; return; }
         }
 
-        // Ctrl+A: select all.
         if (!textBoxFocused && ctrl && e.Key == Key.A)
         {
             ApplicationCommands.SelectAll.Execute(null, this);
@@ -987,7 +993,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Escape: clear selection (when not in fullscreen).
         if (!textBoxFocused && e.Key == Key.Escape)
         {
             if (_selectedElements.Count > 0
@@ -1040,7 +1045,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Fullscreen
+    // Fullscreen (covers the OS taskbar)
     // =====================================================================
 
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
@@ -1059,6 +1064,49 @@ public partial class MainWindow : Window
         }
 
         ReleaseAllCaptures();
+
+        IntPtr hwnd;
+        try { hwnd = new WindowInteropHelper(this).Handle; }
+        catch { hwnd = IntPtr.Zero; }
+
+        if (_fullscreenMode)
+        {
+            _preFullscreenWindowState = WindowState;
+            _preFullscreenTopmost = Topmost;
+
+            // Remember-less: cover the whole primary screen.
+            WindowState = WindowState.Normal;
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.NoResize;
+
+            double screenW = SystemParameters.PrimaryScreenWidth;
+            double screenH = SystemParameters.PrimaryScreenHeight;
+
+            Left = 0;
+            Top = 0;
+            Width = screenW;
+            Height = screenH;
+            Topmost = true;
+
+            if (hwnd != IntPtr.Zero)
+            {
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)screenW, (int)screenH, SWP_SHOWWINDOW);
+            }
+        }
+        else
+        {
+            Topmost = _preFullscreenTopmost;
+            WindowStyle = WindowStyle.None;
+            ResizeMode = ResizeMode.CanResize;
+            WindowState = _preFullscreenWindowState;
+
+            if (hwnd != IntPtr.Zero)
+            {
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE);
+            }
+        }
+
+        Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
 
         if (StatusText is not null)
             StatusText.Text = _fullscreenMode
@@ -1747,11 +1795,9 @@ public partial class MainWindow : Window
         var selected = InkArea?.GetSelectedStrokes();
         if (selected is null || selected.Count == 0) return false;
 
-        // 1) Precise hit test — clicked directly on a stroke.
         var hits = selected.HitTest(new[] { worldPt }, 6);
         if (hits.Count > 0) return true;
 
-        // 2) Bounding-box fallback — clicked inside the lasso area.
         var bounds = selected.GetBounds();
         bounds.Inflate(12, 12);
         return bounds.Contains(worldPt);
@@ -2124,6 +2170,9 @@ public partial class MainWindow : Window
 
     private void InsertText_Click(object sender, RoutedEventArgs e) => AddTextToPage(string.Empty);
 
+    // =====================================================================
+    // Paste from clipboard — individual boxes
+    // =====================================================================
     private void PasteClipboardText_Click(object sender, RoutedEventArgs e)
     {
         if (!Clipboard.ContainsText())
@@ -2134,19 +2183,77 @@ public partial class MainWindow : Window
         }
 
         string text = Clipboard.GetText();
-        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        int placed = 0;
-        foreach (var raw in lines)
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        // Split into individual keywords / phrases. Any whitespace, newline,
+        // comma, semicolon, pipe, slash is treated as a separator.
+        var tokens = new List<string>();
+        foreach (var raw in text.Split(
+                     new[] { '\r', '\n', '\t', ' ', ',', ';', '|', '/' },
+                     StringSplitOptions.RemoveEmptyEntries))
         {
-            string line = raw.Trim();
-            if (string.IsNullOrEmpty(line)) continue;
-            AddTextToPage(line);
-            placed++;
+            var trimmed = raw.Trim();
+            if (trimmed.Length > 0) tokens.Add(trimmed);
         }
-        if (placed == 0) AddTextToPage(text.Trim());
-        StatusText.Text = placed > 1
-            ? $"Pasted {placed} lines as separate text boxes."
-            : "Pasted text. Switch to Lasso to move it.";
+
+        if (tokens.Count == 0) return;
+
+        // Each token becomes its own freely-movable text box.
+        // Lay them out in a grid so they don't overlap.
+        const double boxW = 180;
+        const double boxH = 42;
+        const double gap = 20;
+        const double margin = 60;
+
+        int perRow = 6;
+        int numRows = (tokens.Count + perRow - 1) / perRow;
+
+        double neededW = margin + perRow * (boxW + gap) + margin;
+        double neededH = margin + numRows * (boxH + gap) + margin;
+
+        // Auto-grow the sheet if the tokens won't fit.
+        if (neededW > CurrentPage.WorldWidth || neededH > CurrentPage.WorldHeight)
+        {
+            CurrentPage.WorldWidth = Math.Max(CurrentPage.WorldWidth, neededW);
+            CurrentPage.WorldHeight = Math.Max(CurrentPage.WorldHeight, neededH);
+            ApplyWorldSizeToCanvas();
+        }
+
+        double visLeft = -_viewPanX / _viewZoom;
+        double visTop = -_viewPanY / _viewZoom;
+
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            var tb = new TextBox
+            {
+                Text = tokens[i],
+                AcceptsReturn = false,
+                TextWrapping = TextWrapping.NoWrap,
+                FontSize = 18,
+                Width = boxW,
+                MinHeight = 32,
+                Padding = new Thickness(8, 4, 8, 4),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromArgb(150, 26, 115, 232)),
+                BorderThickness = new Thickness(1),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+
+            int row = i / perRow;
+            int col = i % perRow;
+            double left = visLeft + margin + col * (boxW + gap);
+            double top = visTop + margin + row * (boxH + gap);
+
+            InkCanvas.SetLeft(tb, left);
+            InkCanvas.SetTop(tb, top);
+            InkArea.Children.Add(tb);
+        }
+
+        // Re-fit the view so the user sees everything they pasted.
+        CenterViewOnCanvas();
+
+        MarkDirty();
+        StatusText.Text = $"Pasted {tokens.Count} item(s) as individual boxes. Switch to Lasso to move them around.";
     }
 
     private void AddTextToPage(string initialText)
@@ -2238,16 +2345,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SpacingCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    // === Spacing 1–60 via slider ===
+    private void SpacingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        if (!_uiReady || PageBackground is null) return;
-        if (SpacingCombo.SelectedItem is ComboBoxItem item
-            && double.TryParse(item.Content?.ToString(), out var s))
-        {
-            CurrentPage.Spacing = s;
-            UpdatePageBackground();
-            MarkDirty();
-        }
+        if (!_uiReady || _suppressSpacingChange) return;
+        if (PageBackground is null) return;
+
+        CurrentPage.Spacing = e.NewValue;
+        if (SpacingText is not null)
+            SpacingText.Text = ((int)Math.Round(e.NewValue)).ToString();
+
+        UpdatePageBackground();
+        MarkDirty();
     }
 
     private void CursorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2406,17 +2515,15 @@ public partial class MainWindow : Window
             templateBtn.IsChecked = true;
         }
 
-        if (SpacingCombo is not null)
+        // Spacing slider (1–60) instead of old combo box.
+        if (SpacingSlider is not null)
         {
-            foreach (ComboBoxItem item in SpacingCombo.Items)
-            {
-                if (item.Content?.ToString() == ((int)CurrentPage.Spacing).ToString())
-                {
-                    SpacingCombo.SelectedItem = item;
-                    break;
-                }
-            }
+            _suppressSpacingChange = true;
+            SpacingSlider.Value = Math.Clamp(CurrentPage.Spacing, 1, 60);
+            _suppressSpacingChange = false;
         }
+        if (SpacingText is not null)
+            SpacingText.Text = ((int)Math.Round(CurrentPage.Spacing)).ToString();
 
         UpdatePageBackground();
     }
@@ -2486,7 +2593,7 @@ public partial class MainWindow : Window
         }
         UpdateCursor();
         if (StatusText is not null)
-            StatusText.Text = "Lasso (4): drag around ink to select. Drag inside selection to move. Delete removes it. Ctrl+C / Ctrl+V copies / pastes.";
+            StatusText.Text = "Lasso (4): drag around ink or items to select. Drag inside selection to move. Delete removes it. Ctrl+C / Ctrl+V copies / pastes.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2934,7 +3041,7 @@ public partial class MainWindow : Window
                     var page = new NotebookPage
                     {
                         BackgroundColor = ParseHexColor(pm.BackgroundColor ?? "#FFFFFF", Colors.White),
-                        Spacing = pm.Spacing is double s && s > 0 ? s : 40
+                        Spacing = pm.Spacing is double s && s > 0 ? Math.Clamp(s, 1, 60) : 40
                     };
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;

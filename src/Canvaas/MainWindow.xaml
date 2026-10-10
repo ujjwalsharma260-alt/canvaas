@@ -457,7 +457,6 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Canvas.RenderTransform>
 
-                    <!-- The A4 sheet. Has a thin outline so you can see its edges. -->
                     <Rectangle x:Name="PageBackground"
                                Canvas.Left="0" Canvas.Top="0"
                                Fill="White"
@@ -476,8 +475,6 @@
                 </Canvas>
             </Border>
 
-            <!-- Overlay Canvas. The + buttons are created at runtime so we can
-                 have one per A4 segment along each edge. -->
             <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True"/>
 
             <Border x:Name="SidePanel" HorizontalAlignment="Right" Width="320"
@@ -513,13 +510,15 @@
                         </UniformGrid>
 
                         <TextBlock Text="Spacing" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                        <ComboBox x:Name="SpacingCombo" Width="110" HorizontalAlignment="Left" SelectionChanged="SpacingCombo_SelectionChanged">
-                            <ComboBoxItem Content="20"/>
-                            <ComboBoxItem Content="30"/>
-                            <ComboBoxItem Content="40" IsSelected="True"/>
-                            <ComboBoxItem Content="50"/>
-                            <ComboBoxItem Content="60"/>
-                        </ComboBox>
+                        <DockPanel>
+                            <TextBlock x:Name="SpacingText" DockPanel.Dock="Right" Text="40"
+                                       Width="32" TextAlignment="Right"
+                                       VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
+                            <Slider x:Name="SpacingSlider" Minimum="1" Maximum="60" Value="40"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="SpacingSlider_ValueChanged"/>
+                        </DockPanel>
 
                         <TextBlock Text="Cursor over page" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
                         <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
