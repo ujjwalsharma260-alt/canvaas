@@ -108,6 +108,36 @@
             </Setter>
         </Style>
 
+        <!-- NEW: Style for the round "+" buttons on the edges of the A4 sheet -->
+        <Style x:Key="EdgeAddButton" TargetType="Button">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#1A73E8"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    CornerRadius="17" BorderBrush="White" BorderThickness="2"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#0D47A1"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#0B3A85"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ColorSwatch" TargetType="RadioButton">
             <Setter Property="Width" Value="46"/>
             <Setter Property="Height" Value="46"/>
@@ -352,15 +382,13 @@
                                  KeyDown="PageCounterBox_KeyDown" LostFocus="PageCounterBox_LostFocus"/>
                     </Border>
                     <Button x:Name="NextPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
-                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Extend canvas or manage pages" Margin="6,0,2,0" Click="AddPageButton_Click">
+                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Extend the sheet or manage notebook pages" Margin="6,0,2,0" Click="AddPageButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Extend canvas  →  Right" Click="ExtendRight_Click"/>
-                                <MenuItem Header="Extend canvas  ←  Left" Click="ExtendLeft_Click"/>
-                                <MenuItem Header="Extend canvas  ↑  Up" Click="ExtendUp_Click"/>
-                                <MenuItem Header="Extend canvas  ↓  Down" Click="ExtendDown_Click"/>
-                                <Separator/>
-                                <MenuItem Header="Extend all sides" Click="ExtendAll_Click"/>
+                                <MenuItem Header="Extend sheet  →  Right (add A4)" Click="ExtendRight_Click"/>
+                                <MenuItem Header="Extend sheet  ←  Left (add A4)" Click="ExtendLeft_Click"/>
+                                <MenuItem Header="Extend sheet  ↑  Up (add A4)" Click="ExtendUp_Click"/>
+                                <MenuItem Header="Extend sheet  ↓  Down (add A4)" Click="ExtendDown_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Add a new notebook page" Click="NewNotebookPage_Click"/>
                                 <MenuItem Header="Delete this notebook page" Click="DeletePageButton_Click"/>
@@ -422,7 +450,7 @@
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
                 <Grid x:Name="CanvasHost"
-                      Width="1500" Height="1000"
+                      Width="794" Height="1123"
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       RenderTransformOrigin="0,0"
                       Background="Transparent">
@@ -430,15 +458,15 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
 
-                    <!-- Single unified paper. Grows when user extends the canvas. -->
+                    <!-- A4 sheet. Grows by A4 chunks when the + buttons are clicked. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="1500" Height="1000"
+                               Width="794" Height="1123"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Fill="White"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="1500" Height="1000"
+                               Width="794" Height="1123"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Background="Transparent"
                                ForceCursor="True"
@@ -449,6 +477,22 @@
                                SelectionChanged="InkArea_SelectionChanged"/>
                 </Grid>
             </Border>
+
+            <!-- NEW: overlay with the 4 round "+" buttons on the sheet edges -->
+            <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True">
+                <Button x:Name="ExtendRightButton" Style="{StaticResource EdgeAddButton}"
+                        Content="&#xE710;" ToolTip="Add an A4 sheet to the right"
+                        Click="ExtendRight_Click"/>
+                <Button x:Name="ExtendLeftButton" Style="{StaticResource EdgeAddButton}"
+                        Content="&#xE710;" ToolTip="Add an A4 sheet to the left"
+                        Click="ExtendLeft_Click"/>
+                <Button x:Name="ExtendUpButton" Style="{StaticResource EdgeAddButton}"
+                        Content="&#xE710;" ToolTip="Add an A4 sheet above"
+                        Click="ExtendUp_Click"/>
+                <Button x:Name="ExtendDownButton" Style="{StaticResource EdgeAddButton}"
+                        Content="&#xE710;" ToolTip="Add an A4 sheet below"
+                        Click="ExtendDown_Click"/>
+            </Canvas>
 
             <Border x:Name="SidePanel" HorizontalAlignment="Right" Width="320"
                     Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
@@ -550,7 +594,7 @@
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="30">
             <Grid Margin="10,3">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="Click + to extend the canvas. 1–5 switch tools. Middle-mouse drag to pan."
+                    <TextBlock x:Name="StatusText" Text="Click the + buttons on the sheet edges to add A4 sheets. 1–5 switch tools."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>

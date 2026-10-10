@@ -26,11 +26,12 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    // === GROWING CANVAS ===
-    private const double InitialCanvasWidth = 1500;
-    private const double InitialCanvasHeight = 1000;
-    private const double CanvasGrowthStepX = 1500;
-    private const double CanvasGrowthStepY = 1000;
+    // === A4 SHEET CANVAS ===
+    // A4 at 96 DPI is 794 x 1123 pixels. Each click of the + buttons adds
+    // one A4 worth of space in that direction. Zoom is never changed by
+    // adding a sheet — only the paper grows.
+    private const double A4Width = 794;
+    private const double A4Height = 1123;
     private const double MaxCanvasDimension = 30_000;
 
     private const double MinZoom = 0.01;
@@ -40,7 +41,7 @@ public partial class MainWindow : Window
     private const double SwipeMaxDurationMs = 700;
     private const double ZoomStepFactor = 1.25;
 
-    private enum ExpandDirection { Right, Left, Up, Down, All }
+    private enum ExpandDirection { Right, Left, Up, Down }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -107,8 +108,8 @@ public partial class MainWindow : Window
         public double Spacing { get; set; } = 40;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
-        public double WorldWidth { get; set; } = InitialCanvasWidth;
-        public double WorldHeight { get; set; } = InitialCanvasHeight;
+        public double WorldWidth { get; set; } = A4Width;
+        public double WorldHeight { get; set; } = A4Height;
 
         public double ViewZoom { get; set; } = 1.0;
         public double ViewPanX { get; set; } = double.NaN;
@@ -223,11 +224,17 @@ public partial class MainWindow : Window
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
+                    PositionEdgeButtons();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
 
         StateChanged += MainWindow_StateChanged;
+
+        // Reposition edge buttons when the viewport size changes (window resize,
+        // maximize, fullscreen toggle, etc.).
+        if (CanvasHostBorder is not null)
+            CanvasHostBorder.SizeChanged += (s, e) => PositionEdgeButtons();
 
         _pages.Add(new NotebookPage());
         _currentPageIndex = 0;
@@ -251,7 +258,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // === GROWING CANVAS ===
+    // === A4 SHEET CANVAS ===
     // =====================================================================
 
     private void ApplyWorldSizeToCanvas()
@@ -268,7 +275,6 @@ public partial class MainWindow : Window
         InkArea.Width = w;
         InkArea.Height = h;
 
-        // Force WPF to re-measure and re-draw everything.
         CanvasHost.InvalidateMeasure();
         CanvasHost.InvalidateArrange();
         CanvasHost.InvalidateVisual();
@@ -280,14 +286,10 @@ public partial class MainWindow : Window
 
         switch (dir)
         {
-            case ExpandDirection.Right: addRight = CanvasGrowthStepX; break;
-            case ExpandDirection.Left: addLeft = CanvasGrowthStepX; break;
-            case ExpandDirection.Up: addTop = CanvasGrowthStepY; break;
-            case ExpandDirection.Down: addBottom = CanvasGrowthStepY; break;
-            case ExpandDirection.All:
-                addLeft = CanvasGrowthStepX; addRight = CanvasGrowthStepX;
-                addTop = CanvasGrowthStepY; addBottom = CanvasGrowthStepY;
-                break;
+            case ExpandDirection.Right: addRight = A4Width; break;
+            case ExpandDirection.Left: addLeft = A4Width; break;
+            case ExpandDirection.Up: addTop = A4Height; break;
+            case ExpandDirection.Down: addBottom = A4Height; break;
         }
 
         double newW = CurrentPage.WorldWidth + addLeft + addRight;
@@ -296,9 +298,9 @@ public partial class MainWindow : Window
         if (newW > MaxCanvasDimension || newH > MaxCanvasDimension)
         {
             MessageBox.Show(this,
-                $"The canvas is already {CurrentPage.WorldWidth:0} × {CurrentPage.WorldHeight:0}.\n\n" +
+                $"The sheet is already {CurrentPage.WorldWidth:0} × {CurrentPage.WorldHeight:0}.\n\n" +
                 $"Canvaas allows a maximum of {MaxCanvasDimension:0} × {MaxCanvasDimension:0} per page.",
-                "Canvas is at maximum size", MessageBoxButton.OK, MessageBoxImage.Information);
+                "Sheet is at maximum size", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -317,56 +319,106 @@ public partial class MainWindow : Window
 
         ApplyWorldSizeToCanvas();
 
-        // Force an immediate layout pass so the paper visibly grows.
+        // Force an immediate layout pass and redraw.
         if (CanvasHostBorder is not null)
         {
             CanvasHostBorder.InvalidateVisual();
             CanvasHostBorder.UpdateLayout();
         }
 
-        // Zoom out to fit the whole canvas, so the user SEES the growth.
-        ZoomToFitCanvas();
+        // === ZOOM IS PRESERVED. We only update the transform matrix; the
+        // zoom value itself is never touched. The new A4 area just appears
+        // seamlessly next to the old area (no line, no seam).
+        if (ViewTransform is not null)
+            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
 
-        StatusText.Text = $"Canvas extended {dir.ToString().ToLower()} — new size: {newW:0} × {newH:0} world units.";
+        SaveCurrentViewToPage();
+        PositionEdgeButtons();
+
+        StatusText.Text = $"Added an A4 sheet {dir.ToString().ToLower()}. Sheet is now {newW:0} × {newH:0}.";
         MarkDirty();
-    }
-
-    /// <summary>
-    /// Zoom and pan so the entire canvas fits inside the viewport with a small
-    /// margin. Called after every "extend" so the growth is obvious.
-    /// </summary>
-    private void ZoomToFitCanvas()
-    {
-        if (CanvasHostBorder is null) return;
-
-        double vw = CanvasHostBorder.ActualWidth;
-        double vh = CanvasHostBorder.ActualHeight;
-        if (vw < 10 || vh < 10) return;
-
-        double w = CurrentPage.WorldWidth;
-        double h = CurrentPage.WorldHeight;
-
-        // Fit with 10% margin so the whole paper is clearly visible.
-        double margin = 0.9;
-        double zoomX = vw * margin / w;
-        double zoomY = vh * margin / h;
-        double fitZoom = Math.Min(zoomX, zoomY);
-        fitZoom = Math.Clamp(fitZoom, MinZoom, 1.0); // don't zoom in past 100%
-
-        _viewZoom = fitZoom;
-
-        // Center the paper in the viewport.
-        _viewPanX = (vw - w * _viewZoom) / 2.0;
-        _viewPanY = (vh - h * _viewZoom) / 2.0;
-
-        ApplyView();
     }
 
     private void ExtendRight_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Right);
     private void ExtendLeft_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Left);
     private void ExtendUp_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Up);
     private void ExtendDown_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Down);
-    private void ExtendAll_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.All);
+
+    /// <summary>
+    /// Positions the four round "+" buttons so that each sits just outside the
+    /// corresponding edge of the sheet. If the sheet extends past the viewport,
+    /// the buttons are clamped to the viewport edge so they stay clickable.
+    /// </summary>
+    private void PositionEdgeButtons()
+    {
+        if (CanvasHostBorder is null || EdgeButtonOverlay is null) return;
+        if (ExtendRightButton is null || ExtendLeftButton is null
+            || ExtendUpButton is null || ExtendDownButton is null) return;
+
+        double vw = CanvasHostBorder.ActualWidth;
+        double vh = CanvasHostBorder.ActualHeight;
+        if (vw < 20 || vh < 20) return;
+
+        double w = CurrentPage.WorldWidth;
+        double h = CurrentPage.WorldHeight;
+
+        // Sheet rect in screen (viewport) coordinates.
+        double left = _viewPanX;
+        double top = _viewPanY;
+        double right = _viewPanX + w * _viewZoom;
+        double bottom = _viewPanY + h * _viewZoom;
+
+        double cx = (left + right) / 2.0;
+        double cy = (top + bottom) / 2.0;
+
+        double btnW = ExtendRightButton.Width;
+        double btnH = ExtendRightButton.Height;
+        if (double.IsNaN(btnW) || btnW <= 0) btnW = 34;
+        if (double.IsNaN(btnH) || btnH <= 0) btnH = 34;
+
+        const double margin = 10;   // gap between sheet edge and button
+        const double pad = 6;       // padding from viewport edges when clamped
+
+        // RIGHT
+        double rx = right + margin;
+        double ry = cy - btnH / 2.0;
+        if (rx + btnW > vw - pad) rx = vw - btnW - pad;
+        if (rx < pad) rx = pad;
+        if (ry + btnH > vh - pad) ry = vh - btnH - pad;
+        if (ry < pad) ry = pad;
+        Canvas.SetLeft(ExtendRightButton, rx);
+        Canvas.SetTop(ExtendRightButton, ry);
+
+        // LEFT
+        double lx = left - btnW - margin;
+        double ly = cy - btnH / 2.0;
+        if (lx < pad) lx = pad;
+        if (lx + btnW > vw - pad) lx = vw - btnW - pad;
+        if (ly + btnH > vh - pad) ly = vh - btnH - pad;
+        if (ly < pad) ly = pad;
+        Canvas.SetLeft(ExtendLeftButton, lx);
+        Canvas.SetTop(ExtendLeftButton, ly);
+
+        // TOP
+        double tx = cx - btnW / 2.0;
+        double ty = top - btnH - margin;
+        if (ty < pad) ty = pad;
+        if (ty + btnH > vh - pad) ty = vh - btnH - pad;
+        if (tx + btnW > vw - pad) tx = vw - btnW - pad;
+        if (tx < pad) tx = pad;
+        Canvas.SetLeft(ExtendUpButton, tx);
+        Canvas.SetTop(ExtendUpButton, ty);
+
+        // BOTTOM
+        double bx = cx - btnW / 2.0;
+        double by = bottom + margin;
+        if (by + btnH > vh - pad) by = vh - btnH - pad;
+        if (by < pad) by = pad;
+        if (bx + btnW > vw - pad) bx = vw - btnW - pad;
+        if (bx < pad) bx = pad;
+        Canvas.SetLeft(ExtendDownButton, bx);
+        Canvas.SetTop(ExtendDownButton, by);
+    }
 
     private void ShiftCurrentPageContent(double dx, double dy)
     {
@@ -936,6 +988,7 @@ public partial class MainWindow : Window
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         SaveCurrentViewToPage();
+        PositionEdgeButtons();
     }
 
     private void ZoomAt(Point viewPoint, double factor)
@@ -989,6 +1042,7 @@ public partial class MainWindow : Window
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = "100%";
+        PositionEdgeButtons();
     }
 
     private void SaveCurrentViewToPage()
@@ -1017,6 +1071,7 @@ public partial class MainWindow : Window
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+        PositionEdgeButtons();
     }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(ZoomStepFactor);
@@ -1130,6 +1185,8 @@ public partial class MainWindow : Window
             RestoreViewFromPage();
         else
             CenterViewOnCanvas();
+
+        PositionEdgeButtons();
     }
 
     private void UpdatePageNavigationUI()
@@ -1401,6 +1458,7 @@ public partial class MainWindow : Window
             _viewPanY = _panStartPanY + (screenPt.Y - _panStart.Y);
             if (ViewTransform is not null)
                 ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+            PositionEdgeButtons();
             e.Handled = true;
             return;
         }
@@ -1465,6 +1523,7 @@ public partial class MainWindow : Window
             if (dx < 0) NextPageButton_Click(this, new RoutedEventArgs());
             else PrevPageButton_Click(this, new RoutedEventArgs());
             UpdateCursor();
+            PositionEdgeButtons();
             return;
         }
 
@@ -1771,6 +1830,8 @@ public partial class MainWindow : Window
             MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
             MaximizeButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
         }
+        // Maximize/restore changes the viewport size; reposition the + buttons.
+        Dispatcher.BeginInvoke(new Action(PositionEdgeButtons), DispatcherPriority.Loaded);
     }
 
     // =====================================================================
