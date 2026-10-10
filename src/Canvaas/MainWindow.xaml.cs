@@ -26,10 +26,7 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    // === A4 SHEET CANVAS ===
-    // A4 at 96 DPI is 794 x 1123 pixels. Each click of the + buttons adds
-    // one A4 worth of space in that direction. Zoom is never changed by
-    // adding a sheet — only the paper grows.
+    // A4 at 96 DPI = 794 x 1123 world units.
     private const double A4Width = 794;
     private const double A4Height = 1123;
     private const double MaxCanvasDimension = 30_000;
@@ -224,17 +221,15 @@ public partial class MainWindow : Window
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
-                    PositionEdgeButtons();
+                    RebuildEdgeButtons();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
 
         StateChanged += MainWindow_StateChanged;
 
-        // Reposition edge buttons when the viewport size changes (window resize,
-        // maximize, fullscreen toggle, etc.).
         if (CanvasHostBorder is not null)
-            CanvasHostBorder.SizeChanged += (s, e) => PositionEdgeButtons();
+            CanvasHostBorder.SizeChanged += (s, e) => RebuildEdgeButtons();
 
         _pages.Add(new NotebookPage());
         _currentPageIndex = 0;
@@ -258,7 +253,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // === A4 SHEET CANVAS ===
+    // A4 sheet canvas + dynamic edge buttons
     // =====================================================================
 
     private void ApplyWorldSizeToCanvas()
@@ -319,21 +314,18 @@ public partial class MainWindow : Window
 
         ApplyWorldSizeToCanvas();
 
-        // Force an immediate layout pass and redraw.
         if (CanvasHostBorder is not null)
         {
             CanvasHostBorder.InvalidateVisual();
             CanvasHostBorder.UpdateLayout();
         }
 
-        // === ZOOM IS PRESERVED. We only update the transform matrix; the
-        // zoom value itself is never touched. The new A4 area just appears
-        // seamlessly next to the old area (no line, no seam).
+        // Zoom is preserved — only the transform matrix is refreshed.
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
 
         SaveCurrentViewToPage();
-        PositionEdgeButtons();
+        RebuildEdgeButtons();
 
         StatusText.Text = $"Added an A4 sheet {dir.ToString().ToLower()}. Sheet is now {newW:0} × {newH:0}.";
         MarkDirty();
@@ -345,79 +337,110 @@ public partial class MainWindow : Window
     private void ExtendDown_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Down);
 
     /// <summary>
-    /// Positions the four round "+" buttons so that each sits just outside the
-    /// corresponding edge of the sheet. If the sheet extends past the viewport,
-    /// the buttons are clamped to the viewport edge so they stay clickable.
+    /// Rebuild the round "+" buttons: one per A4 column along the top and
+    /// bottom edges, and one per A4 row along the left and right edges.
+    /// This matches the visual style of the mockup — as the sheet grows wider,
+    /// more "+" buttons appear along the top and bottom, and as it grows
+    /// taller, more appear along the sides.
     /// </summary>
-    private void PositionEdgeButtons()
+    private void RebuildEdgeButtons()
     {
         if (CanvasHostBorder is null || EdgeButtonOverlay is null) return;
-        if (ExtendRightButton is null || ExtendLeftButton is null
-            || ExtendUpButton is null || ExtendDownButton is null) return;
 
         double vw = CanvasHostBorder.ActualWidth;
         double vh = CanvasHostBorder.ActualHeight;
         if (vw < 20 || vh < 20) return;
 
+        // Clear the overlay and rebuild from scratch.
+        EdgeButtonOverlay.Children.Clear();
+
         double w = CurrentPage.WorldWidth;
         double h = CurrentPage.WorldHeight;
 
-        // Sheet rect in screen (viewport) coordinates.
-        double left = _viewPanX;
-        double top = _viewPanY;
-        double right = _viewPanX + w * _viewZoom;
-        double bottom = _viewPanY + h * _viewZoom;
+        int cols = Math.Max(1, (int)Math.Round(w / A4Width));
+        int rows = Math.Max(1, (int)Math.Round(h / A4Height));
 
-        double cx = (left + right) / 2.0;
-        double cy = (top + bottom) / 2.0;
+        // Sheet rectangle in viewport (screen) coordinates.
+        double sheetL = _viewPanX;
+        double sheetT = _viewPanY;
+        double sheetR = _viewPanX + w * _viewZoom;
+        double sheetB = _viewPanY + h * _viewZoom;
 
-        double btnW = ExtendRightButton.Width;
-        double btnH = ExtendRightButton.Height;
-        if (double.IsNaN(btnW) || btnW <= 0) btnW = 34;
-        if (double.IsNaN(btnH) || btnH <= 0) btnH = 34;
+        double colScreenWidth = (sheetR - sheetL) / cols;
+        double rowScreenHeight = (sheetB - sheetT) / rows;
 
-        const double margin = 10;   // gap between sheet edge and button
-        const double pad = 6;       // padding from viewport edges when clamped
+        const double btnSize = 30;
+        const double margin = 8;
+        const double pad = 4;
 
-        // RIGHT
-        double rx = right + margin;
-        double ry = cy - btnH / 2.0;
-        if (rx + btnW > vw - pad) rx = vw - btnW - pad;
-        if (rx < pad) rx = pad;
-        if (ry + btnH > vh - pad) ry = vh - btnH - pad;
-        if (ry < pad) ry = pad;
-        Canvas.SetLeft(ExtendRightButton, rx);
-        Canvas.SetTop(ExtendRightButton, ry);
+        // TOP edge — one per column
+        for (int i = 0; i < cols; i++)
+        {
+            double cx = sheetL + colScreenWidth * (i + 0.5);
+            double x = cx - btnSize / 2.0;
+            double y = sheetT - btnSize - margin;
+            ClampToViewport(ref x, ref y, vw, vh, btnSize, pad);
+            AddEdgeButton(x, y, ExpandDirection.Up, "Add an A4 sheet above");
+        }
 
-        // LEFT
-        double lx = left - btnW - margin;
-        double ly = cy - btnH / 2.0;
-        if (lx < pad) lx = pad;
-        if (lx + btnW > vw - pad) lx = vw - btnW - pad;
-        if (ly + btnH > vh - pad) ly = vh - btnH - pad;
-        if (ly < pad) ly = pad;
-        Canvas.SetLeft(ExtendLeftButton, lx);
-        Canvas.SetTop(ExtendLeftButton, ly);
+        // BOTTOM edge — one per column
+        for (int i = 0; i < cols; i++)
+        {
+            double cx = sheetL + colScreenWidth * (i + 0.5);
+            double x = cx - btnSize / 2.0;
+            double y = sheetB + margin;
+            ClampToViewport(ref x, ref y, vw, vh, btnSize, pad);
+            AddEdgeButton(x, y, ExpandDirection.Down, "Add an A4 sheet below");
+        }
 
-        // TOP
-        double tx = cx - btnW / 2.0;
-        double ty = top - btnH - margin;
-        if (ty < pad) ty = pad;
-        if (ty + btnH > vh - pad) ty = vh - btnH - pad;
-        if (tx + btnW > vw - pad) tx = vw - btnW - pad;
-        if (tx < pad) tx = pad;
-        Canvas.SetLeft(ExtendUpButton, tx);
-        Canvas.SetTop(ExtendUpButton, ty);
+        // LEFT edge — one per row
+        for (int j = 0; j < rows; j++)
+        {
+            double cy = sheetT + rowScreenHeight * (j + 0.5);
+            double x = sheetL - btnSize - margin;
+            double y = cy - btnSize / 2.0;
+            ClampToViewport(ref x, ref y, vw, vh, btnSize, pad);
+            AddEdgeButton(x, y, ExpandDirection.Left, "Add an A4 sheet to the left");
+        }
 
-        // BOTTOM
-        double bx = cx - btnW / 2.0;
-        double by = bottom + margin;
-        if (by + btnH > vh - pad) by = vh - btnH - pad;
-        if (by < pad) by = pad;
-        if (bx + btnW > vw - pad) bx = vw - btnW - pad;
-        if (bx < pad) bx = pad;
-        Canvas.SetLeft(ExtendDownButton, bx);
-        Canvas.SetTop(ExtendDownButton, by);
+        // RIGHT edge — one per row
+        for (int j = 0; j < rows; j++)
+        {
+            double cy = sheetT + rowScreenHeight * (j + 0.5);
+            double x = sheetR + margin;
+            double y = cy - btnSize / 2.0;
+            ClampToViewport(ref x, ref y, vw, vh, btnSize, pad);
+            AddEdgeButton(x, y, ExpandDirection.Right, "Add an A4 sheet to the right");
+        }
+    }
+
+    private void AddEdgeButton(double x, double y, ExpandDirection dir, string tooltip)
+    {
+        var btn = new Button
+        {
+            Style = (Style)FindResource("EdgeAddButton"),
+            Content = "\uE710",
+            ToolTip = tooltip,
+            Tag = dir
+        };
+        btn.Click += EdgeButton_Click;
+        Canvas.SetLeft(btn, x);
+        Canvas.SetTop(btn, y);
+        EdgeButtonOverlay.Children.Add(btn);
+    }
+
+    private void EdgeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.Tag is ExpandDirection dir)
+            ExpandCanvas(dir);
+    }
+
+    private static void ClampToViewport(ref double x, ref double y, double vw, double vh, double size, double pad)
+    {
+        if (x < pad) x = pad;
+        if (y < pad) y = pad;
+        if (x + size > vw - pad) x = vw - size - pad;
+        if (y + size > vh - pad) y = vh - size - pad;
     }
 
     private void ShiftCurrentPageContent(double dx, double dy)
@@ -988,7 +1011,7 @@ public partial class MainWindow : Window
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         SaveCurrentViewToPage();
-        PositionEdgeButtons();
+        RebuildEdgeButtons();
     }
 
     private void ZoomAt(Point viewPoint, double factor)
@@ -1042,7 +1065,7 @@ public partial class MainWindow : Window
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = "100%";
-        PositionEdgeButtons();
+        RebuildEdgeButtons();
     }
 
     private void SaveCurrentViewToPage()
@@ -1071,7 +1094,7 @@ public partial class MainWindow : Window
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
-        PositionEdgeButtons();
+        RebuildEdgeButtons();
     }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(ZoomStepFactor);
@@ -1186,7 +1209,7 @@ public partial class MainWindow : Window
         else
             CenterViewOnCanvas();
 
-        PositionEdgeButtons();
+        RebuildEdgeButtons();
     }
 
     private void UpdatePageNavigationUI()
@@ -1458,7 +1481,7 @@ public partial class MainWindow : Window
             _viewPanY = _panStartPanY + (screenPt.Y - _panStart.Y);
             if (ViewTransform is not null)
                 ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-            PositionEdgeButtons();
+            RebuildEdgeButtons();
             e.Handled = true;
             return;
         }
@@ -1523,7 +1546,7 @@ public partial class MainWindow : Window
             if (dx < 0) NextPageButton_Click(this, new RoutedEventArgs());
             else PrevPageButton_Click(this, new RoutedEventArgs());
             UpdateCursor();
-            PositionEdgeButtons();
+            RebuildEdgeButtons();
             return;
         }
 
@@ -1830,8 +1853,7 @@ public partial class MainWindow : Window
             MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
             MaximizeButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
         }
-        // Maximize/restore changes the viewport size; reposition the + buttons.
-        Dispatcher.BeginInvoke(new Action(PositionEdgeButtons), DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(new Action(RebuildEdgeButtons), DispatcherPriority.Loaded);
     }
 
     // =====================================================================

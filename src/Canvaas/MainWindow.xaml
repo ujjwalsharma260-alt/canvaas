@@ -108,29 +108,31 @@
             </Setter>
         </Style>
 
-        <!-- NEW: Style for the round "+" buttons on the edges of the A4 sheet -->
+        <!-- Style for the round "+" buttons on the edges of the sheet -->
         <Style x:Key="EdgeAddButton" TargetType="Button">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="34"/>
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="30"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background" Value="#1A73E8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#1A73E8"/>
+            <Setter Property="Background" Value="White"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
                             <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                    CornerRadius="17" BorderBrush="White" BorderThickness="2"/>
+                                    CornerRadius="15" BorderBrush="#1A73E8" BorderThickness="1.4"/>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#0D47A1"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#1A73E8"/>
+                                <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#0B3A85"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#0D47A1"/>
+                                <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -458,7 +460,6 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
 
-                    <!-- A4 sheet. Grows by A4 chunks when the + buttons are clicked. -->
                     <Rectangle x:Name="PageBackground"
                                Width="794" Height="1123"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -478,21 +479,9 @@
                 </Grid>
             </Border>
 
-            <!-- NEW: overlay with the 4 round "+" buttons on the sheet edges -->
-            <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True">
-                <Button x:Name="ExtendRightButton" Style="{StaticResource EdgeAddButton}"
-                        Content="&#xE710;" ToolTip="Add an A4 sheet to the right"
-                        Click="ExtendRight_Click"/>
-                <Button x:Name="ExtendLeftButton" Style="{StaticResource EdgeAddButton}"
-                        Content="&#xE710;" ToolTip="Add an A4 sheet to the left"
-                        Click="ExtendLeft_Click"/>
-                <Button x:Name="ExtendUpButton" Style="{StaticResource EdgeAddButton}"
-                        Content="&#xE710;" ToolTip="Add an A4 sheet above"
-                        Click="ExtendUp_Click"/>
-                <Button x:Name="ExtendDownButton" Style="{StaticResource EdgeAddButton}"
-                        Content="&#xE710;" ToolTip="Add an A4 sheet below"
-                        Click="ExtendDown_Click"/>
-            </Canvas>
+            <!-- Overlay Canvas. The + buttons are created at runtime so we can
+                 have one per A4 segment along each edge. -->
+            <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True"/>
 
             <Border x:Name="SidePanel" HorizontalAlignment="Right" Width="320"
                     Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
@@ -594,7 +583,7 @@
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="30">
             <Grid Margin="10,3">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="Click the + buttons on the sheet edges to add A4 sheets. 1–5 switch tools."
+                    <TextBlock x:Name="StatusText" Text="Click a + on any edge to add an A4 sheet in that direction. 1–5 switch tools."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>
