@@ -341,11 +341,8 @@
         <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-
                     <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
-
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-
                     <Button x:Name="PrevPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76B;" ToolTip="Previous page (Left arrow)" Click="PrevPageButton_Click"/>
                     <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="4,0" MinWidth="76">
                         <TextBox x:Name="PageCounterBox" Text="1 / 1"
@@ -356,9 +353,7 @@
                     </Border>
                     <Button x:Name="NextPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
                     <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Add a new blank page" Margin="6,0,2,0" Click="AddPageButton_Click"/>
-
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-
                     <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert image, text, or from clipboard" Click="MenuButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
@@ -387,9 +382,7 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
-
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-
                     <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen" Click="FullscreenButton_Click"/>
                 </StackPanel>
 
@@ -416,7 +409,7 @@
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
                 <Grid x:Name="CanvasHost"
-                      Width="10000" Height="10000"
+                      Width="1000000" Height="1000000"
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       RenderTransformOrigin="0,0"
                       Background="Transparent">
@@ -424,15 +417,15 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
 
-                    <!-- Paper: full canvas size, pattern tiles infinitely -->
+                    <!-- Paper: 1 million x 1 million, no border. Effectively infinite. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="10000" Height="10000"
+                               Width="1000000" Height="1000000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Fill="White"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="10000" Height="10000"
+                               Width="1000000" Height="1000000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Background="Transparent"
                                ForceCursor="True"

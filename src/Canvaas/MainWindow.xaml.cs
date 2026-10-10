@@ -30,7 +30,7 @@ public partial class MainWindow : Window
     private const double PageHeightDefault = 1120;
     private const double CanvasWorldSize = 10000;
     private const double MinZoom = 0.01;      // 1%
-    private const double MaxZoom = 20.0;      // 2000%
+    private const double MaxZoom = 40.0;      // 4000%
     private const double ExportMaxDim = 3000;
     private const double SwipeMinDist = 250;
     private const double SwipeMaxDurationMs = 700;
@@ -2557,7 +2557,7 @@ public partial class MainWindow : Window
     private void UpdateTitle()
     {
         string name = _currentPath is null ? "Untitled" : System.IO.Path.GetFileNameWithoutExtension(_currentPath);
-        string text = $"{name}{(_dirty ? " *" : "")} - Canvaas";
+        string text = $"{name}{(_dirty ?    private const double MaxZoom = 40.0;      // 4000%" *" : "")} - Canvaas";
         Title = text;
         if (TitleBarText is not null) TitleBarText.Text = text;
     }
