@@ -175,6 +175,27 @@
             </Setter>
         </Style>
 
+        <Style x:Key="PaperThumb" TargetType="RadioButton">
+            <Setter Property="Width" Value="70"/>
+            <Setter Property="Height" Value="90"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid>
+                            <Border x:Name="ThumbBorder" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="{TemplateBinding Background}"/>
+                            <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="TitleBarButton" TargetType="Button">
             <Setter Property="Width" Value="46"/>
             <Setter Property="Height" Value="36"/>
@@ -259,6 +280,47 @@
                 </DrawingGroup>
             </DrawingBrush.Drawing>
         </DrawingBrush>
+
+        <DrawingBrush x:Key="PreviewPaperWhite" TileMode="None">
+            <DrawingBrush.Drawing>
+                <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,70,90"/></GeometryDrawing.Geometry></GeometryDrawing>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+        <DrawingBrush x:Key="PreviewPaperCrumpled" TileMode="Tile" Viewport="0,0,12,12" ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="#EFE9DA"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,12,12"/></GeometryDrawing.Geometry></GeometryDrawing>
+                    <GeometryDrawing>
+                        <GeometryDrawing.Pen><Pen Brush="#D9CFBB" Thickness="0.7"/></GeometryDrawing.Pen>
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <LineGeometry StartPoint="0,3" EndPoint="12,8"/>
+                                <LineGeometry StartPoint="2,0" EndPoint="10,12"/>
+                                <LineGeometry StartPoint="0,9" EndPoint="12,5"/>
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+        <DrawingBrush x:Key="PreviewPaperOld" TileMode="Tile" Viewport="0,0,14,14" ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="#E5D3A7"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,14,14"/></GeometryDrawing.Geometry></GeometryDrawing>
+                    <GeometryDrawing>
+                        <GeometryDrawing.Pen><Pen Brush="#BFA477" Thickness="0.6" Opacity="0.7"/></GeometryDrawing.Pen>
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <LineGeometry StartPoint="0,4" EndPoint="14,4"/>
+                                <LineGeometry StartPoint="0,11" EndPoint="14,11"/>
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
     </Window.Resources>
 
     <Window.CommandBindings>
@@ -294,7 +356,7 @@
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="SidebarButton" Style="{StaticResource ToolIconButton}" Content="&#xE71D;" ToolTip="Toggle page sidebar" Click="SidebarButton_Click"/>
-                    <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Infinite canvas (expand page)" Click="InfiniteCanvasButton_Click"/>
+                    <Button x:Name="InfiniteCanvasButton" Style="{StaticResource ToolIconButton}" Content="&#xE12B;" ToolTip="Infinite canvas" Click="InfiniteCanvasButton_Click"/>
                     <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
                     <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert" Click="MenuButton_Click">
@@ -329,11 +391,11 @@
                     <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen" Click="FullscreenButton_Click"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen" Click="PenButton_Click"/>
-                    <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter" Click="HighlighterButton_Click"/>
-                    <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser" Click="EraserButton_Click"/>
-                    <RadioButton x:Name="LassoButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso select" Click="LassoButton_Click"/>
-                    <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan" Click="HandButton_Click"/>
+                    <RadioButton x:Name="PenButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen (1)" Click="PenButton_Click"/>
+                    <RadioButton x:Name="HighlighterButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter (2)" Click="HighlighterButton_Click"/>
+                    <RadioButton x:Name="EraserButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser (3)" Click="EraserButton_Click"/>
+                    <RadioButton x:Name="LassoButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso (4)" Click="LassoButton_Click"/>
+                    <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (5)" Click="HandButton_Click"/>
                     <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
                     <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
                     <Button x:Name="UndoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A7;" ToolTip="Undo" Command="ApplicationCommands.Undo"/>
@@ -380,7 +442,15 @@
                     Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="18,16">
-                        <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
+
+                        <TextBlock Text="Paper" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
+                        <UniformGrid Columns="3">
+                            <RadioButton x:Name="PaperWhite" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperWhite}" ToolTip="Plain white" Click="PaperThumb_Click" Tag="White"/>
+                            <RadioButton x:Name="PaperCrumpled" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperCrumpled}" ToolTip="Crumpled" Click="PaperThumb_Click" Tag="Crumpled"/>
+                            <RadioButton x:Name="PaperOld" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperOld}" ToolTip="Old letter" Click="PaperThumb_Click" Tag="OldLetter"/>
+                        </UniformGrid>
+
+                        <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
                         <UniformGrid Columns="4" Rows="2">
                             <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
                             <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
@@ -413,8 +483,7 @@
                         <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
                             <ComboBoxItem Content="Arrow"/>
                             <ComboBoxItem Content="Crosshair"/>
-                            <ComboBoxItem Content="Yellow arrow"/>
-                            <ComboBoxItem Content="Yellow dot"/>
+                            <ComboBoxItem Content="Ring + dot (pen colour)"/>
                             <ComboBoxItem Content="Hidden (use pen tip)"/>
                         </ComboBox>
                     </StackPanel>
@@ -489,7 +558,7 @@
                              KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
                 </Border>
                 <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in" Click="ZoomInButton_Click"/>
-                <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom to 100%" Click="ZoomResetButton_Click"/>
+                <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom" Click="ZoomResetButton_Click"/>
             </StackPanel>
         </Border>
 
@@ -500,16 +569,20 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="Ready. Pen or mouse to draw; middle-mouse drag to pan; Ctrl+scroll to zoom."
+                    <TextBlock x:Name="StatusText" Text="1–5 switch tools. Left/Right arrows change page."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="10,2" Margin="6,0">
-                        <TextBlock x:Name="PageCounterText" Text="1 / 1" VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
+                    <Button x:Name="PrevPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76B;" ToolTip="Previous page (Left arrow)" Click="PrevPageButton_Click"/>
+                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="6,0" MinWidth="72">
+                        <TextBox x:Name="PageCounterBox" Text="1 / 1"
+                                 Width="60" BorderThickness="0" Background="Transparent"
+                                 Padding="0" FontSize="12" Foreground="#333333"
+                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                 KeyDown="PageCounterBox_KeyDown" LostFocus="PageCounterBox_LostFocus"/>
                     </Border>
-                    <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
+                    <Button x:Name="NextPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
                     <Rectangle Width="1" Margin="8,6" Fill="#CCCCCC"/>
                     <Button x:Name="AddPageButton" Style="{StaticResource SmallIconButton}" Content="&#xE710;" ToolTip="Add page" Margin="1,0,0,0" Click="AddPageButton_Click"/>
                 </StackPanel>

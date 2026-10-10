@@ -17,7 +17,7 @@ namespace Canvaas;
 
 public partial class MainWindow : Window
 {
-    private const int CurrentFormatVersion = 4;
+    private const int CurrentFormatVersion = 5;
     private const string FileExtension = ".canvaas";
     private const string FileFilter = "Canvaas note (*.canvaas)|*.canvaas";
     private const string ManifestEntryName = "manifest.json";
@@ -30,6 +30,8 @@ public partial class MainWindow : Window
     private const double MinZoom = 0.05;
     private const double MaxZoom = 6.00;
     private const double ExportMaxDim = 3000;
+    private const double SwipeMinDist = 250;
+    private const double SwipeMaxDurationMs = 700;
 
     private static readonly double[] ZoomLevels =
     {
@@ -50,6 +52,7 @@ public partial class MainWindow : Window
         public string? Template { get; set; }
         public double? Spacing { get; set; }
         public string? Mode { get; set; }
+        public string? Paper { get; set; }
     }
 
     private sealed class Manifest
@@ -77,8 +80,9 @@ public partial class MainWindow : Window
 
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum CanvasMode { Page, Infinite }
-    private enum PenCursorStyle { Arrow, Cross, YellowArrow, YellowDot, Hidden }
+    private enum PenCursorStyle { Arrow, Cross, RingDot, Hidden }
     private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand }
+    private enum PaperStyle { White, Crumpled, OldLetter }
 
     private sealed class NotebookPage
     {
@@ -87,6 +91,7 @@ public partial class MainWindow : Window
         public PageTemplate Template { get; set; } = PageTemplate.Blank;
         public double Spacing { get; set; } = 40;
         public CanvasMode Mode { get; set; } = CanvasMode.Page;
+        public PaperStyle Paper { get; set; } = PaperStyle.White;
     }
 
     public sealed class PageThumb
@@ -115,6 +120,7 @@ public partial class MainWindow : Window
 
     private double _zoom = 1.0;
     private bool _suppressPageListChange;
+    private bool _suppressCounterChange;
     private bool _fullscreenMode;
     private bool _uiReady;
 
@@ -124,12 +130,12 @@ public partial class MainWindow : Window
     private bool _pressureEnabled = true;
     private PenCursorStyle _cursorStyle = PenCursorStyle.Arrow;
 
-    private Cursor? _yellowArrowCursor;
-    private Cursor? _yellowDotCursor;
+    private Cursor? _ringDotCursor;
 
     private bool _panning;
     private Point _panStart;
     private double _panStartTfX, _panStartTfY;
+    private DateTime _panStartTime;
 
     private bool _draggingFloatingZoom;
     private Point _floatingZoomDragStart;
@@ -157,8 +163,7 @@ public partial class MainWindow : Window
 
         _uiReady = true;
 
-        _yellowArrowCursor = CreateYellowArrowCursor();
-        _yellowDotCursor = CreateYellowDotCursor();
+        RebuildRingDotCursor();
 
         Loaded += (s, e) =>
         {
@@ -180,6 +185,7 @@ public partial class MainWindow : Window
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
         ColorWhite.IsChecked = true;
         TemplateBlank.IsChecked = true;
+        PaperWhite.IsChecked = true;
         CursorCombo.SelectedIndex = 0;
 
         ApplyPenAttributes();
@@ -195,62 +201,32 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Custom cursors
+    // Ring + dot cursor (built from current pen colour)
     // =====================================================================
 
-    private static Cursor CreateYellowArrowCursor()
+    private void RebuildRingDotCursor()
     {
         try
         {
-            const int size = 32;
+            const int size = 40;
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
-                var blackPen = new Pen(Brushes.Black, 1.4);
+                // Outer ring — pen colour, with a black outline for contrast
+                var ringFill = new SolidColorBrush(_penColor);
+                var blackPen = new Pen(Brushes.Black, 1.6);
 
-                var geo = new StreamGeometry();
-                using (var gc = geo.Open())
-                {
-                    gc.BeginFigure(new Point(3, 2), true, true);
-                    gc.LineTo(new Point(3, 24), true, false);
-                    gc.LineTo(new Point(9, 18), true, false);
-                    gc.LineTo(new Point(13, 28), true, false);
-                    gc.LineTo(new Point(17, 26), true, false);
-                    gc.LineTo(new Point(13, 16), true, false);
-                    gc.LineTo(new Point(21, 16), true, false);
-                    gc.LineTo(new Point(3, 2), true, false);
-                }
-                geo.Freeze();
+                dc.DrawEllipse(null, blackPen, new Point(20, 20), 14, 14);
+                dc.DrawEllipse(ringFill, null, new Point(20, 20), 11, 11);
 
-                dc.DrawGeometry(yellow, blackPen, geo);
-            }
-
-            var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
-            rtb.Render(visual);
-            return CreateCursorFromBitmap(rtb, 3, 2);
-        }
-        catch { return Cursors.Arrow; }
-    }
-
-    private static Cursor CreateYellowDotCursor()
-    {
-        try
-        {
-            const int size = 32;
-            var visual = new DrawingVisual();
-            using (var dc = visual.RenderOpen())
-            {
-                var yellow = new SolidColorBrush(Color.FromRgb(255, 210, 0));
-                var blackPen = new Pen(Brushes.Black, 1.5);
-                dc.DrawEllipse(yellow, blackPen, new Point(16, 16), 7, 7);
-                dc.DrawEllipse(Brushes.Black, null, new Point(16, 16), 1.8, 1.8);
+                // Inner dot — always black so it's visible on any colour
+                dc.DrawEllipse(Brushes.Black, null, new Point(20, 20), 2.2, 2.2);
             }
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
-            return CreateCursorFromBitmap(rtb, 16, 16);
+            _ringDotCursor = CreateCursorFromBitmap(rtb, 20, 20);
         }
-        catch { return Cursors.Cross; }
+        catch { _ringDotCursor = Cursors.Cross; }
     }
 
     private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
@@ -413,6 +389,8 @@ public partial class MainWindow : Window
             _penColor = ParseHexColor(hex, Colors.Black);
             ApplyPenAttributes();
             UpdateThicknessPreview();
+            RebuildRingDotCursor();
+            UpdateCursor();
         }
     }
 
@@ -440,20 +418,15 @@ public partial class MainWindow : Window
 
         Cursor c;
         if (_tool == ToolMode.Hand)
-        {
             c = Cursors.SizeAll;
-        }
         else if (_tool == ToolMode.Lasso)
-        {
             c = Cursors.Cross;
-        }
         else
         {
             c = _cursorStyle switch
             {
                 PenCursorStyle.Cross => Cursors.Cross,
-                PenCursorStyle.YellowArrow => _yellowArrowCursor ?? Cursors.Arrow,
-                PenCursorStyle.YellowDot => _yellowDotCursor ?? Cursors.Cross,
+                PenCursorStyle.RingDot => _ringDotCursor ?? Cursors.Cross,
                 PenCursorStyle.Hidden => Cursors.None,
                 _ => Cursors.Arrow
             };
@@ -496,6 +469,67 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
+    // Keyboard shortcuts
+    // =====================================================================
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Don't hijack typing inside an editable text box (text insertions / zoom box / page box)
+        if (Keyboard.FocusedElement is TextBox)
+            return;
+
+        if (e.Key == Key.Escape && _fullscreenMode)
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.F11)
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.D1: case Key.NumPad1:
+                PenButton.IsChecked = true;
+                PenButton_Click(PenButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            case Key.D2: case Key.NumPad2:
+                HighlighterButton.IsChecked = true;
+                HighlighterButton_Click(HighlighterButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            case Key.D3: case Key.NumPad3:
+                EraserButton.IsChecked = true;
+                EraserButton_Click(EraserButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            case Key.D4: case Key.NumPad4:
+                LassoButton.IsChecked = true;
+                LassoButton_Click(LassoButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            case Key.D5: case Key.NumPad5:
+                HandButton.IsChecked = true;
+                HandButton_Click(HandButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            case Key.Left:
+                PrevPageButton_Click(PrevPageButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+            case Key.Right:
+                NextPageButton_Click(NextPageButton, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+        }
+    }
+
+    // =====================================================================
     // Fullscreen
     // =====================================================================
 
@@ -520,21 +554,6 @@ public partial class MainWindow : Window
             StatusText.Text = _fullscreenMode
                 ? "Fullscreen mode. Press ESC or F11 to exit."
                 : "Exited fullscreen.";
-    }
-
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape && _fullscreenMode)
-        {
-            ToggleFullscreen();
-            e.Handled = true;
-            return;
-        }
-        if (e.Key == Key.F11)
-        {
-            ToggleFullscreen();
-            e.Handled = true;
-        }
     }
 
     // =====================================================================
@@ -702,10 +721,49 @@ public partial class MainWindow : Window
 
     private void UpdatePageNavigationUI()
     {
-        if (PageCounterText is null) return;
-        PageCounterText.Text = $"{_currentPageIndex + 1} / {_pages.Count}";
+        if (PageCounterBox is null) return;
+        _suppressCounterChange = true;
+        PageCounterBox.Text = $"{_currentPageIndex + 1} / {_pages.Count}";
+        _suppressCounterChange = false;
         if (PrevPageButton is not null) PrevPageButton.IsEnabled = _currentPageIndex > 0;
         if (NextPageButton is not null) NextPageButton.IsEnabled = _currentPageIndex < _pages.Count - 1;
+    }
+
+    private void PageCounterBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ApplyPageCounterText();
+            e.Handled = true;
+        }
+    }
+
+    private void PageCounterBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_suppressCounterChange) ApplyPageCounterText();
+    }
+
+    private void ApplyPageCounterText()
+    {
+        if (PageCounterBox is null) return;
+        string raw = PageCounterBox.Text;
+        int slash = raw.IndexOf('/');
+        if (slash >= 0) raw = raw.Substring(0, slash);
+        raw = raw.Trim();
+
+        if (int.TryParse(raw, out var n))
+        {
+            int idx = n - 1;
+            if (idx < 0) idx = 0;
+            if (idx >= _pages.Count) idx = _pages.Count - 1;
+            if (idx != _currentPageIndex)
+            {
+                _currentPageIndex = idx;
+                LoadCurrentPageIntoCanvas();
+                StatusText.Text = $"Jumped to page {_currentPageIndex + 1} of {_pages.Count}.";
+            }
+        }
+        UpdatePageNavigationUI();
     }
 
     private void PrevPageButton_Click(object sender, RoutedEventArgs e)
@@ -735,7 +793,8 @@ public partial class MainWindow : Window
             BackgroundColor = CurrentPage.BackgroundColor,
             Template = CurrentPage.Template,
             Spacing = CurrentPage.Spacing,
-            Mode = CanvasMode.Page
+            Mode = CanvasMode.Page,
+            Paper = CurrentPage.Paper
         };
 
         _pages.Insert(_currentPageIndex + 1, newPage);
@@ -921,8 +980,7 @@ public partial class MainWindow : Window
         using (var dc = dv.RenderOpen())
         {
             dc.PushTransform(new ScaleTransform(scale, scale));
-            var bg = BuildPageBrush(page.BackgroundColor, page.Template, page.Spacing);
-            dc.DrawRectangle(bg, null, new Rect(0, 0, pageW, pageH));
+            dc.DrawRectangle(BuildPageBrush(page), null, new Rect(0, 0, pageW, pageH));
             foreach (var s in page.Strokes)
                 s.Draw(dc);
             dc.Pop();
@@ -938,7 +996,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Panning
+    // Panning + swipe page turn
     // =====================================================================
 
     private void PageBorder_MouseDown(object sender, MouseButtonEventArgs e)
@@ -953,6 +1011,7 @@ public partial class MainWindow : Window
         _panStart = e.GetPosition(PageScroller);
         _panStartTfX = PanTransform.X;
         _panStartTfY = PanTransform.Y;
+        _panStartTime = DateTime.UtcNow;
         PageBorder.CaptureMouse();
 
         try
@@ -1013,6 +1072,21 @@ public partial class MainWindow : Window
         {
             double tx = PanTransform.X;
             double ty = PanTransform.Y;
+
+            // Swipe to change page: Hand tool, mostly-horizontal, large, fast
+            double elapsedMs = (DateTime.UtcNow - _panStartTime).TotalMilliseconds;
+            if (_tool == ToolMode.Hand
+                && Math.Abs(tx) >= SwipeMinDist
+                && Math.Abs(tx) > Math.Abs(ty) * 2.5
+                && elapsedMs <= SwipeMaxDurationMs)
+            {
+                PanTransform.X = 0;
+                PanTransform.Y = 0;
+                if (tx < 0) NextPageButton_Click(this, new RoutedEventArgs());
+                else PrevPageButton_Click(this, new RoutedEventArgs());
+                UpdateCursor();
+                return;
+            }
 
             if (Math.Abs(tx) > 0.01 || Math.Abs(ty) > 0.01)
             {
@@ -1156,7 +1230,23 @@ public partial class MainWindow : Window
                 "Paste text", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        AddTextToPage(Clipboard.GetText());
+
+        string text = Clipboard.GetText();
+        // Split on line breaks so each non-empty line becomes its own box,
+        // movable independently with the Lasso.
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        int placed = 0;
+        foreach (var raw in lines)
+        {
+            string line = raw.Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+            AddTextToPage(line);
+            placed++;
+        }
+        if (placed == 0) AddTextToPage(text.Trim());
+        StatusText.Text = placed > 1
+            ? $"Pasted {placed} lines as separate text boxes."
+            : "Pasted text. Switch to Lasso to move it.";
     }
 
     private void AddTextToPage(string initialText)
@@ -1179,7 +1269,6 @@ public partial class MainWindow : Window
         PlaceOnCanvas(tb);
         tb.Focus();
         tb.CaretIndex = tb.Text.Length;
-        StatusText.Text = "Type your text, then click on empty canvas space to place it.";
     }
 
     private void PlaceOnCanvas(FrameworkElement element)
@@ -1210,6 +1299,19 @@ public partial class MainWindow : Window
     // =====================================================================
     // Page appearance
     // =====================================================================
+
+    private void PaperThumb_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string name
+            && Enum.TryParse<PaperStyle>(name, out var ps))
+        {
+            CurrentPage.Paper = ps;
+            UpdatePageBackground();
+            MarkDirty();
+            ScheduleThumbnailRefresh();
+            StatusText.Text = $"Paper: {rb.ToolTip}";
+        }
+    }
 
     private void ColorSwatch_Click(object sender, RoutedEventArgs e)
     {
@@ -1254,9 +1356,8 @@ public partial class MainWindow : Window
         _cursorStyle = CursorCombo.SelectedIndex switch
         {
             1 => PenCursorStyle.Cross,
-            2 => PenCursorStyle.YellowArrow,
-            3 => PenCursorStyle.YellowDot,
-            4 => PenCursorStyle.Hidden,
+            2 => PenCursorStyle.RingDot,
+            3 => PenCursorStyle.Hidden,
             _ => PenCursorStyle.Arrow
         };
         UpdateCursor();
@@ -1265,35 +1366,38 @@ public partial class MainWindow : Window
     private void UpdatePageBackground()
     {
         if (PageBackground is null) return;
-        PageBackground.Fill = BuildPageBrush(CurrentPage.BackgroundColor, CurrentPage.Template, CurrentPage.Spacing);
+        PageBackground.Fill = BuildPageBrush(CurrentPage);
     }
 
-    private static Brush BuildPageBrush(Color baseColor, PageTemplate template, double spacing)
+    private static Brush BuildPageBrush(NotebookPage page)
     {
-        if (template == PageTemplate.Blank || spacing <= 0)
-            return new SolidColorBrush(baseColor);
+        Brush baseBrush = BuildPaperBaseBrush(page.Paper, page.BackgroundColor);
 
+        if (page.Template == PageTemplate.Blank || page.Spacing <= 0)
+            return baseBrush;
+
+        double spacing = page.Spacing;
         var group = new DrawingGroup();
-        group.Children.Add(new GeometryDrawing(
-            new SolidColorBrush(baseColor), null,
+
+        group.Children.Add(new GeometryDrawing(baseBrush, null,
             new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
 
-        Color lineColor = GetLineColor(baseColor);
+        Color lineColor = GetLineColor(page.BackgroundColor);
         var linePen = new Pen(new SolidColorBrush(lineColor), 1);
 
-        if (template == PageTemplate.Ruled)
+        if (page.Template == PageTemplate.Ruled)
         {
             group.Children.Add(new GeometryDrawing(null, linePen,
                 new LineGeometry(new Point(0, spacing - 0.5), new Point(spacing, spacing - 0.5))));
         }
-        else if (template == PageTemplate.Grid)
+        else if (page.Template == PageTemplate.Grid)
         {
             var geo = new GeometryGroup();
             geo.Children.Add(new LineGeometry(new Point(0, spacing - 0.5), new Point(spacing, spacing - 0.5)));
             geo.Children.Add(new LineGeometry(new Point(spacing - 0.5, 0), new Point(spacing - 0.5, spacing)));
             group.Children.Add(new GeometryDrawing(null, linePen, geo));
         }
-        else if (template == PageTemplate.Dot)
+        else if (page.Template == PageTemplate.Dot)
         {
             group.Children.Add(new GeometryDrawing(new SolidColorBrush(lineColor), null,
                 new EllipseGeometry(new Point(spacing / 2, spacing / 2), 1.2, 1.2)));
@@ -1306,6 +1410,62 @@ public partial class MainWindow : Window
             ViewportUnits = BrushMappingMode.Absolute,
             Stretch = Stretch.None
         };
+    }
+
+    private static Brush BuildPaperBaseBrush(PaperStyle paper, Color userColor)
+    {
+        // If the user chose a non-white colour, respect it — paper style only
+        // affects the default "white" pages.
+        if (userColor != Colors.White)
+            return new SolidColorBrush(userColor);
+
+        if (paper == PaperStyle.White)
+            return new SolidColorBrush(Colors.White);
+
+        if (paper == PaperStyle.Crumpled)
+        {
+            var group = new DrawingGroup();
+            group.Children.Add(new GeometryDrawing(
+                new SolidColorBrush(Color.FromRgb(0xEF, 0xE9, 0xDA)), null,
+                new RectangleGeometry(new Rect(0, 0, 12, 12))));
+            var pen = new Pen(new SolidColorBrush(Color.FromRgb(0xD9, 0xCF, 0xBB)), 0.7);
+            var g = new GeometryGroup();
+            g.Children.Add(new LineGeometry(new Point(0, 3), new Point(12, 8)));
+            g.Children.Add(new LineGeometry(new Point(2, 0), new Point(10, 12)));
+            g.Children.Add(new LineGeometry(new Point(0, 9), new Point(12, 5)));
+            group.Children.Add(new GeometryDrawing(null, pen, g));
+
+            return new DrawingBrush(group)
+            {
+                TileMode = TileMode.Tile,
+                Viewport = new Rect(0, 0, 12, 12),
+                ViewportUnits = BrushMappingMode.Absolute,
+                Stretch = Stretch.None
+            };
+        }
+
+        if (paper == PaperStyle.OldLetter)
+        {
+            var group = new DrawingGroup();
+            group.Children.Add(new GeometryDrawing(
+                new SolidColorBrush(Color.FromRgb(0xE5, 0xD3, 0xA7)), null,
+                new RectangleGeometry(new Rect(0, 0, 14, 14))));
+            var pen = new Pen(new SolidColorBrush(Color.FromRgb(0xBF, 0xA4, 0x77)), 0.6) { Opacity = 0.7 };
+            var g = new GeometryGroup();
+            g.Children.Add(new LineGeometry(new Point(0, 4), new Point(14, 4)));
+            g.Children.Add(new LineGeometry(new Point(0, 11), new Point(14, 11)));
+            group.Children.Add(new GeometryDrawing(null, pen, g));
+
+            return new DrawingBrush(group)
+            {
+                TileMode = TileMode.Tile,
+                Viewport = new Rect(0, 0, 14, 14),
+                ViewportUnits = BrushMappingMode.Absolute,
+                Stretch = Stretch.None
+            };
+        }
+
+        return new SolidColorBrush(Colors.White);
     }
 
     private static Color GetLineColor(Color bg)
@@ -1331,8 +1491,20 @@ public partial class MainWindow : Window
     {
         if (!_uiReady) return;
 
-        string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
+        // Paper
+        if (PaperWhite is not null && PaperCrumpled is not null && PaperOld is not null)
+        {
+            RadioButton paperBtn = CurrentPage.Paper switch
+            {
+                PaperStyle.Crumpled => PaperCrumpled,
+                PaperStyle.OldLetter => PaperOld,
+                _ => PaperWhite
+            };
+            paperBtn.IsChecked = true;
+        }
 
+        // Colour
+        string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
         RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack };
         bool matched = false;
         foreach (var rb in swatches)
@@ -1347,6 +1519,7 @@ public partial class MainWindow : Window
         }
         if (!matched && ColorWhite is not null) ColorWhite.IsChecked = true;
 
+        // Template
         if (TemplateBlank is not null && TemplateRuled is not null && TemplateGrid is not null && TemplateDot is not null)
         {
             RadioButton templateBtn = CurrentPage.Template switch
@@ -1360,6 +1533,7 @@ public partial class MainWindow : Window
             templateBtn.IsChecked = true;
         }
 
+        // Spacing
         if (SpacingCombo is not null)
         {
             foreach (ComboBoxItem item in SpacingCombo.Items)
@@ -1390,7 +1564,7 @@ public partial class MainWindow : Window
         }
         ApplyPenAttributes();
         UpdateCursor();
-        StatusText.Text = "Pen selected.";
+        StatusText.Text = "Pen selected (1).";
         ShowToolPopup(PenButton, "Pen");
     }
 
@@ -1405,7 +1579,7 @@ public partial class MainWindow : Window
         }
         ApplyPenAttributes();
         UpdateCursor();
-        StatusText.Text = "Highlighter selected.";
+        StatusText.Text = "Highlighter selected (2).";
         ShowToolPopup(HighlighterButton, "Highlighter");
     }
 
@@ -1419,7 +1593,7 @@ public partial class MainWindow : Window
             InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke;
         }
         UpdateCursor();
-        if (StatusText is not null) StatusText.Text = "Eraser selected: touch a stroke to remove it.";
+        if (StatusText is not null) StatusText.Text = "Eraser selected (3).";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -1434,7 +1608,7 @@ public partial class MainWindow : Window
         }
         UpdateCursor();
         if (StatusText is not null)
-            StatusText.Text = "Lasso select: drag around ink to select it. Drag inside the selection to move; drag a corner handle to resize.";
+            StatusText.Text = "Lasso select (4): drag around ink to select, then drag to move or resize.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -1464,7 +1638,8 @@ public partial class MainWindow : Window
         _tool = ToolMode.Hand;
         if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
-        if (StatusText is not null) StatusText.Text = "Hand tool: drag over the page to move around.";
+        if (StatusText is not null)
+            StatusText.Text = "Hand tool (5): drag to pan. Fast horizontal swipe turns the page.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -1754,7 +1929,8 @@ public partial class MainWindow : Window
                         BackgroundColor = $"#{page.BackgroundColor.R:X2}{page.BackgroundColor.G:X2}{page.BackgroundColor.B:X2}",
                         Template = page.Template.ToString(),
                         Spacing = page.Spacing,
-                        Mode = page.Mode.ToString()
+                        Mode = page.Mode.ToString(),
+                        Paper = page.Paper.ToString()
                     });
                 }
 
@@ -1837,6 +2013,8 @@ public partial class MainWindow : Window
                         page.Template = t;
                     if (Enum.TryParse<CanvasMode>(pm.Mode, out var m))
                         page.Mode = m;
+                    if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps))
+                        page.Paper = ps;
 
                     var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
                     if (inkEntry is not null)
