@@ -352,7 +352,21 @@
                                  KeyDown="PageCounterBox_KeyDown" LostFocus="PageCounterBox_LostFocus"/>
                     </Border>
                     <Button x:Name="NextPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
-                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Add a new blank page" Margin="6,0,2,0" Click="AddPageButton_Click"/>
+                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Extend canvas or manage pages" Margin="6,0,2,0" Click="AddPageButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Extend canvas  →  Right" Click="ExtendRight_Click"/>
+                                <MenuItem Header="Extend canvas  ←  Left" Click="ExtendLeft_Click"/>
+                                <MenuItem Header="Extend canvas  ↑  Up" Click="ExtendUp_Click"/>
+                                <MenuItem Header="Extend canvas  ↓  Down" Click="ExtendDown_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Extend all sides" Click="ExtendAll_Click"/>
+                                <Separator/>
+                                <MenuItem Header="Add a new notebook page" Click="NewNotebookPage_Click"/>
+                                <MenuItem Header="Delete this notebook page" Click="DeletePageButton_Click"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
                     <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert image, text, or from clipboard" Click="MenuButton_Click">
                         <Button.ContextMenu>
@@ -377,7 +391,6 @@
                                 <MenuItem Header="Export current page as PNG..." Click="ExportCurrentPagePng_Click"/>
                                 <MenuItem Header="Export all pages as PNG..." Click="ExportAllPagesPng_Click"/>
                                 <Separator/>
-                                <MenuItem Header="Add page" Click="AddPageButton_Click"/>
                                 <MenuItem Header="Delete current page" Click="DeletePageButton_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
@@ -409,7 +422,7 @@
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
                 <Grid x:Name="CanvasHost"
-                      Width="100000" Height="100000"
+                      Width="1500" Height="1000"
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       RenderTransformOrigin="0,0"
                       Background="Transparent">
@@ -417,15 +430,15 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Grid.RenderTransform>
 
-                    <!-- Paper: 100,000 x 100,000, no border. The app auto-recenters content so it feels infinite. -->
+                    <!-- Single unified paper. Grows when user extends the canvas. -->
                     <Rectangle x:Name="PageBackground"
-                               Width="100000" Height="100000"
+                               Width="1500" Height="1000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Fill="White"
                                IsHitTestVisible="False"/>
 
                     <InkCanvas x:Name="InkArea"
-                               Width="100000" Height="100000"
+                               Width="1500" Height="1000"
                                HorizontalAlignment="Left" VerticalAlignment="Top"
                                Background="Transparent"
                                ForceCursor="True"
@@ -537,7 +550,7 @@
         <Border Grid.Row="3" Background="#F0F0F0" BorderBrush="#C8C8C8" BorderThickness="0,1,0,0" MinHeight="30">
             <Grid Margin="10,3">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusText" Text="Infinite canvas. 1–5 switch tools. Left/Right arrows change page. Middle-mouse drag to pan."
+                    <TextBlock x:Name="StatusText" Text="Click + to extend the canvas. 1–5 switch tools. Middle-mouse drag to pan."
                                VerticalAlignment="Center" FontSize="12" Foreground="#333333"/>
                     <TextBlock x:Name="VersionText" Foreground="Gray" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="12"/>
                 </StackPanel>

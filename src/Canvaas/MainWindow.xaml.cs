@@ -26,23 +26,25 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    // === INFINITE CANVAS ===
-    // Reduced from 1,000,000 to 100,000 because WPF cannot render visuals that
-    // are several million pixels wide — the paper disappears. 100,000 x 100,000
-    // is still plenty, and the app recenters content as you pan, so it feels infinite.
-    private const double CanvasWorldSize = 100_000;
-    private const double HomeCenterX = CanvasWorldSize / 2.0;   // 50,000
-    private const double HomeCenterY = CanvasWorldSize / 2.0;   // 50,000
-    private const double RecenterThreshold = 25_000;
+    // === GROWING CANVAS ===
+    // The paper starts small and grows by one page-sized chunk each time the
+    // user picks "Extend canvas". We keep the total under WPF's rendering
+    // limits, so the paper always shows up correctly.
+    private const double InitialCanvasWidth = 1500;
+    private const double InitialCanvasHeight = 1000;
+    private const double CanvasGrowthStepX = 1500;   // growth per click (right / left / all)
+    private const double CanvasGrowthStepY = 1000;   // growth per click (up / down / all)
+    private const double MaxCanvasDimension = 30_000;
 
-    private const double DefaultViewX = -HomeCenterX;
-    private const double DefaultViewY = -HomeCenterY;
     private const double MinZoom = 0.01;
     private const double MaxZoom = 40.0;
     private const double ExportMaxDim = 3000;
     private const double SwipeMinDist = 250;
     private const double SwipeMaxDurationMs = 700;
     private const double ZoomStepFactor = 1.25;
+
+    // === GROWING CANVAS ===
+    private enum ExpandDirection { Right, Left, Up, Down, All }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -57,6 +59,9 @@ public partial class MainWindow : Window
         public string? Template { get; set; }
         public double? Spacing { get; set; }
         public string? Paper { get; set; }
+        // === GROWING CANVAS ===
+        public double? WorldWidth { get; set; }
+        public double? WorldHeight { get; set; }
     }
 
     private sealed class Manifest
@@ -107,9 +112,13 @@ public partial class MainWindow : Window
         public double Spacing { get; set; } = 40;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
+        // === GROWING CANVAS ===
+        public double WorldWidth { get; set; } = InitialCanvasWidth;
+        public double WorldHeight { get; set; } = InitialCanvasHeight;
+
         public double ViewZoom { get; set; } = 1.0;
-        public double ViewPanX { get; set; } = DefaultViewX;
-        public double ViewPanY { get; set; } = DefaultViewY;
+        public double ViewPanX { get; set; } = double.NaN;
+        public double ViewPanY { get; set; } = double.NaN;
         public bool ViewInitialized { get; set; } = false;
     }
 
@@ -149,12 +158,8 @@ public partial class MainWindow : Window
     private DateTime _panStartTime;
 
     private double _viewZoom = 1.0;
-    private double _viewPanX = DefaultViewX;
-    private double _viewPanY = DefaultViewY;
-
-    // === INFINITE CANVAS ===
-    // Coalesces many view changes into a single recenter check.
-    private bool _recenterScheduled;
+    private double _viewPanX = 0;
+    private double _viewPanY = 0;
 
     private bool _draggingFloatingZoom;
     private Point _floatingZoomDragStart;
@@ -183,13 +188,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-
-        // === INFINITE CANVAS ===
-        // Make the world / paper / ink layer huge at runtime, so we don't have to
-        // repeat the number in XAML.
-        if (CanvasHost is not null) { CanvasHost.Width = CanvasWorldSize; CanvasHost.Height = CanvasWorldSize; }
-        if (PageBackground is not null) { PageBackground.Width = CanvasWorldSize; PageBackground.Height = CanvasWorldSize; }
-        if (InkArea is not null) { InkArea.Width = CanvasWorldSize; InkArea.Height = CanvasWorldSize; }
 
         if (InkArea is not null)
         {
@@ -230,7 +228,8 @@ public partial class MainWindow : Window
                 WindowState = WindowState.Maximized;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    ResetViewToOrigin();
+                    // Re-center once the window has its real size.
+                    if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
@@ -259,71 +258,81 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // === INFINITE CANVAS: recentering ===
+    // === GROWING CANVAS: extend + size management ===
     // =====================================================================
 
-    /// <summary>
-    /// Called (coalesced) after every view change. If the view has drifted too
-    /// far from home, shift all content back toward home so the user never sees
-    /// the edge of the world. Transparent to the user.
-    /// </summary>
-    private void RecenterIfNeeded()
+    private void ApplyWorldSizeToCanvas()
     {
-        // Don't interfere with an in-progress gesture.
-        if (_panning || _lassoActive || _draggingSelection) return;
-        if (CanvasHostBorder is null) return;
+        if (CanvasHost is null || PageBackground is null || InkArea is null) return;
 
-        double vw = CanvasHostBorder.ActualWidth;
-        double vh = CanvasHostBorder.ActualHeight;
-        if (vw < 1 || vh < 1) return;
+        double w = CurrentPage.WorldWidth;
+        double h = CurrentPage.WorldHeight;
 
-        // Viewport center in world coordinates.
-        var centerScreen = new Point(vw / 2.0, vh / 2.0);
-        double cx = (centerScreen.X - _viewPanX) / _viewZoom;
-        double cy = (centerScreen.Y - _viewPanY) / _viewZoom;
-
-        double loX = HomeCenterX - RecenterThreshold;
-        double hiX = HomeCenterX + RecenterThreshold;
-        double loY = HomeCenterY - RecenterThreshold;
-        double hiY = HomeCenterY + RecenterThreshold;
-
-        double dx = 0, dy = 0;
-        if (cx < loX) dx = loX - cx;
-        else if (cx > hiX) dx = hiX - cx;
-        if (cy < loY) dy = loY - cy;
-        else if (cy > hiY) dy = hiY - cy;
-
-        if (Math.Abs(dx) < 0.01 && Math.Abs(dy) < 0.01) return;
-
-        // Shift the current page's strokes and inserted items by (dx, dy).
-        ShiftCurrentPageContent(dx, dy);
-
-        // Adjust the pan so the shift is invisible on screen:
-        //   S = W*zoom + pan  =>  new pan = old pan - shift*zoom
-        _viewPanX -= dx * _viewZoom;
-        _viewPanY -= dy * _viewZoom;
-
-        if (ViewTransform is not null)
-            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-
-        SaveCurrentViewToPage();
+        CanvasHost.Width = w;
+        CanvasHost.Height = h;
+        PageBackground.Width = w;
+        PageBackground.Height = h;
+        InkArea.Width = w;
+        InkArea.Height = h;
     }
 
-    private void ScheduleRecenterCheck()
+    private void ExpandCanvas(ExpandDirection dir)
     {
-        if (_recenterScheduled) return;
-        _recenterScheduled = true;
-        Dispatcher.BeginInvoke(new Action(() =>
+        double addLeft = 0, addRight = 0, addTop = 0, addBottom = 0;
+
+        switch (dir)
         {
-            _recenterScheduled = false;
-            RecenterIfNeeded();
-        }), DispatcherPriority.Background);
+            case ExpandDirection.Right: addRight = CanvasGrowthStepX; break;
+            case ExpandDirection.Left: addLeft = CanvasGrowthStepX; break;
+            case ExpandDirection.Up: addTop = CanvasGrowthStepY; break;
+            case ExpandDirection.Down: addBottom = CanvasGrowthStepY; break;
+            case ExpandDirection.All:
+                addLeft = CanvasGrowthStepX; addRight = CanvasGrowthStepX;
+                addTop = CanvasGrowthStepY; addBottom = CanvasGrowthStepY;
+                break;
+        }
+
+        double newW = CurrentPage.WorldWidth + addLeft + addRight;
+        double newH = CurrentPage.WorldHeight + addTop + addBottom;
+
+        if (newW > MaxCanvasDimension || newH > MaxCanvasDimension)
+        {
+            MessageBox.Show(this,
+                $"The canvas is already {CurrentPage.WorldWidth:0} × {CurrentPage.WorldHeight:0}.\n\n" +
+                $"Canvaas allows a maximum of {MaxCanvasDimension:0} × {MaxCanvasDimension:0} per page.",
+                "Canvas is at maximum size", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // If growing left/up, shift all content so existing drawing doesn't move.
+        double shiftX = addLeft;   // content moves right by this much
+        double shiftY = addTop;    // content moves down by this much
+        if (shiftX > 0 || shiftY > 0)
+            ShiftCurrentPageContent(shiftX, shiftY);
+
+        CurrentPage.WorldWidth = newW;
+        CurrentPage.WorldHeight = newH;
+
+        // Adjust pan so the drawing appears at the same screen position.
+        _viewPanX -= shiftX * _viewZoom;
+        _viewPanY -= shiftY * _viewZoom;
+
+        ApplyWorldSizeToCanvas();
+        ApplyView();
+
+        MarkDirty();
+        StatusText.Text = $"Canvas extended {dir.ToString().ToLower()} → now {newW:0} × {newH:0}. Pan to reach new area.";
     }
+
+    private void ExtendRight_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Right);
+    private void ExtendLeft_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Left);
+    private void ExtendUp_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Up);
+    private void ExtendDown_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Down);
+    private void ExtendAll_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.All);
 
     /// <summary>
     /// Shift every stroke and inserted element on the current page by (dx, dy)
-    /// in world coordinates. Also remaps the undo/redo stacks so they keep
-    /// referring to the (new) shifted strokes.
+    /// in world coordinates. Also remaps the undo/redo stacks.
     /// </summary>
     private void ShiftCurrentPageContent(double dx, double dy)
     {
@@ -340,9 +349,6 @@ public partial class MainWindow : Window
             shifted.Add(ns);
         }
 
-        // Replace strokes in place (CurrentPage.Strokes and InkArea.Strokes are
-        // the SAME collection reference, so this updates both and preserves the
-        // StrokesChanged event handler).
         _applyingHistory = true;
         try
         {
@@ -380,11 +386,6 @@ public partial class MainWindow : Window
         return new Stroke(pts, s.DrawingAttributes.Clone());
     }
 
-    /// <summary>
-    /// Rebuild a history stack so that any stroke references it contains point
-    /// at the new (shifted) strokes, and element-move entries have their
-    /// positions shifted to match.
-    /// </summary>
     private static void RemapHistoryStack(Stack<object> stack, Dictionary<Stroke, Stroke> map, double dx, double dy)
     {
         if (stack.Count == 0) return;
@@ -392,7 +393,6 @@ public partial class MainWindow : Window
         var items = stack.ToArray(); // top-first
         stack.Clear();
 
-        // Iterate in reverse so the rebuilt stack preserves the original order.
         for (int i = items.Length - 1; i >= 0; i--)
         {
             var item = items[i];
@@ -505,19 +505,16 @@ public partial class MainWindow : Window
         int width = bmp.PixelWidth;
         int height = bmp.PixelHeight;
 
-        // 32-bpp DIB rows must be DWORD-aligned.
         int stride = ((width * 32 + 31) / 32) * 4;
         int imageSize = stride * height;
 
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
 
-        // ICONDIR
         bw.Write((short)0);
         bw.Write((short)2);
         bw.Write((short)1);
 
-        // ICONDIRENTRY
         bw.Write((byte)width);
         bw.Write((byte)height);
         bw.Write((byte)0);
@@ -527,7 +524,6 @@ public partial class MainWindow : Window
         bw.Write(imageSize + 40);
         bw.Write(22);
 
-        // BITMAPINFOHEADER
         bw.Write(40);
         bw.Write(width);
         bw.Write(height * 2);
@@ -540,7 +536,6 @@ public partial class MainWindow : Window
         bw.Write(0);
         bw.Write(0);
 
-        // Pixel data — BMP is stored bottom-up.
         var pixels = new byte[imageSize];
         bmp.CopyPixels(pixels, stride, 0);
         for (int y = height - 1; y >= 0; y--)
@@ -911,10 +906,6 @@ public partial class MainWindow : Window
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         SaveCurrentViewToPage();
-
-        // === INFINITE CANVAS ===
-        // Every view change schedules a recenter check (coalesced).
-        ScheduleRecenterCheck();
     }
 
     private void ZoomAt(Point viewPoint, double factor)
@@ -948,11 +939,23 @@ public partial class MainWindow : Window
         ZoomAt(new Point(vw / 2.0, vh / 2.0), factor);
     }
 
-    private void ResetViewToOrigin()
+    // === GROWING CANVAS ===
+    private void CenterViewOnCanvas()
     {
+        if (CanvasHostBorder is null) return;
+
+        double vw = CanvasHostBorder.ActualWidth;
+        double vh = CanvasHostBorder.ActualHeight;
+        if (vw < 10 || vh < 10)
+        {
+            vw = ActualWidth > 200 ? ActualWidth - 40 : 1200;
+            vh = ActualHeight > 200 ? ActualHeight - 140 : 700;
+        }
+
         _viewZoom = 1.0;
-        _viewPanX = DefaultViewX;
-        _viewPanY = DefaultViewY;
+        _viewPanX = vw / 2.0 - (CurrentPage.WorldWidth / 2.0) * _viewZoom;
+        _viewPanY = vh / 2.0 - (CurrentPage.WorldHeight / 2.0) * _viewZoom;
+
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
@@ -971,6 +974,13 @@ public partial class MainWindow : Window
     private void RestoreViewFromPage()
     {
         if (CurrentPage is null) return;
+
+        if (double.IsNaN(CurrentPage.ViewPanX) || double.IsNaN(CurrentPage.ViewPanY))
+        {
+            CenterViewOnCanvas();
+            return;
+        }
+
         _viewZoom = CurrentPage.ViewZoom;
         _viewPanX = CurrentPage.ViewPanX;
         _viewPanY = CurrentPage.ViewPanY;
@@ -1076,6 +1086,9 @@ public partial class MainWindow : Window
         InkArea.Strokes = CurrentPage.Strokes;
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
 
+        // === GROWING CANVAS ===
+        ApplyWorldSizeToCanvas();
+
         _undo.Clear();
         _redo.Clear();
         CommandManager.InvalidateRequerySuggested();
@@ -1088,7 +1101,7 @@ public partial class MainWindow : Window
         if (CurrentPage.ViewInitialized)
             RestoreViewFromPage();
         else
-            ResetViewToOrigin();
+            CenterViewOnCanvas();
     }
 
     private void UpdatePageNavigationUI()
@@ -1154,7 +1167,18 @@ public partial class MainWindow : Window
         }
     }
 
+    // === GROWING CANVAS === (renamed from AddPageButton_Click)
     private void AddPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.ContextMenu is ContextMenu cm)
+        {
+            cm.PlacementTarget = b;
+            cm.Placement = PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void NewNotebookPage_Click(object sender, RoutedEventArgs e)
     {
         var newPage = new NotebookPage
         {
@@ -1562,9 +1586,6 @@ public partial class MainWindow : Window
         {
             _dragOriginalStrokes = new StrokeCollection();
             foreach (var s in sel) _dragOriginalStrokes.Add(s);
-
-            // Point _dragPreviewStrokes at the originals so the FIRST move
-            // removes them (rather than leaving a frozen copy behind).
             _dragPreviewStrokes = _dragOriginalStrokes;
         }
         else
@@ -2548,7 +2569,10 @@ public partial class MainWindow : Window
                         BackgroundColor = $"#{page.BackgroundColor.R:X2}{page.BackgroundColor.G:X2}{page.BackgroundColor.B:X2}",
                         Template = page.Template.ToString(),
                         Spacing = page.Spacing,
-                        Paper = page.Paper.ToString()
+                        Paper = page.Paper.ToString(),
+                        // === GROWING CANVAS ===
+                        WorldWidth = page.WorldWidth,
+                        WorldHeight = page.WorldHeight
                     });
                 }
 
@@ -2630,6 +2654,10 @@ public partial class MainWindow : Window
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;
 
+                    // === GROWING CANVAS === restore saved size
+                    if (pm.WorldWidth is double ww && ww >= 100) page.WorldWidth = ww;
+                    if (pm.WorldHeight is double wh && wh >= 100) page.WorldHeight = wh;
+
                     var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
                     if (inkEntry is not null)
                     {
@@ -2637,6 +2665,14 @@ public partial class MainWindow : Window
                         using (var es = inkEntry.Open()) es.CopyTo(buffer);
                         buffer.Position = 0;
                         page.Strokes = new StrokeCollection(buffer);
+
+                        // Make sure the canvas fits the content.
+                        if (page.Strokes.Count > 0)
+                        {
+                            var b = page.Strokes.GetBounds();
+                            if (b.Right + 200 > page.WorldWidth) page.WorldWidth = b.Right + 200;
+                            if (b.Bottom + 200 > page.WorldHeight) page.WorldHeight = b.Bottom + 200;
+                        }
                     }
                     loadedPages.Add(page);
                 }
@@ -2658,6 +2694,13 @@ public partial class MainWindow : Window
                     using (var es = inkEntry.Open()) es.CopyTo(buffer);
                     buffer.Position = 0;
                     page.Strokes = new StrokeCollection(buffer);
+
+                    if (page.Strokes.Count > 0)
+                    {
+                        var b = page.Strokes.GetBounds();
+                        if (b.Right + 200 > page.WorldWidth) page.WorldWidth = b.Right + 200;
+                        if (b.Bottom + 200 > page.WorldHeight) page.WorldHeight = b.Bottom + 200;
+                    }
                 }
                 loadedPages.Add(page);
                 loadedCurrentPage = 0;
