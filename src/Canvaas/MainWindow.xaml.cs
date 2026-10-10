@@ -212,14 +212,11 @@ public partial class MainWindow : Window
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                // Outer ring — pen colour, with a black outline for contrast
                 var ringFill = new SolidColorBrush(_penColor);
                 var blackPen = new Pen(Brushes.Black, 1.6);
 
                 dc.DrawEllipse(null, blackPen, new Point(20, 20), 14, 14);
                 dc.DrawEllipse(ringFill, null, new Point(20, 20), 11, 11);
-
-                // Inner dot — always black so it's visible on any colour
                 dc.DrawEllipse(Brushes.Black, null, new Point(20, 20), 2.2, 2.2);
             }
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
@@ -474,7 +471,6 @@ public partial class MainWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Don't hijack typing inside an editable text box (text insertions / zoom box / page box)
         if (Keyboard.FocusedElement is TextBox)
             return;
 
@@ -1073,7 +1069,6 @@ public partial class MainWindow : Window
             double tx = PanTransform.X;
             double ty = PanTransform.Y;
 
-            // Swipe to change page: Hand tool, mostly-horizontal, large, fast
             double elapsedMs = (DateTime.UtcNow - _panStartTime).TotalMilliseconds;
             if (_tool == ToolMode.Hand
                 && Math.Abs(tx) >= SwipeMinDist
@@ -1232,8 +1227,6 @@ public partial class MainWindow : Window
         }
 
         string text = Clipboard.GetText();
-        // Split on line breaks so each non-empty line becomes its own box,
-        // movable independently with the Lasso.
         var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         int placed = 0;
         foreach (var raw in lines)
@@ -1414,8 +1407,6 @@ public partial class MainWindow : Window
 
     private static Brush BuildPaperBaseBrush(PaperStyle paper, Color userColor)
     {
-        // If the user chose a non-white colour, respect it — paper style only
-        // affects the default "white" pages.
         if (userColor != Colors.White)
             return new SolidColorBrush(userColor);
 
@@ -1450,7 +1441,7 @@ public partial class MainWindow : Window
             group.Children.Add(new GeometryDrawing(
                 new SolidColorBrush(Color.FromRgb(0xE5, 0xD3, 0xA7)), null,
                 new RectangleGeometry(new Rect(0, 0, 14, 14))));
-            var pen = new Pen(new SolidColorBrush(Color.FromRgb(0xBF, 0xA4, 0x77)), 0.6) { Opacity = 0.7 };
+            var pen = new Pen(new SolidColorBrush(Color.FromArgb(0xB3, 0xBF, 0xA4, 0x77)), 0.6);
             var g = new GeometryGroup();
             g.Children.Add(new LineGeometry(new Point(0, 4), new Point(14, 4)));
             g.Children.Add(new LineGeometry(new Point(0, 11), new Point(14, 11)));
@@ -1491,7 +1482,6 @@ public partial class MainWindow : Window
     {
         if (!_uiReady) return;
 
-        // Paper
         if (PaperWhite is not null && PaperCrumpled is not null && PaperOld is not null)
         {
             RadioButton paperBtn = CurrentPage.Paper switch
@@ -1503,7 +1493,6 @@ public partial class MainWindow : Window
             paperBtn.IsChecked = true;
         }
 
-        // Colour
         string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
         RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack };
         bool matched = false;
@@ -1519,7 +1508,6 @@ public partial class MainWindow : Window
         }
         if (!matched && ColorWhite is not null) ColorWhite.IsChecked = true;
 
-        // Template
         if (TemplateBlank is not null && TemplateRuled is not null && TemplateGrid is not null && TemplateDot is not null)
         {
             RadioButton templateBtn = CurrentPage.Template switch
@@ -1533,7 +1521,6 @@ public partial class MainWindow : Window
             templateBtn.IsChecked = true;
         }
 
-        // Spacing
         if (SpacingCombo is not null)
         {
             foreach (ComboBoxItem item in SpacingCombo.Items)
