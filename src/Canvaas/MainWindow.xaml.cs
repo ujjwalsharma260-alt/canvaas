@@ -29,11 +29,12 @@ public partial class MainWindow : Window
     private const double PageWidthDefault = 800;
     private const double PageHeightDefault = 1120;
     private const double CanvasWorldSize = 10000;
-    private const double MinZoom = 0.05;
-    private const double MaxZoom = 6.00;
+    private const double MinZoom = 0.01;      // 1%
+    private const double MaxZoom = 20.0;      // 2000%
     private const double ExportMaxDim = 3000;
     private const double SwipeMinDist = 250;
     private const double SwipeMaxDurationMs = 700;
+    private const double ZoomStepFactor = 1.25;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -103,8 +104,8 @@ public partial class MainWindow : Window
         public PaperStyle Paper { get; set; } = PaperStyle.White;
 
         public double ViewZoom { get; set; } = 1.0;
-        public double ViewPanX { get; set; } = 0;
-        public double ViewPanY { get; set; } = 0;
+        public double ViewPanX { get; set; } = 60;
+        public double ViewPanY { get; set; } = 60;
         public bool ViewInitialized { get; set; } = false;
     }
 
@@ -144,8 +145,8 @@ public partial class MainWindow : Window
     private DateTime _panStartTime;
 
     private double _viewZoom = 1.0;
-    private double _viewPanX = 0;
-    private double _viewPanY = 0;
+    private double _viewPanX = 60;
+    private double _viewPanY = 60;
 
     private bool _draggingFloatingZoom;
     private Point _floatingZoomDragStart;
@@ -213,7 +214,17 @@ public partial class MainWindow : Window
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 WindowState = WindowState.Maximized;
-                Dispatcher.BeginInvoke(new Action(RefitView), DispatcherPriority.Background);
+                // Give the layout a chance to fully settle before resetting the view
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    _viewZoom = 1.0;
+                    _viewPanX = 60;
+                    _viewPanY = 60;
+                    if (ViewTransform is not null)
+                        ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+                    if (ZoomText is not null)
+                        ZoomText.Text = "100%";
+                }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
 
@@ -758,6 +769,17 @@ public partial class MainWindow : Window
         ZoomAt(new Point(vw / 2.0, vh / 2.0), factor);
     }
 
+    private void ResetViewToOrigin()
+    {
+        _viewZoom = 1.0;
+        _viewPanX = 60;
+        _viewPanY = 60;
+        if (ViewTransform is not null)
+            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+        if (ZoomText is not null && !ZoomText.IsFocused)
+            ZoomText.Text = "100%";
+    }
+
     private void FitBounds(Rect worldBounds, double margin = 40)
     {
         if (CanvasHostBorder is null) return;
@@ -813,14 +835,8 @@ public partial class MainWindow : Window
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
     }
 
-    private void RefitView()
-    {
-        if (CanvasHostBorder is null || CanvasHostBorder.ActualWidth < 10) return;
-        FitContentToView();
-    }
-
-    private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(1.25);
-    private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(0.8);
+    private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(ZoomStepFactor);
+    private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(1.0 / ZoomStepFactor);
     private void ZoomResetButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(1.0 / _viewZoom);
 
     private void ZoomText_KeyDown(object sender, KeyEventArgs e)
@@ -921,17 +937,17 @@ public partial class MainWindow : Window
 
         ClearElementSelection();
 
-        // Infinite-only: hide the fixed-page rectangle
-        if (PageBackground is not null)
-            PageBackground.Visibility = Visibility.Collapsed;
-
         SyncUIWithSettings();
         UpdatePageNavigationUI();
 
         if (CurrentPage.ViewInitialized)
+        {
             RestoreViewFromPage();
+        }
         else
-            Dispatcher.BeginInvoke(new Action(RefitView), DispatcherPriority.Background);
+        {
+            ResetViewToOrigin();
+        }
     }
 
     private void UpdatePageNavigationUI()
@@ -1363,7 +1379,7 @@ public partial class MainWindow : Window
 
         int total = strokesIn.Count + _selectedElements.Count;
         StatusText.Text = total > 0
-            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s)."
+            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Tap a colour to recolour."
             : "Nothing selected.";
     }
 
@@ -1707,7 +1723,6 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        // Always infinite now — place near the visible top-left of the current view.
         double visLeft = -_viewPanX / _viewZoom;
         double visTop = -_viewPanY / _viewZoom;
 
@@ -2447,7 +2462,6 @@ public partial class MainWindow : Window
                     };
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;
-                    // Note: old Mode is intentionally ignored — everything is infinite now.
 
                     var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
                     if (inkEntry is not null)
