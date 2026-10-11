@@ -156,7 +156,7 @@ public partial class MainWindow : Window
 
     private enum PageTemplate { Blank, Ruled, Grid, Dot }
     private enum PenCursorStyle { Arrow, Cross, HollowRingDot, Hidden }
-    private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand }
+    private enum ToolMode { Pen, Highlighter, Eraser, Lasso, Hand, Calligraphy }
     private enum PaperStyle { White, Crumpled }
 
     private sealed class NotebookPage
@@ -1534,6 +1534,7 @@ public partial class MainWindow : Window
         if (_tool == ToolMode.Lasso) return;
         var da = InkArea.DefaultDrawingAttributes;
         if (da is null) return;
+        da.StylusTip = StylusTip.Ellipse; da.StylusTipTransform = Matrix.Identity;
         if (_tool == ToolMode.Highlighter)
         {
             da.Color = Color.FromArgb(110, _penColor.R, _penColor.G, _penColor.B);
@@ -1545,6 +1546,14 @@ public partial class MainWindow : Window
         {
             da.Color = _penColor; da.Width = _penSize; da.Height = _penSize;
             da.IsHighlighter = false; da.FitToCurve = false; da.IgnorePressure = !_pressureEnabled;
+            if (_tool == ToolMode.Calligraphy)
+            {
+                da.StylusTip = StylusTip.Rectangle;
+                da.Width = Math.Max(3, _penSize * 2.6);
+                da.Height = Math.Max(1, _penSize * 0.7);
+                var nib = Matrix.Identity; nib.Rotate(-40);
+                da.StylusTipTransform = nib;
+            }
         }
     }
 
@@ -1691,8 +1700,10 @@ public partial class MainWindow : Window
             if (trimmed.Length > 0) tokens.Add(trimmed);
         }
         if (tokens.Count == 0) return;
+        var fontName = AskPasteFont();
+        if (fontName is null) return;
 
-        const double boxW = 180, boxH = 42, gap = 20, margin = 60;
+        const double boxW = 220, boxH = 48, gap = 20, margin = 60;
         int perRow = 6;
         int numRows = (tokens.Count + perRow - 1) / perRow;
         double neededW = margin + perRow * (boxW + gap) + margin;
@@ -1712,10 +1723,10 @@ public partial class MainWindow : Window
             var tb = new TextBox
             {
                 Text = tokens[i], AcceptsReturn = false, TextWrapping = TextWrapping.NoWrap,
-                FontSize = 18, Width = boxW, MinHeight = 32,
+                FontSize = 24, Width = boxW, MinHeight = 36,
                 Padding = new Thickness(8, 4, 8, 4),
-                Background = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromArgb(150, 26, 115, 232)),
+                Background = Brushes.Transparent, FontFamily = new FontFamily(fontName), Foreground = new SolidColorBrush(_penColor),
+                BorderBrush = Brushes.Transparent,
                 BorderThickness = new Thickness(1),
                 VerticalContentAlignment = VerticalAlignment.Center
             };
@@ -3129,6 +3140,8 @@ public partial class MainWindow : Window
     private static Brush BuildPageBrush(NotebookPage page, double viewZoom)
     {
         Brush baseBrush = BuildPaperBaseBrush(page.Paper, page.BackgroundColor);
+        if (page.Template != PageTemplate.Blank && baseBrush is ImageBrush)
+            baseBrush = new SolidColorBrush(Color.FromRgb(0xF4, 0xF4, 0xF2));
         if (page.Template == PageTemplate.Blank || page.Spacing <= 0) return baseBrush;
 
         double spacing = page.Spacing;
@@ -3177,6 +3190,8 @@ public partial class MainWindow : Window
     {
         if (userColor != Colors.White) return new SolidColorBrush(userColor);
         if (paper == PaperStyle.White) return new SolidColorBrush(Colors.White);
+        var photo = GetCrumpledBrush();
+        if (photo is not null) return photo;
         var group = new DrawingGroup();
         group.Children.Add(new GeometryDrawing(
             new SolidColorBrush(Color.FromRgb(0xFC, 0xFC, 0xFA)), null,
@@ -3198,6 +3213,35 @@ public partial class MainWindow : Window
             ViewportUnits = BrushMappingMode.Absolute,
             Stretch = Stretch.None
         };
+    }
+
+    private static ImageBrush? _crumpledBrush;
+    private static bool _crumpledTried;
+
+    private static Brush? GetCrumpledBrush()
+    {
+        if (_crumpledTried) return _crumpledBrush;
+        _crumpledTried = true;
+        try
+        {
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.UriSource = new Uri("pack://application:,,,/crumpled.jpg", UriKind.Absolute);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.EndInit();
+            bmp.Freeze();
+            var brush = new ImageBrush(bmp)
+            {
+                TileMode = TileMode.FlipXY,
+                ViewportUnits = BrushMappingMode.Absolute,
+                Viewport = new Rect(0, 0, 1600, 1000),
+                Stretch = Stretch.Fill
+            };
+            brush.Freeze();
+            _crumpledBrush = brush;
+        }
+        catch { _crumpledBrush = null; }
+        return _crumpledBrush;
     }
 
     private static Color GetLineColor(Color bg, double opacityPercent)
@@ -3229,7 +3273,7 @@ public partial class MainWindow : Window
             paperBtn.IsChecked = true;
         }
         string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
-        RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack };
+        RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack, ColorPitch };
         bool matched = false;
         foreach (var rb in swatches)
         {
@@ -3278,6 +3322,17 @@ public partial class MainWindow : Window
         UpdateCursor();
         StatusText.Text = "Pen selected.";
         ShowToolPopup(PenButton, "Pen");
+    }
+
+    private void CalligraphyButton_Click(object sender, RoutedEventArgs e)
+    {
+        _tool = ToolMode.Calligraphy;
+        ClearElementSelection();
+        if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
+        ApplyPenAttributes();
+        UpdateCursor();
+        StatusText.Text = "Calligraphy pen selected.";
+        ShowToolPopup(CalligraphyButton, "Calligraphy pen");
     }
 
     private void HighlighterButton_Click(object sender, RoutedEventArgs e)
@@ -3885,6 +3940,59 @@ public partial class MainWindow : Window
         SaveSettings();
         StatusText.Text = "Saved " + hex + " in this colour box.";
         e.Handled = true;
+    }
+
+    private string _pasteFont = "Ink Free";
+
+    private string? AskPasteFont()
+    {
+        string[] fonts = { "Ink Free", "Segoe Print", "Segoe Script" };
+        string? chosen = null;
+        var win = new Window
+        {
+            Title = "Choose handwriting font",
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5))
+        };
+        var panel = new StackPanel { Margin = new Thickness(18) };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Pick a font for the pasted words",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 10)
+        });
+        foreach (var f in fonts)
+        {
+            var name = f;
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock { Text = "Electric field 123", FontFamily = new FontFamily(name), FontSize = 26 });
+            stack.Children.Add(new TextBlock { Text = name, FontSize = 11, Foreground = Brushes.Gray });
+            var btn = new Button
+            {
+                Content = stack,
+                Padding = new Thickness(14, 8, 14, 8),
+                Margin = new Thickness(0, 0, 0, 8),
+                MinWidth = 320,
+                HorizontalContentAlignment = HorizontalAlignment.Left
+            };
+            if (name == _pasteFont)
+            {
+                btn.BorderBrush = new SolidColorBrush(Color.FromRgb(0x1A, 0x73, 0xE8));
+                btn.BorderThickness = new Thickness(2);
+            }
+            btn.Click += (s, e) => { chosen = name; win.DialogResult = true; };
+            panel.Children.Add(btn);
+        }
+        win.Content = panel;
+        win.KeyDown += (s, e) => { if (e.Key == Key.Escape) win.Close(); };
+        win.ShowDialog();
+        if (chosen is not null) _pasteFont = chosen;
+        return chosen;
     }
 
     private static void TryDelete(string path)

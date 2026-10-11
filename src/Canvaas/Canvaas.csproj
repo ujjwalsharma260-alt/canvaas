@@ -13,4 +13,7 @@
     <Company>Canvaas</Company>
   </PropertyGroup>
 
+<ItemGroup>
+    <Resource Include="crumpled.jpg" />
+  </ItemGroup>
 </Project>

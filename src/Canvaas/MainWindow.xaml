@@ -445,6 +445,7 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <RadioButton x:Name="PenButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen (1)" Click="PenButton_Click"/>
                     <RadioButton x:Name="HighlighterButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter (2)" Click="HighlighterButton_Click"/>
+                    <RadioButton x:Name="CalligraphyButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="✒" FontFamily="Segoe UI Symbol" FontSize="17" ToolTip="Calligraphy pen" Click="CalligraphyButton_Click"/>
                     <RadioButton x:Name="EraserButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser (3)" Click="EraserButton_Click"/>
                     <RadioButton x:Name="LassoButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso (4)" Click="LassoButton_Click"/>
                     <RadioButton x:Name="HandButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (5)" Click="HandButton_Click"/>
@@ -662,7 +663,7 @@
                                 </UniformGrid>
 
                                 <TextBlock Text="Background colour" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
-                                <UniformGrid Columns="8" Margin="0,0,0,16">
+                                <UniformGrid Columns="9" Margin="0,0,0,16">
                                     <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
                                     <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
                                     <RadioButton x:Name="ColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#EEEEEE" ToolTip="Light grey" Click="ColorSwatch_Click" Tag="#EEEEEE"/>
@@ -670,6 +671,7 @@
                                     <RadioButton x:Name="ColorSky" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE4F2" ToolTip="Sky" Click="ColorSwatch_Click" Tag="#DCE4F2"/>
                                     <RadioButton x:Name="ColorNavy" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#2C3E5C" ToolTip="Navy" Click="ColorSwatch_Click" Tag="#2C3E5C"/>
                                     <RadioButton x:Name="ColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1E4D3A" ToolTip="Dark green" Click="ColorSwatch_Click" Tag="#1E4D3A"/>
+                                    <RadioButton x:Name="ColorPitch" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#000000" ToolTip="Pitch black" Click="ColorSwatch_Click" Tag="#000000"/>
                                     <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
                                 </UniformGrid>
 
