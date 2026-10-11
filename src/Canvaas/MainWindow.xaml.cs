@@ -44,7 +44,6 @@ public partial class MainWindow : Window
     private const double EdgeBtnPad = 4;
     private const double ResizeHandleSize = 12;
 
-    // Win32 for fullscreen covering the taskbar
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
                                             int X, int Y, int cx, int cy, uint uFlags);
@@ -194,7 +193,6 @@ public partial class MainWindow : Window
     private StrokeCollection? _clipboardStrokes;
     private int _pasteCounter = 0;
 
-    // Radial toolbar
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
     private bool _radialVisible = true;
     private double _radialSize = 240;
@@ -202,7 +200,6 @@ public partial class MainWindow : Window
     private Point _radialDragStart;
     private double _radialStartX, _radialStartY;
 
-    // Resize handles
     private readonly List<Rectangle> _resizeHandles = new();
     private bool _resizingHandle = false;
     private ResizeHandle _activeHandle;
@@ -252,14 +249,12 @@ public partial class MainWindow : Window
                 _ => 2
             };
 
-        // Toast timer
         _toastTimer.Tick += (s, e) =>
         {
             _toastTimer.Stop();
             if (ToastBorder is not null) ToastBorder.Visibility = Visibility.Collapsed;
         };
 
-        // Hook TextBlock.Text changes to auto-fade the toast
         var dpd = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         if (StatusText is not null)
         {
@@ -311,15 +306,13 @@ public partial class MainWindow : Window
         ApplyPenAttributes();
         UpdateCursor();
 
-        var version = Assembly.GetExecutingAssembly().GetName().Version;
-        VersionText.Text = "";
         TitleBarText.Text = "Canvaas";
 
         UpdateTitle();
     }
 
     // =====================================================================
-    // Chrome toggle (top toolbar + side panel)
+    // Chrome toggle
     // =====================================================================
     private void ChromeToggleButton_Click(object sender, RoutedEventArgs e)
     {
@@ -335,7 +328,6 @@ public partial class MainWindow : Window
     {
         if (RadialToolbarRoot is null) return;
 
-        // Remove existing tool buttons (keep the ring, knob, close button)
         for (int i = RadialToolbarRoot.Children.Count - 1; i >= 0; i--)
         {
             var child = RadialToolbarRoot.Children[i];
@@ -357,17 +349,16 @@ public partial class MainWindow : Window
             RadialOuterRing.Height = totalSize - 20;
         }
 
-        // 8 tools
         var tools = new (string glyph, string tip, Action handler)[]
         {
-            ("\uE70F", "Pen",            () => PenButton_Click(this, new RoutedEventArgs())),
-            ("\uE7E6", "Highlighter",    () => HighlighterButton_Click(this, new RoutedEventArgs())),
-            ("\uE75C", "Eraser",         () => EraserButton_Click(this, new RoutedEventArgs())),
-            ("\uE75D", "Lasso",          () => LassoButton_Click(this, new RoutedEventArgs())),
-            ("\uE7C9", "Hand (pan)",     () => HandButton_Click(this, new RoutedEventArgs())),
-            ("\uE7A7", "Undo",           () => Undo_Executed(this, new ExecutedRoutedEventArgs(ApplicationCommands.Undo, null))),
-            ("\uE7A6", "Redo",           () => Redo_Executed(this, new ExecutedRoutedEventArgs(ApplicationCommands.Redo, null))),
-            ("\uE74D", "Delete selection", () => DeleteSelection()),
+            ("\uE70F", "Pen",             () => PenButton_Click(this, new RoutedEventArgs())),
+            ("\uE7E6", "Highlighter",     () => HighlighterButton_Click(this, new RoutedEventArgs())),
+            ("\uE75C", "Eraser",          () => EraserButton_Click(this, new RoutedEventArgs())),
+            ("\uE75D", "Lasso",           () => LassoButton_Click(this, new RoutedEventArgs())),
+            ("\uE7C9", "Hand (pan)",      () => HandButton_Click(this, new RoutedEventArgs())),
+            ("\uE7A7", "Undo",            () => ApplicationCommands.Undo.Execute(null, this)),
+            ("\uE7A6", "Redo",            () => ApplicationCommands.Redo.Execute(null, this)),
+            ("\uE74D", "Delete selection",() => DeleteSelection()),
         };
 
         for (int i = 0; i < tools.Length; i++)
@@ -384,7 +375,8 @@ public partial class MainWindow : Window
                 Width = buttonSize,
                 Height = buttonSize
             };
-            btn.Click += (s, e) => { try { tools[i].handler(); } catch { } };
+            int idx = i;
+            btn.Click += (s, e) => { try { tools[idx].handler(); } catch { } };
 
             btn.HorizontalAlignment = HorizontalAlignment.Left;
             btn.VerticalAlignment = VerticalAlignment.Top;
@@ -393,7 +385,6 @@ public partial class MainWindow : Window
             RadialToolbarRoot.Children.Add(btn);
         }
 
-        // Hook radial center knob drag
         if (RadialCenterKnob is not null)
         {
             RadialCenterKnob.MouseLeftButtonDown -= RadialCenterKnob_MouseDown;
@@ -410,7 +401,6 @@ public partial class MainWindow : Window
         if (RadialToolbarHost is null || CanvasHostBorder is null) return;
         if (RadialToolbarRoot is null) return;
 
-        // If it hasn't been moved yet, place at bottom-right of the canvas
         if (double.IsNaN(Canvas.GetLeft(RadialToolbarRoot)))
         {
             double vw = CanvasHostBorder.ActualWidth;
@@ -466,7 +456,7 @@ public partial class MainWindow : Window
     {
         _radialVisible = false;
         RadialToolbarRoot.Visibility = Visibility.Collapsed;
-        StatusText.Text = "Tools hidden. Click the ⚙ button in the title bar to show them again.";
+        StatusText.Text = "Tools hidden. Click the gear button in the title bar to show them again.";
     }
 
     private void RadialSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -552,6 +542,100 @@ public partial class MainWindow : Window
     private void ExtendUp_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Up);
     private void ExtendDown_Click(object sender, RoutedEventArgs e) => ExpandCanvas(ExpandDirection.Down);
 
+    // =====================================================================
+    // Shift content (used when extending left / up)
+    // =====================================================================
+    private void ShiftCurrentPageContent(double dx, double dy)
+    {
+        if (Math.Abs(dx) < 0.0001 && Math.Abs(dy) < 0.0001) return;
+        if (InkArea is null) return;
+
+        var strokeMap = new Dictionary<Stroke, Stroke>();
+        var shifted = new StrokeCollection();
+        foreach (var s in CurrentPage.Strokes)
+        {
+            var ns = ShiftStroke(s, dx, dy);
+            strokeMap[s] = ns;
+            shifted.Add(ns);
+        }
+
+        _applyingHistory = true;
+        try
+        {
+            CurrentPage.Strokes.Clear();
+            foreach (var s in shifted) CurrentPage.Strokes.Add(s);
+        }
+        finally { _applyingHistory = false; }
+
+        foreach (var child in InkArea.Children)
+        {
+            if (child is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            if (!double.IsNaN(l)) InkCanvas.SetLeft(fe, l + dx);
+            if (!double.IsNaN(t)) InkCanvas.SetTop(fe, t + dy);
+        }
+
+        RemapHistoryStack(_undo, strokeMap, dx, dy);
+        RemapHistoryStack(_redo, strokeMap, dx, dy);
+
+        ClearElementSelection();
+        InkArea.Select(new StrokeCollection());
+        CommandManager.InvalidateRequerySuggested();
+    }
+
+    private static Stroke ShiftStroke(Stroke s, double dx, double dy)
+    {
+        var pts = new StylusPointCollection();
+        foreach (var p in s.StylusPoints)
+            pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
+        return new Stroke(pts, s.DrawingAttributes.Clone());
+    }
+
+    private static void RemapHistoryStack(Stack<object> stack, Dictionary<Stroke, Stroke> map, double dx, double dy)
+    {
+        if (stack.Count == 0) return;
+
+        var items = stack.ToArray();
+        stack.Clear();
+
+        for (int i = items.Length - 1; i >= 0; i--)
+        {
+            var item = items[i];
+
+            if (item is StrokeChange sc)
+            {
+                var newAdded = new StrokeCollection();
+                foreach (var s in sc.Added)
+                    newAdded.Add(map.TryGetValue(s, out var ns) ? ns : s);
+
+                var newRemoved = new StrokeCollection();
+                foreach (var s in sc.Removed)
+                    newRemoved.Add(map.TryGetValue(s, out var ns) ? ns : s);
+
+                stack.Push(new StrokeChange(newAdded, newRemoved));
+            }
+            else if (item is ElementMoveChange emc)
+            {
+                stack.Push(new ElementMoveChange
+                {
+                    Element = emc.Element,
+                    OldLeft = emc.OldLeft + dx,
+                    OldTop = emc.OldTop + dy,
+                    NewLeft = emc.NewLeft + dx,
+                    NewTop = emc.NewTop + dy
+                });
+            }
+            else
+            {
+                stack.Push(item);
+            }
+        }
+    }
+
+    // =====================================================================
+    // Edge buttons
+    // =====================================================================
     private void ScheduleRebuildEdgeButtons()
     {
         if (_rebuildEdgeScheduled) return;
@@ -685,7 +769,6 @@ public partial class MainWindow : Window
         double sr = _viewPanX + boundsWorld.Right * _viewZoom;
         double sb = _viewPanY + boundsWorld.Bottom * _viewZoom;
 
-        // Draw selection outline
         var outline = new Rectangle
         {
             Width = sr - sl,
@@ -699,7 +782,7 @@ public partial class MainWindow : Window
         Canvas.SetLeft(outline, sl);
         Canvas.SetTop(outline, st);
         HandleOverlay.Children.Add(outline);
-        _resizeHandles.Add(outline); // reuse list for cleanup
+        _resizeHandles.Add(outline);
 
         AddResizeHandle(sl, st, ResizeHandle.NW);
         AddResizeHandle((sl + sr) / 2, st, ResizeHandle.N);
@@ -750,8 +833,7 @@ public partial class MainWindow : Window
         if (selStrokes.Count > 0)
         {
             var b = selStrokes.GetBounds();
-            if (b.Width > 0 && b.Height > 0)
-                bounds = b;
+            if (b.Width > 0 && b.Height > 0) bounds = b;
         }
         foreach (var el in _selectedElements)
         {
@@ -773,7 +855,7 @@ public partial class MainWindow : Window
         if (_resizeHandles.Count == 0) return false;
         foreach (var h in _resizeHandles)
         {
-            if (h.Tag is not ResizeHandle handle) continue;  // skip outline rect
+            if (h.Tag is not ResizeHandle handle) continue;
             double l = Canvas.GetLeft(h);
             double t = Canvas.GetTop(h);
             var rect = new Rect(l - 4, t - 4, ResizeHandleSize + 8, ResizeHandleSize + 8);
@@ -832,14 +914,11 @@ public partial class MainWindow : Window
         double sx = (nR - nL) / Math.Max(0.0001, start.Right - start.Left);
         double sy = (nB - nT) / Math.Max(0.0001, start.Bottom - start.Top);
 
-        // Corner handles: uniform scale
         if (_activeHandle == ResizeHandle.NW || _activeHandle == ResizeHandle.NE ||
             _activeHandle == ResizeHandle.SE || _activeHandle == ResizeHandle.SW)
         {
             double s = Math.Max(sx, sy);
             sx = s; sy = s;
-
-            // Recompute new bounds keeping the fixed corner in place
             switch (_activeHandle)
             {
                 case ResizeHandle.NW:
@@ -868,7 +947,6 @@ public partial class MainWindow : Window
         _applyingHistory = true;
         try
         {
-            // Rescale strokes: only point positions, keep stroke width the same.
             if (_resizeOriginalStrokes is not null && _resizeOriginalStrokes.Count > 0)
             {
                 var toRemove = new StrokeCollection();
@@ -891,7 +969,6 @@ public partial class MainWindow : Window
                 InkArea.Select(newStrokes);
             }
 
-            // Rescale elements
             foreach (var (el, ol, ot, ow, oh, ofs) in _resizeOriginalElements)
             {
                 if (el is not FrameworkElement fe) continue;
@@ -1224,7 +1301,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Tab toggles chrome
         if (e.Key == Key.Tab)
         {
             ChromeToggleButton_Click(this, new RoutedEventArgs());
@@ -1698,7 +1774,6 @@ public partial class MainWindow : Window
         bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
         bool lassoDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Lasso;
 
-        // Resize first — if click is on a handle
         if (lassoDrag && TryStartResize(screenPt))
         {
             CanvasHostBorder.CaptureMouse();
@@ -1916,7 +1991,7 @@ public partial class MainWindow : Window
 
         int total = strokesIn.Count + _selectedElements.Count;
         if (total > 0)
-            StatusText.Text = $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Drag inside to move. Drag corner handles to resize. Delete to remove.";
+            StatusText.Text = $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Drag handles to resize.";
         else
             StatusText.Text = "Nothing selected.";
     }
