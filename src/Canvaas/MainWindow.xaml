@@ -3,14 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Untitled - Canvaas"
-        Width="1280"
-        Height="800"
-        MinWidth="720"
-        MinHeight="480"
-        WindowStartupLocation="CenterScreen"
-        WindowState="Maximized"
-        WindowStyle="None"
-        Background="#E6E6E6"
+        Width="1280" Height="800" MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen" WindowState="Maximized"
+        WindowStyle="None" Background="#E6E6E6"
         Closing="Window_Closing"
         PreviewMouseUp="Window_PreviewMouseUp"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -21,353 +16,244 @@
 
     <Window.Resources>
         <Style x:Key="ToolIconRadio" TargetType="RadioButton">
-            <Setter Property="Width" Value="42"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Margin" Value="2,0"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="Width" Value="42"/><Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="2,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/><Setter Property="Foreground" Value="#444444"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#DCE9F9"/>
-                                <Setter Property="Foreground" Value="#1A73E8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/></Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#DCE9F9"/>
+                            <Setter Property="Foreground" Value="#1A73E8"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="ToolIconButton" TargetType="Button">
-            <Setter Property="Width" Value="42"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Margin" Value="2,0"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="Width" Value="42"/><Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="2,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="16"/><Setter Property="Foreground" Value="#444444"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#BBBBBB"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#BBBBBB"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="SmallIconButton" TargetType="Button">
-            <Setter Property="Width" Value="30"/>
-            <Setter Property="Height" Value="26"/>
-            <Setter Property="Margin" Value="1,0"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Width" Value="30"/><Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="1,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="#333333"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#CCCCCC"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="EdgeAddButton" TargetType="Button">
-            <Setter Property="Width" Value="30"/>
-            <Setter Property="Height" Value="30"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Foreground" Value="#1A73E8"/>
-            <Setter Property="Background" Value="White"/>
+            <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="#1A73E8"/><Setter Property="Background" Value="White"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                    CornerRadius="15" BorderBrush="#1A73E8" BorderThickness="1.4"/>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#1A73E8"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#0D47A1"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="15" BorderBrush="#1A73E8" BorderThickness="1.4"/>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#1A73E8"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
-        <!-- Radial toolbar button style -->
-        <Style x:Key="RadialButton" TargetType="Button">
-            <Setter Property="Width" Value="42"/>
-            <Setter Property="Height" Value="42"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="18"/>
-            <Setter Property="Foreground" Value="#333333"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Cursor" Value="Hand"/>
+        <Style x:Key="QuickColorButton" TargetType="Button">
+            <Setter Property="Width" Value="26"/><Setter Property="Height" Value="26"/>
+            <Setter Property="Margin" Value="3"/><Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Ellipse x:Name="Bd" Fill="{TemplateBinding Background}"
-                                     Stroke="#DDDDDD" StrokeThickness="1"/>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Fill" Value="#E8F0FE"/>
-                                <Setter TargetName="Bd" Property="Stroke" Value="#1A73E8"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Fill" Value="#D2E3FC"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="13" BorderBrush="#CCCCCC" BorderThickness="1"/>
+                        <Border x:Name="Hover" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="14" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Hover" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="ColorSwatch" TargetType="RadioButton">
-            <Setter Property="Width" Value="46"/>
-            <Setter Property="Height" Value="46"/>
+            <Setter Property="Width" Value="46"/><Setter Property="Height" Value="46"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Grid>
-                            <Border x:Name="SwatchBorder" Background="{TemplateBinding Background}" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4"/>
-                            <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="SelectionRing" Property="BorderBrush" Value="#88BBEE"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="RadioButton">
+                    <Grid>
+                        <Border x:Name="SwatchBorder" Background="{TemplateBinding Background}" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4"/>
+                        <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="SelectionRing" Property="BorderBrush" Value="#88BBEE"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="PopupSwatchButton" TargetType="Button">
-            <Setter Property="Width" Value="34"/>
-            <Setter Property="Height" Value="34"/>
+            <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
             <Setter Property="Margin" Value="3"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Grid>
-                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="17" BorderBrush="#CCCCCC" BorderThickness="1"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#1A73E8"/>
-                                <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="17" BorderBrush="#CCCCCC" BorderThickness="1"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#1A73E8"/>
+                            <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="TemplateThumb" TargetType="RadioButton">
-            <Setter Property="Width" Value="54"/>
-            <Setter Property="Height" Value="70"/>
+            <Setter Property="Width" Value="54"/><Setter Property="Height" Value="70"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Grid>
-                            <Border x:Name="ThumbBorder" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="{TemplateBinding Background}"/>
-                            <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="RadioButton">
+                    <Grid>
+                        <Border x:Name="ThumbBorder" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="{TemplateBinding Background}"/>
+                        <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="PaperThumb" TargetType="RadioButton">
-            <Setter Property="Width" Value="92"/>
-            <Setter Property="Height" Value="90"/>
+            <Setter Property="Width" Value="92"/><Setter Property="Height" Value="90"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Grid>
-                            <Border x:Name="ThumbBorder" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="{TemplateBinding Background}"/>
-                            <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="RadioButton">
+                    <Grid>
+                        <Border x:Name="ThumbBorder" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Background="{TemplateBinding Background}"/>
+                        <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="TitleBarButton" TargetType="Button">
-            <Setter Property="Width" Value="46"/>
-            <Setter Property="Height" Value="36"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="10"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="46"/><Setter Property="Height" Value="36"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="White"/><Setter Property="Background" Value="Transparent"/>
             <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#33FFFFFF"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <Style x:Key="TitleBarCloseButton" TargetType="Button" BasedOn="{StaticResource TitleBarButton}">
             <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#E81123"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#E81123"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
 
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
-            <DrawingBrush.Drawing>
-                <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,54,70"/></GeometryDrawing.Geometry></GeometryDrawing>
-            </DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,54,70"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing>
         </DrawingBrush>
-
         <DrawingBrush x:Key="PreviewRuled" TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,10,10"/></GeometryDrawing.Geometry></GeometryDrawing>
-                    <GeometryDrawing>
-                        <GeometryDrawing.Pen><Pen Brush="#888888" Thickness="0.5"/></GeometryDrawing.Pen>
-                        <GeometryDrawing.Geometry><LineGeometry StartPoint="0,9.75" EndPoint="10,9.75"/></GeometryDrawing.Geometry>
-                    </GeometryDrawing>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><DrawingGroup>
+                <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,10,10"/></GeometryDrawing.Geometry></GeometryDrawing>
+                <GeometryDrawing><GeometryDrawing.Pen><Pen Brush="#888888" Thickness="0.5"/></GeometryDrawing.Pen>
+                <GeometryDrawing.Geometry><LineGeometry StartPoint="0,9.75" EndPoint="10,9.75"/></GeometryDrawing.Geometry></GeometryDrawing>
+            </DrawingGroup></DrawingBrush.Drawing>
         </DrawingBrush>
-
         <DrawingBrush x:Key="PreviewGrid" TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,10,10"/></GeometryDrawing.Geometry></GeometryDrawing>
-                    <GeometryDrawing>
-                        <GeometryDrawing.Pen><Pen Brush="#888888" Thickness="0.5"/></GeometryDrawing.Pen>
-                        <GeometryDrawing.Geometry>
-                            <GeometryGroup>
-                                <LineGeometry StartPoint="0,9.75" EndPoint="10,9.75"/>
-                                <LineGeometry StartPoint="9.75,0" EndPoint="9.75,10"/>
-                            </GeometryGroup>
-                        </GeometryDrawing.Geometry>
-                    </GeometryDrawing>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><DrawingGroup>
+                <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,10,10"/></GeometryDrawing.Geometry></GeometryDrawing>
+                <GeometryDrawing><GeometryDrawing.Pen><Pen Brush="#888888" Thickness="0.5"/></GeometryDrawing.Pen>
+                <GeometryDrawing.Geometry><GeometryGroup>
+                    <LineGeometry StartPoint="0,9.75" EndPoint="10,9.75"/>
+                    <LineGeometry StartPoint="9.75,0" EndPoint="9.75,10"/>
+                </GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
+            </DrawingGroup></DrawingBrush.Drawing>
         </DrawingBrush>
-
         <DrawingBrush x:Key="PreviewDot" TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,10,10"/></GeometryDrawing.Geometry></GeometryDrawing>
-                    <GeometryDrawing Brush="#888888"><GeometryDrawing.Geometry><EllipseGeometry Center="5,5" RadiusX="1" RadiusY="1"/></GeometryDrawing.Geometry></GeometryDrawing>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><DrawingGroup>
+                <GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,10,10"/></GeometryDrawing.Geometry></GeometryDrawing>
+                <GeometryDrawing Brush="#888888"><GeometryDrawing.Geometry><EllipseGeometry Center="5,5" RadiusX="1" RadiusY="1"/></GeometryDrawing.Geometry></GeometryDrawing>
+            </DrawingGroup></DrawingBrush.Drawing>
         </DrawingBrush>
-
         <DrawingBrush x:Key="PreviewPaperWhite" TileMode="None">
-            <DrawingBrush.Drawing>
-                <GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,92,90"/></GeometryDrawing.Geometry></GeometryDrawing>
-            </DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><GeometryDrawing Brush="#FFFFFF"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,92,90"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing>
         </DrawingBrush>
-
         <DrawingBrush x:Key="PreviewPaperCrumpled" TileMode="Tile" Viewport="0,0,30,30" ViewportUnits="Absolute">
-            <DrawingBrush.Drawing>
-                <DrawingGroup>
-                    <GeometryDrawing Brush="#FCFCFA"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,30,30"/></GeometryDrawing.Geometry></GeometryDrawing>
-                    <GeometryDrawing>
-                        <GeometryDrawing.Pen><Pen Brush="#D8D8D2" Thickness="0.7"/></GeometryDrawing.Pen>
-                        <GeometryDrawing.Geometry>
-                            <GeometryGroup>
-                                <LineGeometry StartPoint="0,6" EndPoint="18,14"/>
-                                <LineGeometry StartPoint="6,0" EndPoint="24,30"/>
-                                <LineGeometry StartPoint="0,22" EndPoint="30,18"/>
-                                <LineGeometry StartPoint="14,0" EndPoint="26,30"/>
-                                <LineGeometry StartPoint="0,28" EndPoint="30,26"/>
-                                <LineGeometry StartPoint="22,0" EndPoint="30,12"/>
-                            </GeometryGroup>
-                        </GeometryDrawing.Geometry>
-                    </GeometryDrawing>
-                </DrawingGroup>
-            </DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><DrawingGroup>
+                <GeometryDrawing Brush="#FCFCFA"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,30,30"/></GeometryDrawing.Geometry></GeometryDrawing>
+                <GeometryDrawing><GeometryDrawing.Pen><Pen Brush="#D8D8D2" Thickness="0.7"/></GeometryDrawing.Pen>
+                <GeometryDrawing.Geometry><GeometryGroup>
+                    <LineGeometry StartPoint="0,6" EndPoint="18,14"/>
+                    <LineGeometry StartPoint="6,0" EndPoint="24,30"/>
+                    <LineGeometry StartPoint="0,22" EndPoint="30,18"/>
+                    <LineGeometry StartPoint="14,0" EndPoint="26,30"/>
+                    <LineGeometry StartPoint="0,28" EndPoint="30,26"/>
+                    <LineGeometry StartPoint="22,0" EndPoint="30,12"/>
+                </GeometryGroup></GeometryDrawing.Geometry></GeometryDrawing>
+            </DrawingGroup></DrawingBrush.Drawing>
         </DrawingBrush>
     </Window.Resources>
 
@@ -388,7 +274,6 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ============ TITLE BAR ============ -->
         <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#7B2FBE" Height="36">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -396,42 +281,28 @@
                     <Button x:Name="MaximizeButton" Style="{StaticResource TitleBarButton}" Content="&#xE922;" ToolTip="Maximize" Click="MaximizeButton_Click"/>
                     <Button x:Name="CloseButton" Style="{StaticResource TitleBarCloseButton}" Content="&#xE8BB;" ToolTip="Close" Click="CloseButton_Click"/>
                 </StackPanel>
-
-                <!-- ☰ Toggle chrome (top toolbar + side panel) -->
-                <Button x:Name="ChromeToggleButton" DockPanel.Dock="Left"
-                        Style="{StaticResource TitleBarButton}"
-                        Content="&#xE700;" ToolTip="Show / hide toolbars (Tab)"
-                        Click="ChromeToggleButton_Click"/>
-
-                <!-- Tools toggle (radial) -->
-                <Button x:Name="RadialToggleTitleButton" DockPanel.Dock="Left"
-                        Style="{StaticResource TitleBarButton}"
-                        Content="&#xE713;" ToolTip="Show / hide radial tools"
-                        Click="RadialToggleButton_Click"/>
-
+                <Button x:Name="ChromeToggleButton" DockPanel.Dock="Left" Style="{StaticResource TitleBarButton}"
+                        Content="&#xE700;" ToolTip="Show / hide toolbars (Tab)" Click="ChromeToggleButton_Click"/>
                 <TextBlock x:Name="TitleBarText" Foreground="White" FontSize="13" FontWeight="SemiBold"
                            VerticalAlignment="Center" Margin="8,0,0,0"/>
             </DockPanel>
         </Border>
 
-        <!-- ============ TOP TOOLBAR (hidden by default) ============ -->
         <Border x:Name="TopToolbarBorder" Grid.Row="1" Background="#FFFFFF"
-                BorderBrush="#E0E0E0" BorderThickness="0,0,0,1"
-                Visibility="Collapsed">
+                BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Visibility="Collapsed">
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="PrevPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76B;" ToolTip="Previous page (Left arrow)" Click="PrevPageButton_Click"/>
+                    <Button x:Name="PrevPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
                     <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="4,0" MinWidth="76">
-                        <TextBox x:Name="PageCounterBox" Text="1 / 1"
-                                 Width="64" BorderThickness="0" Background="Transparent"
+                        <TextBox x:Name="PageCounterBox" Text="1 / 1" Width="64" BorderThickness="0" Background="Transparent"
                                  Padding="0" FontSize="12" Foreground="#333333"
                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                  KeyDown="PageCounterBox_KeyDown" LostFocus="PageCounterBox_LostFocus"/>
                     </Border>
-                    <Button x:Name="NextPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76C;" ToolTip="Next page (Right arrow)" Click="NextPageButton_Click"/>
-                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Extend the sheet or manage notebook pages" Margin="6,0,2,0" Click="AddPageButton_Click">
+                    <Button x:Name="NextPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76C;" ToolTip="Next page" Click="NextPageButton_Click"/>
+                    <Button x:Name="AddPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE7C3;" ToolTip="Extend sheet or pages" Margin="6,0,2,0" Click="AddPageButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Extend sheet  →  Right (add A4)" Click="ExtendRight_Click"/>
@@ -445,7 +316,7 @@
                         </Button.ContextMenu>
                     </Button>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert image, text, or from clipboard" Click="MenuButton_Click">
+                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert / paste" Click="MenuButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Insert Image…" Click="InsertImage_Click"/>
@@ -473,7 +344,7 @@
                         </Button.ContextMenu>
                     </Button>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen" Click="FullscreenButton_Click"/>
+                    <Button x:Name="FullscreenButton" Style="{StaticResource ToolIconButton}" Content="&#xE740;" ToolTip="Fullscreen (F11)" Click="FullscreenButton_Click"/>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -484,59 +355,66 @@
                     <RadioButton x:Name="HandButton" Style="{StaticResource ToolIconRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (5)" Click="HandButton_Click"/>
                     <Button x:Name="ClearButton" Style="{StaticResource ToolIconButton}" Content="&#xE74D;" ToolTip="Clear page" Click="ClearButton_Click"/>
                     <Rectangle Width="1" Margin="8,6" Fill="#DDDDDD"/>
-                    <Button x:Name="UndoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A7;" ToolTip="Undo" Command="ApplicationCommands.Undo"/>
-                    <Button x:Name="RedoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A6;" ToolTip="Redo" Command="ApplicationCommands.Redo"/>
+                    <Button x:Name="UndoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A7;" ToolTip="Undo (Ctrl+Z)" Command="ApplicationCommands.Undo"/>
+                    <Button x:Name="RedoButton" Style="{StaticResource ToolIconButton}" Content="&#xE7A6;" ToolTip="Redo (Ctrl+Y)" Command="ApplicationCommands.Redo"/>
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <!-- ============ CANVAS AREA ============ -->
         <Grid Grid.Row="2">
-            <Border x:Name="CanvasHostBorder"
-                    Background="#E6E6E6"
-                    ClipToBounds="True"
+            <Border x:Name="CanvasHostBorder" Background="#E6E6E6" ClipToBounds="True"
                     PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
                     PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
                     PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
-                <Canvas x:Name="CanvasHost"
-                        HorizontalAlignment="Left" VerticalAlignment="Top"
-                        RenderTransformOrigin="0,0">
+                <Canvas x:Name="CanvasHost" HorizontalAlignment="Left" VerticalAlignment="Top" RenderTransformOrigin="0,0">
                     <Canvas.RenderTransform>
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Canvas.RenderTransform>
-
-                    <Rectangle x:Name="PageBackground"
-                               Canvas.Left="0" Canvas.Top="0"
-                               Fill="White"
-                               Stroke="#C8C8C8" StrokeThickness="1"
-                               IsHitTestVisible="False"/>
-
-                    <InkCanvas x:Name="InkArea"
-                               Canvas.Left="0" Canvas.Top="0"
-                               Background="Transparent"
-                               ForceCursor="True"
-                               Stylus.IsPressAndHoldEnabled="False"
-                               Stylus.IsFlicksEnabled="False"
+                    <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White"
+                               Stroke="#C8C8C8" StrokeThickness="1" IsHitTestVisible="False"/>
+                    <InkCanvas x:Name="InkArea" Canvas.Left="0" Canvas.Top="0" Background="Transparent"
+                               ForceCursor="True" Stylus.IsPressAndHoldEnabled="False" Stylus.IsFlicksEnabled="False"
                                StylusOutOfRange="InkArea_StylusOutOfRange"
                                StrokeCollected="InkArea_StrokeCollected"
                                SelectionChanged="InkArea_SelectionChanged"/>
                 </Canvas>
             </Border>
 
-            <!-- Overlay 1: edge + buttons (A4 extension) -->
             <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True"/>
-
-            <!-- Overlay 2: resize handles -->
             <Canvas x:Name="HandleOverlay" ClipToBounds="True"/>
 
-            <!-- Side panel (hidden by default, toggled with ☰) -->
+            <!-- Draggable quick-color square -->
+            <Canvas x:Name="ColorSquareHost" ClipToBounds="False" Background="{x:Null}">
+                <Border x:Name="ColorSquareRoot" Width="150" Background="White"
+                        BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="10">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.28" Color="Black"/>
+                    </Border.Effect>
+                    <StackPanel>
+                        <Border x:Name="ColorSquareDragHandle" Height="20" Background="#F5F5F5"
+                                CornerRadius="10,10,0,0" Cursor="SizeAll"
+                                MouseLeftButtonDown="ColorSquareDragHandle_MouseDown"
+                                MouseMove="ColorSquareDragHandle_MouseMove"
+                                MouseLeftButtonUp="ColorSquareDragHandle_MouseUp">
+                            <TextBlock Text="⣿" Foreground="#999999" FontSize="13"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <UniformGrid Columns="4" Margin="4,4,4,6">
+                            <Button x:Name="QuickColor1" Style="{StaticResource QuickColorButton}" Background="#111111" Tag="#111111" Click="QuickColor_Click" ToolTip="Black"/>
+                            <Button x:Name="QuickColor2" Style="{StaticResource QuickColorButton}" Background="#C62828" Tag="#C62828" Click="QuickColor_Click" ToolTip="Red"/>
+                            <Button x:Name="QuickColor3" Style="{StaticResource QuickColorButton}" Background="#1565C0" Tag="#1565C0" Click="QuickColor_Click" ToolTip="Blue"/>
+                            <Button x:Name="QuickColor4" Style="{StaticResource QuickColorButton}" Background="#2E7D32" Tag="#2E7D32" Click="QuickColor_Click" ToolTip="Green"/>
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+            </Canvas>
+
+            <!-- Side panel -->
             <Border x:Name="SidePanel" HorizontalAlignment="Right" Width="320"
-                    Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0"
-                    Visibility="Collapsed">
+                    Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="18,16">
-
                         <TextBlock Text="Paper" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
                         <UniformGrid Columns="2">
                             <RadioButton x:Name="PaperWhite" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperWhite}" ToolTip="Plain white" Click="PaperThumb_Click" Tag="White"/>
@@ -565,13 +443,11 @@
 
                         <TextBlock Text="Spacing" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
                         <DockPanel>
-                            <TextBlock x:Name="SpacingText" DockPanel.Dock="Right" Text="40"
-                                       Width="32" TextAlignment="Right"
+                            <TextBlock x:Name="SpacingText" DockPanel.Dock="Right" Text="40" Width="32" TextAlignment="Right"
                                        VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
                             <Slider x:Name="SpacingSlider" Minimum="1" Maximum="60" Value="40"
                                     TickFrequency="1" IsSnapToTickEnabled="True"
-                                    VerticalAlignment="Center"
-                                    ValueChanged="SpacingSlider_ValueChanged"/>
+                                    VerticalAlignment="Center" ValueChanged="SpacingSlider_ValueChanged"/>
                         </DockPanel>
 
                         <TextBlock Text="Cursor over page" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
@@ -584,78 +460,41 @@
 
                         <TextBlock Text="Pointer size" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,18,0,6"/>
                         <DockPanel>
-                            <TextBlock x:Name="PointerSizeText" DockPanel.Dock="Right" Text="12"
-                                       Width="32" TextAlignment="Right"
-                                       VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
+                            <TextBlock x:Name="PointerSizeText" DockPanel.Dock="Right" Text="12" Width="32"
+                                       TextAlignment="Right" VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
                             <Slider x:Name="PointerSizeSlider" Minimum="6" Maximum="32" Value="12"
                                     TickFrequency="1" IsSnapToTickEnabled="True"
-                                    VerticalAlignment="Center"
-                                    ValueChanged="PointerSizeSlider_ValueChanged"/>
+                                    VerticalAlignment="Center" ValueChanged="PointerSizeSlider_ValueChanged"/>
                         </DockPanel>
 
-                        <TextBlock Text="Radial toolbar size" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,18,0,6"/>
-                        <DockPanel>
-                            <TextBlock x:Name="RadialSizeText" DockPanel.Dock="Right" Text="240"
-                                       Width="40" TextAlignment="Right"
-                                       VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
-                            <Slider x:Name="RadialSizeSlider" Minimum="140" Maximum="360" Value="240"
-                                    TickFrequency="10" IsSnapToTickEnabled="True"
-                                    VerticalAlignment="Center"
-                                    ValueChanged="RadialSizeSlider_ValueChanged"/>
-                        </DockPanel>
+                        <TextBlock Text="Keyboard Shortcuts" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
+                        <TextBlock Text="Click a button, then press the key you want." FontSize="11" Foreground="#777777" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                        <ItemsControl x:Name="ShortcutList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,3">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="#333333" FontSize="12"/>
+                                        <Button Grid.Column="1" Content="{Binding KeyLabel}" MinWidth="90" Height="26"
+                                                Tag="{Binding ActionId}" Click="ShortcutChange_Click"
+                                                FontSize="12" Padding="6,2"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Button x:Name="ResetShortcutsButton" Content="Reset to defaults"
+                                Margin="0,12,0,0" Height="28" HorizontalAlignment="Left" Padding="10,2"
+                                Click="ResetShortcuts_Click"/>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
-            <!-- ============ RADIAL TOOLBAR ============ -->
-            <Canvas x:Name="RadialToolbarHost" Background="Transparent" ClipToBounds="False">
-                <Grid x:Name="RadialToolbarRoot" Width="240" Height="240">
-                    <!-- Outer faint ring -->
-                    <Ellipse x:Name="RadialOuterRing"
-                             Width="220" Height="220"
-                             Fill="#E0FFFFFF" Stroke="#CCCCCC" StrokeThickness="1"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                             IsHitTestVisible="False"/>
-                    <!-- Center drag knob -->
-                    <Ellipse x:Name="RadialCenterKnob"
-                             Width="68" Height="68"
-                             Fill="#333333" Stroke="#FFFFFF" StrokeThickness="2"
-                             Cursor="SizeAll"
-                             ToolTip="Drag to move the toolbar">
-                        <Ellipse.Effect>
-                            <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.4" Color="Black"/>
-                        </Ellipse.Effect>
-                    </Ellipse>
-                    <!-- Close button (small ✕) -->
-                    <Button x:Name="RadialCloseButton" Content="&#xE711;" FontFamily="Segoe MDL2 Assets"
-                            FontSize="10" Width="24" Height="24"
-                            HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Margin="0,4,4,0"
-                            Cursor="Hand" Click="RadialCloseButton_Click"
-                            ToolTip="Hide tools">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Grid>
-                                    <Ellipse x:Name="Bd" Fill="#FFFFFF" Stroke="#CCCCCC" StrokeThickness="1"/>
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="Bd" Property="Fill" Value="#F0F0F0"/>
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                    <!-- The 8 tool buttons are placed at runtime (in C#). -->
-                </Grid>
-            </Canvas>
-
-            <!-- Floating zoom widget -->
-            <Border x:Name="FloatingZoom"
-                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    Margin="0,0,28,28"
-                    Background="#FAFFFFFF" BorderBrush="#B0B0B0" BorderThickness="1"
+            <Border x:Name="FloatingZoom" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,28,28" Background="#FAFFFFFF" BorderBrush="#B0B0B0" BorderThickness="1"
                     CornerRadius="10" Padding="4,3">
                 <Border.Effect>
                     <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="3" Opacity="0.22" Direction="270"/>
@@ -664,8 +503,7 @@
                     <TranslateTransform x:Name="FloatingZoomTransform" X="0" Y="0"/>
                 </Border.RenderTransform>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border x:Name="FloatingZoomGrip" Padding="8,4" Background="Transparent"
-                            Cursor="SizeAll" ToolTip="Drag to move"
+                    <Border x:Name="FloatingZoomGrip" Padding="8,4" Background="Transparent" Cursor="SizeAll" ToolTip="Drag"
                             MouseLeftButtonDown="FloatingZoomGrip_MouseDown"
                             MouseMove="FloatingZoomGrip_MouseMove"
                             MouseLeftButtonUp="FloatingZoomGrip_MouseUp">
@@ -674,78 +512,53 @@
                     <Rectangle Width="1" Margin="2,2" Fill="#DDDDDD"/>
                     <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out" Click="ZoomOutButton_Click"/>
                     <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="60">
-                        <TextBox x:Name="ZoomText" Text="100%"
-                                 Width="46" BorderThickness="0" Background="Transparent"
+                        <TextBox x:Name="ZoomText" Text="100%" Width="46" BorderThickness="0" Background="Transparent"
                                  Padding="0" FontSize="12" Foreground="#333333"
                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                                  KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
                     </Border>
                     <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in" Click="ZoomInButton_Click"/>
-                    <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset zoom" Click="ZoomResetButton_Click"/>
+                    <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset" Click="ZoomResetButton_Click"/>
                 </StackPanel>
             </Border>
 
-            <!-- Status toast (bottom center, auto-fades) -->
-            <Border x:Name="ToastBorder"
-                    HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Margin="0,0,0,90"
-                    Background="#DD222222" CornerRadius="8" Padding="14,8"
-                    Visibility="Collapsed"
-                    IsHitTestVisible="False"
-                    Panel.ZIndex="200">
+            <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Margin="0,0,0,90" Background="#DD222222" CornerRadius="8" Padding="14,8"
+                    Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
             </Border>
         </Grid>
 
-        <!-- Tool options popup -->
-        <Popup x:Name="ToolOptionsPopup"
-               Placement="Bottom"
-               StaysOpen="False"
-               AllowsTransparency="True"
-               PopupAnimation="Fade">
+        <Popup x:Name="ToolOptionsPopup" Placement="Bottom" StaysOpen="False"
+               AllowsTransparency="True" PopupAnimation="Fade">
             <Border Background="White" BorderBrush="#D0D0D0" BorderThickness="1"
                     CornerRadius="10" Padding="14,12" Margin="6,4,6,12">
-                <Border.Effect>
-                    <DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="4" Opacity="0.18" Direction="270"/>
-                </Border.Effect>
+                <Border.Effect><DropShadowEffect Color="#000000" BlurRadius="16" ShadowDepth="4" Opacity="0.18" Direction="270"/></Border.Effect>
                 <StackPanel Width="252">
                     <TextBlock x:Name="ToolPopupTitle" Text="Pen" FontSize="13" FontWeight="SemiBold" Foreground="#333333" Margin="0,0,0,10"/>
                     <TextBlock Text="Colour" FontSize="11" Foreground="#666666" Margin="0,0,0,6"/>
                     <ItemsControl x:Name="ToolColorGrid">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <UniformGrid Columns="6"/>
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Button Style="{StaticResource PopupSwatchButton}"
-                                        Tag="{Binding Hex}"
-                                        ToolTip="{Binding Name}"
-                                        Background="{Binding Brush}"
-                                        Click="ToolColorButton_Click"/>
+                                <Button Style="{StaticResource PopupSwatchButton}" Tag="{Binding Hex}"
+                                        ToolTip="{Binding Name}" Background="{Binding Brush}" Click="ToolColorButton_Click"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-
                     <TextBlock Text="Thickness" FontSize="11" Foreground="#666666" Margin="0,14,0,6"/>
                     <Border Background="#FAFAFA" BorderBrush="#E6E6E6" BorderThickness="1" CornerRadius="4" Height="46" Padding="8,0">
-                        <Path x:Name="ToolThicknessPreview"
-                              HorizontalAlignment="Left" VerticalAlignment="Center"
+                        <Path x:Name="ToolThicknessPreview" HorizontalAlignment="Left" VerticalAlignment="Center"
                               Stroke="#111111" StrokeThickness="2.5"
                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
                               Data="M 4,22 C 28,6 50,38 74,20 C 98,2 120,38 144,18 C 168,-2 190,32 214,16 C 222,10 226,14 230,14"/>
                     </Border>
-
                     <Slider x:Name="ToolSizeSlider" Minimum="1" Maximum="20" Value="2.5"
-                            TickFrequency="0.5" IsSnapToTickEnabled="True"
-                            Margin="0,10,0,0"
+                            TickFrequency="0.5" IsSnapToTickEnabled="True" Margin="0,10,0,0"
                             ValueChanged="ToolSizeSlider_ValueChanged"/>
-
                     <CheckBox x:Name="ToolPressureToggle" Content="Pressure (use pen pressure)"
                               Margin="0,10,0,0" IsChecked="True"
-                              Checked="ToolPressureToggle_Changed"
-                              Unchecked="ToolPressureToggle_Changed"/>
+                              Checked="ToolPressureToggle_Changed" Unchecked="ToolPressureToggle_Changed"/>
                 </StackPanel>
             </Border>
         </Popup>
