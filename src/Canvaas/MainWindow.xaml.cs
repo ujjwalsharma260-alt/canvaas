@@ -28,7 +28,6 @@ public partial class MainWindow : Window
     private const string LegacyInkEntryName = "ink.isf";
     private const string PageEntryFormat = "page_{0:D3}.isf";
 
-    // A4 at 96 DPI = 794 x 1123 world units.
     private const double A4Width = 794;
     private const double A4Height = 1123;
     private const double MaxCanvasDimension = 25_000;
@@ -43,18 +42,19 @@ public partial class MainWindow : Window
     private const double EdgeBtnSize = 30;
     private const double EdgeBtnMargin = 8;
     private const double EdgeBtnPad = 4;
+    private const double ResizeHandleSize = 12;
 
-    // === FULLSCREEN (Win32) ===
+    // Win32 for fullscreen covering the taskbar
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
                                             int X, int Y, int cx, int cy, uint uFlags);
-
     private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
     private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint SWP_NOACTIVATE = 0x0010;
 
     private enum ExpandDirection { Right, Left, Up, Down }
+    private enum ResizeHandle { NW, N, NE, E, SE, S, SW, W }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -194,6 +194,23 @@ public partial class MainWindow : Window
     private StrokeCollection? _clipboardStrokes;
     private int _pasteCounter = 0;
 
+    // Radial toolbar
+    private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
+    private bool _radialVisible = true;
+    private double _radialSize = 240;
+    private bool _draggingRadial = false;
+    private Point _radialDragStart;
+    private double _radialStartX, _radialStartY;
+
+    // Resize handles
+    private readonly List<Rectangle> _resizeHandles = new();
+    private bool _resizingHandle = false;
+    private ResizeHandle _activeHandle;
+    private Rect _selectionWorldBounds;
+    private Rect _resizeStartBounds;
+    private StrokeCollection? _resizeOriginalStrokes;
+    private List<(UIElement El, double L, double T, double W, double H, double FS)> _resizeOriginalElements = new();
+
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
     private static string SettingsFilePath
@@ -222,10 +239,8 @@ public partial class MainWindow : Window
         LoadSettings();
         RebuildHollowRingCursor();
 
-        if (PointerSizeSlider is not null)
-            PointerSizeSlider.Value = _pointerSize;
-        if (PointerSizeText is not null)
-            PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
+        if (PointerSizeSlider is not null) PointerSizeSlider.Value = _pointerSize;
+        if (PointerSizeText is not null) PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
 
         if (CursorCombo is not null)
             CursorCombo.SelectedIndex = _cursorStyle switch
@@ -237,6 +252,26 @@ public partial class MainWindow : Window
                 _ => 2
             };
 
+        // Toast timer
+        _toastTimer.Tick += (s, e) =>
+        {
+            _toastTimer.Stop();
+            if (ToastBorder is not null) ToastBorder.Visibility = Visibility.Collapsed;
+        };
+
+        // Hook TextBlock.Text changes to auto-fade the toast
+        var dpd = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
+        if (StatusText is not null)
+        {
+            dpd.AddValueChanged(StatusText, (s, e) =>
+            {
+                if (ToastBorder is null) return;
+                ToastBorder.Visibility = Visibility.Visible;
+                _toastTimer.Stop();
+                _toastTimer.Start();
+            });
+        }
+
         Loaded += (s, e) =>
         {
             Dispatcher.BeginInvoke(new Action(() =>
@@ -246,6 +281,8 @@ public partial class MainWindow : Window
                 {
                     if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
                     ScheduleRebuildEdgeButtons();
+                    BuildRadialToolbar();
+                    PositionRadialToolbar();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
@@ -253,7 +290,11 @@ public partial class MainWindow : Window
         StateChanged += MainWindow_StateChanged;
 
         if (CanvasHostBorder is not null)
-            CanvasHostBorder.SizeChanged += (s, e) => ScheduleRebuildEdgeButtons();
+            CanvasHostBorder.SizeChanged += (s, e) =>
+            {
+                ScheduleRebuildEdgeButtons();
+                if (_radialVisible) PositionRadialToolbar();
+            };
 
         _pages.Add(new NotebookPage());
         _currentPageIndex = 0;
@@ -271,42 +312,195 @@ public partial class MainWindow : Window
         UpdateCursor();
 
         var version = Assembly.GetExecutingAssembly().GetName().Version;
-        VersionText.Text = version is null ? "" : $"Canvaas v{version.Major}.{version.Minor}.{version.Build}";
+        VersionText.Text = "";
+        TitleBarText.Text = "Canvaas";
 
         UpdateTitle();
     }
 
     // =====================================================================
-    // A4 sheet canvas + dynamic edge buttons
+    // Chrome toggle (top toolbar + side panel)
     // =====================================================================
+    private void ChromeToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = TopToolbarBorder.Visibility != Visibility.Visible;
+        TopToolbarBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        SidePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
 
+    // =====================================================================
+    // Radial toolbar
+    // =====================================================================
+    private void BuildRadialToolbar()
+    {
+        if (RadialToolbarRoot is null) return;
+
+        // Remove existing tool buttons (keep the ring, knob, close button)
+        for (int i = RadialToolbarRoot.Children.Count - 1; i >= 0; i--)
+        {
+            var child = RadialToolbarRoot.Children[i];
+            if (child == RadialOuterRing || child == RadialCenterKnob || child == RadialCloseButton) continue;
+            RadialToolbarRoot.Children.RemoveAt(i);
+        }
+
+        double totalSize = _radialSize;
+        double center = totalSize / 2.0;
+        double ringRadius = totalSize / 2.0 - 42;
+        double buttonSize = 42;
+
+        RadialToolbarRoot.Width = totalSize;
+        RadialToolbarRoot.Height = totalSize;
+
+        if (RadialOuterRing is not null)
+        {
+            RadialOuterRing.Width = totalSize - 20;
+            RadialOuterRing.Height = totalSize - 20;
+        }
+
+        // 8 tools
+        var tools = new (string glyph, string tip, Action handler)[]
+        {
+            ("\uE70F", "Pen",            () => PenButton_Click(this, new RoutedEventArgs())),
+            ("\uE7E6", "Highlighter",    () => HighlighterButton_Click(this, new RoutedEventArgs())),
+            ("\uE75C", "Eraser",         () => EraserButton_Click(this, new RoutedEventArgs())),
+            ("\uE75D", "Lasso",          () => LassoButton_Click(this, new RoutedEventArgs())),
+            ("\uE7C9", "Hand (pan)",     () => HandButton_Click(this, new RoutedEventArgs())),
+            ("\uE7A7", "Undo",           () => Undo_Executed(this, new ExecutedRoutedEventArgs(ApplicationCommands.Undo, null))),
+            ("\uE7A6", "Redo",           () => Redo_Executed(this, new ExecutedRoutedEventArgs(ApplicationCommands.Redo, null))),
+            ("\uE74D", "Delete selection", () => DeleteSelection()),
+        };
+
+        for (int i = 0; i < tools.Length; i++)
+        {
+            double angle = -Math.PI / 2.0 + i * 2 * Math.PI / tools.Length;
+            double x = center + ringRadius * Math.Cos(angle);
+            double y = center + ringRadius * Math.Sin(angle);
+
+            var btn = new Button
+            {
+                Style = (Style)FindResource("RadialButton"),
+                Content = tools[i].glyph,
+                ToolTip = tools[i].tip,
+                Width = buttonSize,
+                Height = buttonSize
+            };
+            btn.Click += (s, e) => { try { tools[i].handler(); } catch { } };
+
+            btn.HorizontalAlignment = HorizontalAlignment.Left;
+            btn.VerticalAlignment = VerticalAlignment.Top;
+            btn.Margin = new Thickness(x - buttonSize / 2.0, y - buttonSize / 2.0, 0, 0);
+
+            RadialToolbarRoot.Children.Add(btn);
+        }
+
+        // Hook radial center knob drag
+        if (RadialCenterKnob is not null)
+        {
+            RadialCenterKnob.MouseLeftButtonDown -= RadialCenterKnob_MouseDown;
+            RadialCenterKnob.MouseMove -= RadialCenterKnob_MouseMove;
+            RadialCenterKnob.MouseLeftButtonUp -= RadialCenterKnob_MouseUp;
+            RadialCenterKnob.MouseLeftButtonDown += RadialCenterKnob_MouseDown;
+            RadialCenterKnob.MouseMove += RadialCenterKnob_MouseMove;
+            RadialCenterKnob.MouseLeftButtonUp += RadialCenterKnob_MouseUp;
+        }
+    }
+
+    private void PositionRadialToolbar()
+    {
+        if (RadialToolbarHost is null || CanvasHostBorder is null) return;
+        if (RadialToolbarRoot is null) return;
+
+        // If it hasn't been moved yet, place at bottom-right of the canvas
+        if (double.IsNaN(Canvas.GetLeft(RadialToolbarRoot)))
+        {
+            double vw = CanvasHostBorder.ActualWidth;
+            double vh = CanvasHostBorder.ActualHeight;
+            if (vw < 100) vw = 1200;
+            if (vh < 100) vh = 700;
+
+            Canvas.SetLeft(RadialToolbarRoot, Math.Max(20, vw - _radialSize - 60));
+            Canvas.SetTop(RadialToolbarRoot, Math.Max(20, vh - _radialSize - 110));
+        }
+    }
+
+    private void RadialCenterKnob_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (RadialToolbarRoot is null) return;
+
+        _draggingRadial = true;
+        _radialDragStart = e.GetPosition(RadialToolbarHost);
+        _radialStartX = Canvas.GetLeft(RadialToolbarRoot);
+        _radialStartY = Canvas.GetTop(RadialToolbarRoot);
+        if (double.IsNaN(_radialStartX)) _radialStartX = 0;
+        if (double.IsNaN(_radialStartY)) _radialStartY = 0;
+
+        RadialCenterKnob.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void RadialCenterKnob_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_draggingRadial) return;
+        var p = e.GetPosition(RadialToolbarHost);
+        double nx = _radialStartX + (p.X - _radialDragStart.X);
+        double ny = _radialStartY + (p.Y - _radialDragStart.Y);
+        Canvas.SetLeft(RadialToolbarRoot, nx);
+        Canvas.SetTop(RadialToolbarRoot, ny);
+    }
+
+    private void RadialCenterKnob_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_draggingRadial) return;
+        _draggingRadial = false;
+        RadialCenterKnob.ReleaseMouseCapture();
+    }
+
+    private void RadialToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        _radialVisible = !_radialVisible;
+        RadialToolbarRoot.Visibility = _radialVisible ? Visibility.Visible : Visibility.Collapsed;
+        if (_radialVisible) PositionRadialToolbar();
+    }
+
+    private void RadialCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        _radialVisible = false;
+        RadialToolbarRoot.Visibility = Visibility.Collapsed;
+        StatusText.Text = "Tools hidden. Click the ⚙ button in the title bar to show them again.";
+    }
+
+    private void RadialSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady) return;
+        _radialSize = e.NewValue;
+        if (RadialSizeText is not null) RadialSizeText.Text = ((int)Math.Round(_radialSize)).ToString();
+        BuildRadialToolbar();
+    }
+
+    // =====================================================================
+    // A4 sheet canvas
+    // =====================================================================
     private void ApplyWorldSizeToCanvas()
     {
         if (CanvasHost is null || PageBackground is null || InkArea is null) return;
-
         double w = CurrentPage.WorldWidth;
         double h = CurrentPage.WorldHeight;
-
         CanvasHost.Width = w;
         CanvasHost.Height = h;
-
         PageBackground.Width = w;
         PageBackground.Height = h;
         Canvas.SetLeft(PageBackground, 0);
         Canvas.SetTop(PageBackground, 0);
-
         InkArea.Width = w;
         InkArea.Height = h;
         Canvas.SetLeft(InkArea, 0);
         Canvas.SetTop(InkArea, 0);
-
         CanvasHost.UpdateLayout();
     }
 
     private void ExpandCanvas(ExpandDirection dir)
     {
         double addLeft = 0, addRight = 0, addTop = 0, addBottom = 0;
-
         switch (dir)
         {
             case ExpandDirection.Right: addRight = A4Width; break;
@@ -339,18 +533,13 @@ public partial class MainWindow : Window
         _viewPanY -= shiftY * _viewZoom;
 
         ApplyWorldSizeToCanvas();
-
-        if (CanvasHostBorder is not null)
-        {
-            CanvasHostBorder.InvalidateVisual();
-            CanvasHostBorder.UpdateLayout();
-        }
-
+        if (CanvasHostBorder is not null) { CanvasHostBorder.InvalidateVisual(); CanvasHostBorder.UpdateLayout(); }
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
 
         SaveCurrentViewToPage();
         ScheduleRebuildEdgeButtons();
+        RebuildResizeHandles();
 
         int cols = (int)Math.Round(newW / A4Width);
         int rows = (int)Math.Round(newH / A4Height);
@@ -383,9 +572,7 @@ public partial class MainWindow : Window
         if (vw < 40 || vh < 40) return;
 
         foreach (var c in EdgeButtonOverlay.Children)
-        {
             if (c is Button oldBtn) oldBtn.Click -= EdgeButton_Click;
-        }
         EdgeButtonOverlay.Children.Clear();
 
         double w = CurrentPage.WorldWidth;
@@ -468,104 +655,289 @@ public partial class MainWindow : Window
     private void EdgeButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button b && b.Tag is ExpandDirection dir)
-        {
             Dispatcher.BeginInvoke(new Action(() => ExpandCanvas(dir)), DispatcherPriority.Background);
+    }
+
+    // =====================================================================
+    // Resize handles
+    // =====================================================================
+    private void RebuildResizeHandles()
+    {
+        if (HandleOverlay is null) return;
+
+        foreach (var h in _resizeHandles)
+            HandleOverlay.Children.Remove(h);
+        _resizeHandles.Clear();
+
+        if (InkArea is null) return;
+
+        var selStrokes = InkArea.GetSelectedStrokes();
+        int total = selStrokes.Count + _selectedElements.Count;
+        if (total == 0) return;
+
+        Rect boundsWorld = ComputeSelectionWorldBounds();
+        if (boundsWorld.IsEmpty || boundsWorld.Width < 1 || boundsWorld.Height < 1) return;
+
+        _selectionWorldBounds = boundsWorld;
+
+        double sl = _viewPanX + boundsWorld.Left * _viewZoom;
+        double st = _viewPanY + boundsWorld.Top * _viewZoom;
+        double sr = _viewPanX + boundsWorld.Right * _viewZoom;
+        double sb = _viewPanY + boundsWorld.Bottom * _viewZoom;
+
+        // Draw selection outline
+        var outline = new Rectangle
+        {
+            Width = sr - sl,
+            Height = sb - st,
+            Stroke = new SolidColorBrush(Color.FromArgb(180, 26, 115, 232)),
+            StrokeThickness = 1.5,
+            StrokeDashArray = new DoubleCollection { 4, 3 },
+            Fill = Brushes.Transparent,
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(outline, sl);
+        Canvas.SetTop(outline, st);
+        HandleOverlay.Children.Add(outline);
+        _resizeHandles.Add(outline); // reuse list for cleanup
+
+        AddResizeHandle(sl, st, ResizeHandle.NW);
+        AddResizeHandle((sl + sr) / 2, st, ResizeHandle.N);
+        AddResizeHandle(sr, st, ResizeHandle.NE);
+        AddResizeHandle(sr, (st + sb) / 2, ResizeHandle.E);
+        AddResizeHandle(sr, sb, ResizeHandle.SE);
+        AddResizeHandle((sl + sr) / 2, sb, ResizeHandle.S);
+        AddResizeHandle(sl, sb, ResizeHandle.SW);
+        AddResizeHandle(sl, (st + sb) / 2, ResizeHandle.W);
+    }
+
+    private void AddResizeHandle(double cx, double cy, ResizeHandle handle)
+    {
+        var r = new Rectangle
+        {
+            Width = ResizeHandleSize,
+            Height = ResizeHandleSize,
+            Fill = Brushes.White,
+            Stroke = new SolidColorBrush(Color.FromRgb(0x1A, 0x73, 0xE8)),
+            StrokeThickness = 1.8,
+            Tag = handle,
+            Cursor = CursorForHandle(handle)
+        };
+        Canvas.SetLeft(r, cx - ResizeHandleSize / 2.0);
+        Canvas.SetTop(r, cy - ResizeHandleSize / 2.0);
+        HandleOverlay.Children.Add(r);
+        _resizeHandles.Add(r);
+    }
+
+    private static Cursor CursorForHandle(ResizeHandle h) => h switch
+    {
+        ResizeHandle.NW => Cursors.SizeNWSE,
+        ResizeHandle.SE => Cursors.SizeNWSE,
+        ResizeHandle.NE => Cursors.SizeNESW,
+        ResizeHandle.SW => Cursors.SizeNESW,
+        ResizeHandle.N  => Cursors.SizeNS,
+        ResizeHandle.S  => Cursors.SizeNS,
+        ResizeHandle.E  => Cursors.SizeWE,
+        ResizeHandle.W  => Cursors.SizeWE,
+        _ => Cursors.Arrow
+    };
+
+    private Rect ComputeSelectionWorldBounds()
+    {
+        if (InkArea is null) return Rect.Empty;
+        Rect? bounds = null;
+        var selStrokes = InkArea.GetSelectedStrokes();
+        if (selStrokes.Count > 0)
+        {
+            var b = selStrokes.GetBounds();
+            if (b.Width > 0 && b.Height > 0)
+                bounds = b;
+        }
+        foreach (var el in _selectedElements)
+        {
+            if (el is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            double w = fe.ActualWidth > 0 ? fe.ActualWidth : 100;
+            double h = fe.ActualHeight > 0 ? fe.ActualHeight : 30;
+            if (double.IsNaN(l)) l = 0;
+            if (double.IsNaN(t)) t = 0;
+            var r = new Rect(l, t, w, h);
+            bounds = bounds.HasValue ? Rect.Union(bounds.Value, r) : r;
+        }
+        return bounds ?? Rect.Empty;
+    }
+
+    private bool TryStartResize(Point screenPt)
+    {
+        if (_resizeHandles.Count == 0) return false;
+        foreach (var h in _resizeHandles)
+        {
+            if (h.Tag is not ResizeHandle handle) continue;  // skip outline rect
+            double l = Canvas.GetLeft(h);
+            double t = Canvas.GetTop(h);
+            var rect = new Rect(l - 4, t - 4, ResizeHandleSize + 8, ResizeHandleSize + 8);
+            if (rect.Contains(screenPt))
+            {
+                BeginResize(handle);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void BeginResize(ResizeHandle handle)
+    {
+        if (InkArea is null) return;
+        _resizingHandle = true;
+        _activeHandle = handle;
+        _resizeStartBounds = _selectionWorldBounds;
+
+        _resizeOriginalStrokes = new StrokeCollection();
+        foreach (var s in InkArea.GetSelectedStrokes()) _resizeOriginalStrokes.Add(s);
+
+        _resizeOriginalElements.Clear();
+        foreach (var el in _selectedElements)
+        {
+            if (el is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe);
+            double t = InkCanvas.GetTop(fe);
+            double w = fe.ActualWidth;
+            double h = fe.ActualHeight;
+            double fs = el is TextBox tb ? tb.FontSize : 0;
+            _resizeOriginalElements.Add((el, l, t, w, h, fs));
         }
     }
 
-    private void ShiftCurrentPageContent(double dx, double dy)
+    private void UpdateResize(Point mouseWorld)
     {
-        if (Math.Abs(dx) < 0.0001 && Math.Abs(dy) < 0.0001) return;
         if (InkArea is null) return;
+        var start = _resizeStartBounds;
+        double nL = start.Left, nT = start.Top, nR = start.Right, nB = start.Bottom;
 
-        var strokeMap = new Dictionary<Stroke, Stroke>();
-        var shifted = new StrokeCollection();
-        foreach (var s in CurrentPage.Strokes)
+        switch (_activeHandle)
         {
-            var ns = ShiftStroke(s, dx, dy);
-            strokeMap[s] = ns;
-            shifted.Add(ns);
+            case ResizeHandle.NW: nL = mouseWorld.X; nT = mouseWorld.Y; break;
+            case ResizeHandle.N:  nT = mouseWorld.Y; break;
+            case ResizeHandle.NE: nR = mouseWorld.X; nT = mouseWorld.Y; break;
+            case ResizeHandle.E:  nR = mouseWorld.X; break;
+            case ResizeHandle.SE: nR = mouseWorld.X; nB = mouseWorld.Y; break;
+            case ResizeHandle.S:  nB = mouseWorld.Y; break;
+            case ResizeHandle.SW: nL = mouseWorld.X; nB = mouseWorld.Y; break;
+            case ResizeHandle.W:  nL = mouseWorld.X; break;
+        }
+
+        if (nR - nL < 10 || nB - nT < 10) return;
+
+        double sx = (nR - nL) / Math.Max(0.0001, start.Right - start.Left);
+        double sy = (nB - nT) / Math.Max(0.0001, start.Bottom - start.Top);
+
+        // Corner handles: uniform scale
+        if (_activeHandle == ResizeHandle.NW || _activeHandle == ResizeHandle.NE ||
+            _activeHandle == ResizeHandle.SE || _activeHandle == ResizeHandle.SW)
+        {
+            double s = Math.Max(sx, sy);
+            sx = s; sy = s;
+
+            // Recompute new bounds keeping the fixed corner in place
+            switch (_activeHandle)
+            {
+                case ResizeHandle.NW:
+                    nL = start.Right - (start.Right - start.Left) * sx;
+                    nT = start.Bottom - (start.Bottom - start.Top) * sy;
+                    nR = start.Right; nB = start.Bottom;
+                    break;
+                case ResizeHandle.NE:
+                    nR = start.Left + (start.Right - start.Left) * sx;
+                    nT = start.Bottom - (start.Bottom - start.Top) * sy;
+                    nL = start.Left; nB = start.Bottom;
+                    break;
+                case ResizeHandle.SE:
+                    nR = start.Left + (start.Right - start.Left) * sx;
+                    nB = start.Top + (start.Bottom - start.Top) * sy;
+                    nL = start.Left; nT = start.Top;
+                    break;
+                case ResizeHandle.SW:
+                    nL = start.Right - (start.Right - start.Left) * sx;
+                    nB = start.Top + (start.Bottom - start.Top) * sy;
+                    nR = start.Right; nT = start.Top;
+                    break;
+            }
         }
 
         _applyingHistory = true;
         try
         {
-            CurrentPage.Strokes.Clear();
-            foreach (var s in shifted) CurrentPage.Strokes.Add(s);
+            // Rescale strokes: only point positions, keep stroke width the same.
+            if (_resizeOriginalStrokes is not null && _resizeOriginalStrokes.Count > 0)
+            {
+                var toRemove = new StrokeCollection();
+                foreach (var s in InkArea.GetSelectedStrokes()) toRemove.Add(s);
+                InkArea.Strokes.Remove(toRemove);
+
+                var newStrokes = new StrokeCollection();
+                foreach (var orig in _resizeOriginalStrokes)
+                {
+                    var newPts = new StylusPointCollection();
+                    foreach (var p in orig.StylusPoints)
+                    {
+                        float nx = (float)(nL + (p.X - start.Left) * sx);
+                        float ny = (float)(nT + (p.Y - start.Top) * sy);
+                        newPts.Add(new StylusPoint(nx, ny, p.PressureFactor));
+                    }
+                    newStrokes.Add(new Stroke(newPts, orig.DrawingAttributes.Clone()));
+                }
+                InkArea.Strokes.Add(newStrokes);
+                InkArea.Select(newStrokes);
+            }
+
+            // Rescale elements
+            foreach (var (el, ol, ot, ow, oh, ofs) in _resizeOriginalElements)
+            {
+                if (el is not FrameworkElement fe) continue;
+                double nl = nL + (ol - start.Left) * sx;
+                double nt = nT + (ot - start.Top) * sy;
+                InkCanvas.SetLeft(fe, nl);
+                InkCanvas.SetTop(fe, nt);
+                fe.Width = Math.Max(20, ow * sx);
+                fe.Height = Math.Max(20, oh * sy);
+                if (el is TextBox tb && ofs > 0)
+                    tb.FontSize = Math.Max(6, ofs * (sx + sy) / 2.0);
+            }
         }
         finally { _applyingHistory = false; }
 
-        foreach (var child in InkArea.Children)
-        {
-            if (child is not FrameworkElement fe) continue;
-            double l = InkCanvas.GetLeft(fe);
-            double t = InkCanvas.GetTop(fe);
-            if (!double.IsNaN(l)) InkCanvas.SetLeft(fe, l + dx);
-            if (!double.IsNaN(t)) InkCanvas.SetTop(fe, t + dy);
-        }
-
-        RemapHistoryStack(_undo, strokeMap, dx, dy);
-        RemapHistoryStack(_redo, strokeMap, dx, dy);
-
-        ClearElementSelection();
-        InkArea.Select(new StrokeCollection());
-
-        CommandManager.InvalidateRequerySuggested();
+        _selectionWorldBounds = new Rect(nL, nT, nR - nL, nB - nT);
+        RebuildResizeHandles();
+        UpdateElementSelectionVisuals();
     }
 
-    private static Stroke ShiftStroke(Stroke s, double dx, double dy)
+    private void EndResize()
     {
-        var pts = new StylusPointCollection();
-        foreach (var p in s.StylusPoints)
-            pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
-        return new Stroke(pts, s.DrawingAttributes.Clone());
-    }
+        if (!_resizingHandle) return;
+        _resizingHandle = false;
 
-    private static void RemapHistoryStack(Stack<object> stack, Dictionary<Stroke, Stroke> map, double dx, double dy)
-    {
-        if (stack.Count == 0) return;
-
-        var items = stack.ToArray();
-        stack.Clear();
-
-        for (int i = items.Length - 1; i >= 0; i--)
+        if (_resizeOriginalStrokes is not null && InkArea is not null)
         {
-            var item = items[i];
-
-            if (item is StrokeChange sc)
+            var current = new StrokeCollection();
+            foreach (var s in InkArea.GetSelectedStrokes()) current.Add(s);
+            if (current.Count > 0 && _resizeOriginalStrokes.Count > 0)
             {
-                var newAdded = new StrokeCollection();
-                foreach (var s in sc.Added)
-                    newAdded.Add(map.TryGetValue(s, out var ns) ? ns : s);
-
-                var newRemoved = new StrokeCollection();
-                foreach (var s in sc.Removed)
-                    newRemoved.Add(map.TryGetValue(s, out var ns) ? ns : s);
-
-                stack.Push(new StrokeChange(newAdded, newRemoved));
-            }
-            else if (item is ElementMoveChange emc)
-            {
-                stack.Push(new ElementMoveChange
-                {
-                    Element = emc.Element,
-                    OldLeft = emc.OldLeft + dx,
-                    OldTop = emc.OldTop + dy,
-                    NewLeft = emc.NewLeft + dx,
-                    NewTop = emc.NewTop + dy
-                });
-            }
-            else
-            {
-                stack.Push(item);
+                _undo.Push(new StrokeChange(current, _resizeOriginalStrokes));
+                _redo.Clear();
             }
         }
+        _resizeOriginalStrokes = null;
+        _resizeOriginalElements.Clear();
+
+        RebuildResizeHandles();
+        MarkDirty();
+        StatusText.Text = "Resized selection.";
     }
 
     // =====================================================================
     // Settings
     // =====================================================================
-
     private void LoadSettings()
     {
         try
@@ -595,21 +967,15 @@ public partial class MainWindow : Window
             var path = SettingsFilePath;
             var dir = System.IO.Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-            var s = new AppSettings
-            {
-                PointerSize = _pointerSize,
-                CursorStyleIndex = (int)_cursorStyle
-            };
+            var s = new AppSettings { PointerSize = _pointerSize, CursorStyleIndex = (int)_cursorStyle };
             File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOptions));
         }
         catch { }
     }
 
     // =====================================================================
-    // Cursor: hollow black ring + tiny black dot
+    // Cursor bitmaps
     // =====================================================================
-
     private void RebuildHollowRingCursor()
     {
         try
@@ -639,37 +1005,21 @@ public partial class MainWindow : Window
     {
         int width = bmp.PixelWidth;
         int height = bmp.PixelHeight;
-
         int stride = ((width * 32 + 31) / 32) * 4;
         int imageSize = stride * height;
 
         using var ms = new MemoryStream();
         using var bw = new BinaryWriter(ms);
-
-        bw.Write((short)0);
-        bw.Write((short)2);
-        bw.Write((short)1);
-
-        bw.Write((byte)width);
-        bw.Write((byte)height);
-        bw.Write((byte)0);
-        bw.Write((byte)0);
-        bw.Write((short)hotX);
-        bw.Write((short)hotY);
+        bw.Write((short)0); bw.Write((short)2); bw.Write((short)1);
+        bw.Write((byte)width); bw.Write((byte)height);
+        bw.Write((byte)0); bw.Write((byte)0);
+        bw.Write((short)hotX); bw.Write((short)hotY);
         bw.Write(imageSize + 40);
         bw.Write(22);
-
-        bw.Write(40);
-        bw.Write(width);
-        bw.Write(height * 2);
-        bw.Write((short)1);
-        bw.Write((short)32);
-        bw.Write(0);
-        bw.Write(imageSize);
-        bw.Write(0);
-        bw.Write(0);
-        bw.Write(0);
-        bw.Write(0);
+        bw.Write(40); bw.Write(width); bw.Write(height * 2);
+        bw.Write((short)1); bw.Write((short)32);
+        bw.Write(0); bw.Write(imageSize);
+        bw.Write(0); bw.Write(0); bw.Write(0); bw.Write(0);
 
         var pixels = new byte[imageSize];
         bmp.CopyPixels(pixels, stride, 0);
@@ -684,119 +1034,67 @@ public partial class MainWindow : Window
     {
         if (!_uiReady) return;
         _pointerSize = e.NewValue;
-        if (PointerSizeText is not null)
-            PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
+        if (PointerSizeText is not null) PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
         RebuildHollowRingCursor();
         UpdateCursor();
         SaveSettings();
     }
 
-    // =====================================================================
-    // Stylus release
-    // =====================================================================
-
-    private void InkArea_StylusOutOfRange(object sender, StylusEventArgs e)
-    {
-        ReleaseAllCaptures();
-    }
+    private void InkArea_StylusOutOfRange(object sender, StylusEventArgs e) => ReleaseAllCaptures();
 
     private void ReleaseAllCaptures()
     {
         if (_panning) EndPan();
-
-        try
-        {
-            if (Mouse.Captured is not null && Mouse.Captured != this)
-                Mouse.Capture(null);
-        }
-        catch { }
-
+        try { if (Mouse.Captured is not null && Mouse.Captured != this) Mouse.Capture(null); } catch { }
         try { Stylus.Capture(null); } catch { }
     }
-
-    // =====================================================================
-    // Colour palette data
-    // =====================================================================
 
     private void PopulateToolColorGrid()
     {
         if (ToolColorGrid is null) return;
-
         var items = new List<PopupColorItem>
         {
-            MakeColor("#111111", "Black"),
-            MakeColor("#555555", "Dark grey"),
-            MakeColor("#999999", "Grey"),
-            MakeColor("#CCCCCC", "Light grey"),
-            MakeColor("#FFFFFF", "White"),
-            MakeColor("#FAF6E3", "Cream"),
-            MakeColor("#C62828", "Red"),
-            MakeColor("#EF6C00", "Orange"),
-            MakeColor("#FBC02D", "Yellow"),
-            MakeColor("#B8860B", "Gold"),
-            MakeColor("#A1887F", "Tan"),
-            MakeColor("#4E342E", "Brown"),
-            MakeColor("#00ACC1", "Cyan"),
-            MakeColor("#4FC3F7", "Sky"),
-            MakeColor("#1565C0", "Blue"),
-            MakeColor("#1A237E", "Navy"),
-            MakeColor("#6A1B9A", "Purple"),
-            MakeColor("#AD1457", "Magenta"),
-            MakeColor("#AED581", "Light green"),
-            MakeColor("#43A047", "Green"),
-            MakeColor("#1B5E20", "Dark green"),
-            MakeColor("#827717", "Olive"),
-            MakeColor("#F06292", "Pink"),
-            MakeColor("#7B1FA2", "Violet"),
+            MakeColor("#111111", "Black"), MakeColor("#555555", "Dark grey"),
+            MakeColor("#999999", "Grey"), MakeColor("#CCCCCC", "Light grey"),
+            MakeColor("#FFFFFF", "White"), MakeColor("#FAF6E3", "Cream"),
+            MakeColor("#C62828", "Red"), MakeColor("#EF6C00", "Orange"),
+            MakeColor("#FBC02D", "Yellow"), MakeColor("#B8860B", "Gold"),
+            MakeColor("#A1887F", "Tan"), MakeColor("#4E342E", "Brown"),
+            MakeColor("#00ACC1", "Cyan"), MakeColor("#4FC3F7", "Sky"),
+            MakeColor("#1565C0", "Blue"), MakeColor("#1A237E", "Navy"),
+            MakeColor("#6A1B9A", "Purple"), MakeColor("#AD1457", "Magenta"),
+            MakeColor("#AED581", "Light green"), MakeColor("#43A047", "Green"),
+            MakeColor("#1B5E20", "Dark green"), MakeColor("#827717", "Olive"),
+            MakeColor("#F06292", "Pink"), MakeColor("#7B1FA2", "Violet"),
         };
-
         ToolColorGrid.ItemsSource = items;
     }
 
     private static PopupColorItem MakeColor(string hex, string name)
     {
         var c = ParseHexColor(hex, Colors.Black);
-        return new PopupColorItem
-        {
-            Brush = new SolidColorBrush(c),
-            Hex = hex,
-            Name = name
-        };
+        return new PopupColorItem { Brush = new SolidColorBrush(c), Hex = hex, Name = name };
     }
-
-    // =====================================================================
-    // Tool options popup
-    // =====================================================================
 
     private void ShowToolPopup(UIElement target, string title)
     {
         if (ToolOptionsPopup is null) return;
-
         ToolOptionsPopup.IsOpen = false;
         if (ToolPopupTitle is not null) ToolPopupTitle.Text = title;
         ToolOptionsPopup.PlacementTarget = target;
         UpdateThicknessPreview();
-
-        if (ToolSizeSlider is not null)
-            ToolSizeSlider.Value = _penSize;
-        if (ToolPressureToggle is not null)
-            ToolPressureToggle.IsChecked = _pressureEnabled;
-
+        if (ToolSizeSlider is not null) ToolSizeSlider.Value = _penSize;
+        if (ToolPressureToggle is not null) ToolPressureToggle.IsChecked = _pressureEnabled;
         ToolOptionsPopup.IsOpen = true;
     }
 
     private void UpdateThicknessPreview()
     {
         if (ToolThicknessPreview is null) return;
-
-        double actual = _tool == ToolMode.Highlighter
-            ? Math.Max(14, _penSize * 6)
-            : _penSize;
-
+        double actual = _tool == ToolMode.Highlighter ? Math.Max(14, _penSize * 6) : _penSize;
         Color c = _tool == ToolMode.Highlighter
             ? Color.FromArgb(180, _penColor.R, _penColor.G, _penColor.B)
             : _penColor;
-
         ToolThicknessPreview.Stroke = new SolidColorBrush(c);
         ToolThicknessPreview.StrokeThickness = actual;
     }
@@ -806,18 +1104,10 @@ public partial class MainWindow : Window
         if (sender is Button b && b.Tag is string hex)
         {
             var colour = ParseHexColor(hex, Colors.Black);
-
-            bool hasSelection = (_selectedElements.Count > 0)
-                || (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
-
-            if (hasSelection)
-                ApplyColourToSelection(colour);
-            else
-            {
-                _penColor = colour;
-                ApplyPenAttributes();
-                UpdateThicknessPreview();
-            }
+            bool hasSelection = (_selectedElements.Count > 0) ||
+                (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
+            if (hasSelection) ApplyColourToSelection(colour);
+            else { _penColor = colour; ApplyPenAttributes(); UpdateThicknessPreview(); }
         }
     }
 
@@ -844,8 +1134,7 @@ public partial class MainWindow : Window
         if (selectedStrokes.Count > 0)
         {
             _applyingHistory = true;
-            StrokeCollection added;
-            StrokeCollection removed;
+            StrokeCollection added, removed;
             try
             {
                 removed = new StrokeCollection();
@@ -870,39 +1159,17 @@ public partial class MainWindow : Window
         }
 
         foreach (var el in _selectedElements)
-        {
-            if (el is TextBox tb)
-            {
-                tb.Foreground = new SolidColorBrush(newColour);
-                any = true;
-            }
-        }
+            if (el is TextBox tb) { tb.Foreground = new SolidColorBrush(newColour); any = true; }
 
-        if (any)
-        {
-            MarkDirty();
-            StatusText.Text = "Recoloured selection.";
-        }
-        else
-        {
-            _penColor = newColour;
-            ApplyPenAttributes();
-            UpdateThicknessPreview();
-            StatusText.Text = "Pen colour changed.";
-        }
+        if (any) { MarkDirty(); StatusText.Text = "Recoloured selection."; }
+        else { _penColor = newColour; ApplyPenAttributes(); UpdateThicknessPreview(); }
     }
-
-    // =====================================================================
-    // Cursor
-    // =====================================================================
 
     private void UpdateCursor()
     {
         Cursor c;
-        if (_tool == ToolMode.Hand)
-            c = Cursors.SizeAll;
-        else if (_tool == ToolMode.Lasso)
-            c = Cursors.Cross;
+        if (_tool == ToolMode.Hand) c = Cursors.SizeAll;
+        else if (_tool == ToolMode.Lasso) c = Cursors.Cross;
         else
         {
             c = _cursorStyle switch
@@ -913,14 +1180,9 @@ public partial class MainWindow : Window
                 _ => Cursors.Arrow
             };
         }
-
         if (CanvasHostBorder is not null) CanvasHostBorder.Cursor = c;
         if (InkArea is not null) InkArea.Cursor = c;
     }
-
-    // =====================================================================
-    // Pen attributes
-    // =====================================================================
 
     private void ApplyPenAttributes()
     {
@@ -951,9 +1213,8 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Keyboard shortcuts
+    // Keyboard
     // =====================================================================
-
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.F11 || (e.Key == Key.Escape && _fullscreenMode))
@@ -963,29 +1224,23 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Tab toggles chrome
+        if (e.Key == Key.Tab)
+        {
+            ChromeToggleButton_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+            return;
+        }
+
         bool ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
         bool textBoxFocused = Keyboard.FocusedElement is TextBox;
 
         if (!textBoxFocused && (e.Key == Key.Delete || e.Key == Key.Back))
-        {
             if (DeleteSelection()) { e.Handled = true; return; }
-        }
 
-        if (!textBoxFocused && ctrl && e.Key == Key.C)
-        {
-            if (CopySelection()) { e.Handled = true; return; }
-        }
-
-        if (!textBoxFocused && ctrl && e.Key == Key.X)
-        {
-            if (CutSelection()) { e.Handled = true; return; }
-        }
-
-        if (!textBoxFocused && ctrl && e.Key == Key.V)
-        {
-            if (PasteClipboard()) { e.Handled = true; return; }
-        }
-
+        if (!textBoxFocused && ctrl && e.Key == Key.C) if (CopySelection()) { e.Handled = true; return; }
+        if (!textBoxFocused && ctrl && e.Key == Key.X) if (CutSelection()) { e.Handled = true; return; }
+        if (!textBoxFocused && ctrl && e.Key == Key.V) if (PasteClipboard()) { e.Handled = true; return; }
         if (!textBoxFocused && ctrl && e.Key == Key.A)
         {
             ApplicationCommands.SelectAll.Execute(null, this);
@@ -995,12 +1250,12 @@ public partial class MainWindow : Window
 
         if (!textBoxFocused && e.Key == Key.Escape)
         {
-            if (_selectedElements.Count > 0
-                || (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0))
+            if (_selectedElements.Count > 0 ||
+                (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0))
             {
                 ClearElementSelection();
                 InkArea?.Select(new StrokeCollection());
-                StatusText.Text = "Selection cleared.";
+                RebuildResizeHandles();
                 e.Handled = true;
                 return;
             }
@@ -1010,53 +1265,26 @@ public partial class MainWindow : Window
 
         switch (e.Key)
         {
-            case Key.D1: case Key.NumPad1:
-                PenButton.IsChecked = true;
-                PenButton_Click(PenButton, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            case Key.D2: case Key.NumPad2:
-                HighlighterButton.IsChecked = true;
-                HighlighterButton_Click(HighlighterButton, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            case Key.D3: case Key.NumPad3:
-                EraserButton.IsChecked = true;
-                EraserButton_Click(EraserButton, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            case Key.D4: case Key.NumPad4:
-                LassoButton.IsChecked = true;
-                LassoButton_Click(LassoButton, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            case Key.D5: case Key.NumPad5:
-                HandButton.IsChecked = true;
-                HandButton_Click(HandButton, new RoutedEventArgs());
-                e.Handled = true;
-                return;
-            case Key.Left:
-                if (!ctrl) { PrevPageButton_Click(PrevPageButton, new RoutedEventArgs()); e.Handled = true; }
-                return;
-            case Key.Right:
-                if (!ctrl) { NextPageButton_Click(NextPageButton, new RoutedEventArgs()); e.Handled = true; }
-                return;
+            case Key.D1: case Key.NumPad1: PenButton.IsChecked = true; PenButton_Click(PenButton, new RoutedEventArgs()); e.Handled = true; return;
+            case Key.D2: case Key.NumPad2: HighlighterButton.IsChecked = true; HighlighterButton_Click(HighlighterButton, new RoutedEventArgs()); e.Handled = true; return;
+            case Key.D3: case Key.NumPad3: EraserButton.IsChecked = true; EraserButton_Click(EraserButton, new RoutedEventArgs()); e.Handled = true; return;
+            case Key.D4: case Key.NumPad4: LassoButton.IsChecked = true; LassoButton_Click(LassoButton, new RoutedEventArgs()); e.Handled = true; return;
+            case Key.D5: case Key.NumPad5: HandButton.IsChecked = true; HandButton_Click(HandButton, new RoutedEventArgs()); e.Handled = true; return;
+            case Key.Left:  if (!ctrl) { PrevPageButton_Click(PrevPageButton, new RoutedEventArgs()); e.Handled = true; } return;
+            case Key.Right: if (!ctrl) { NextPageButton_Click(NextPageButton, new RoutedEventArgs()); e.Handled = true; } return;
         }
     }
 
     // =====================================================================
-    // Fullscreen (covers the OS taskbar)
+    // Fullscreen
     // =====================================================================
-
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
 
     private void ToggleFullscreen()
     {
         _fullscreenMode = !_fullscreenMode;
-
         if (TitleBarBorder is not null)
             TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
-
         if (AppWindowChrome is not null)
         {
             AppWindowChrome.CaptionHeight = _fullscreenMode ? 0 : 36;
@@ -1066,32 +1294,27 @@ public partial class MainWindow : Window
         ReleaseAllCaptures();
 
         IntPtr hwnd;
-        try { hwnd = new WindowInteropHelper(this).Handle; }
-        catch { hwnd = IntPtr.Zero; }
+        try { hwnd = new WindowInteropHelper(this).Handle; } catch { hwnd = IntPtr.Zero; }
 
         if (_fullscreenMode)
         {
             _preFullscreenWindowState = WindowState;
             _preFullscreenTopmost = Topmost;
 
-            // Remember-less: cover the whole primary screen.
             WindowState = WindowState.Normal;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
 
-            double screenW = SystemParameters.PrimaryScreenWidth;
-            double screenH = SystemParameters.PrimaryScreenHeight;
+            double sw = SystemParameters.PrimaryScreenWidth;
+            double sh = SystemParameters.PrimaryScreenHeight;
 
-            Left = 0;
-            Top = 0;
-            Width = screenW;
-            Height = screenH;
+            Left = 0; Top = 0; Width = sw; Height = sh;
             Topmost = true;
 
             if (hwnd != IntPtr.Zero)
-            {
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)screenW, (int)screenH, SWP_SHOWWINDOW);
-            }
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW);
+
+            StatusText.Text = "Fullscreen mode. Press ESC or F11 to exit.";
         }
         else
         {
@@ -1099,24 +1322,14 @@ public partial class MainWindow : Window
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
             WindowState = _preFullscreenWindowState;
-
             if (hwnd != IntPtr.Zero)
-            {
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE);
-            }
+            StatusText.Text = "Exited fullscreen.";
         }
 
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
-
-        if (StatusText is not null)
-            StatusText.Text = _fullscreenMode
-                ? "Fullscreen mode. Press ESC or F11 to exit."
-                : "Exited fullscreen.";
+        Dispatcher.BeginInvoke(new Action(PositionRadialToolbar), DispatcherPriority.Loaded);
     }
-
-    // =====================================================================
-    // View — pan and zoom
-    // =====================================================================
 
     private void ApplyView()
     {
@@ -1126,29 +1339,22 @@ public partial class MainWindow : Window
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         SaveCurrentViewToPage();
         ScheduleRebuildEdgeButtons();
+        RebuildResizeHandles();
     }
 
     private void ZoomAt(Point viewPoint, double factor)
     {
         double newZoom = Math.Clamp(_viewZoom * factor, MinZoom, MaxZoom);
         if (Math.Abs(newZoom - _viewZoom) < 1e-9) return;
-
         double wx = (viewPoint.X - _viewPanX) / _viewZoom;
         double wy = (viewPoint.Y - _viewPanY) / _viewZoom;
-
         _viewPanX = viewPoint.X - wx * newZoom;
         _viewPanY = viewPoint.Y - wy * newZoom;
         _viewZoom = newZoom;
-
         ApplyView();
     }
 
-    private void PanBy(double dxScreen, double dyScreen)
-    {
-        _viewPanX += dxScreen;
-        _viewPanY += dyScreen;
-        ApplyView();
-    }
+    private void PanBy(double dxScreen, double dyScreen) { _viewPanX += dxScreen; _viewPanY += dyScreen; ApplyView(); }
 
     private void ZoomAtViewCenter(double factor)
     {
@@ -1162,14 +1368,9 @@ public partial class MainWindow : Window
     private void CenterViewOnCanvas()
     {
         if (CanvasHostBorder is null) return;
-
         double vw = CanvasHostBorder.ActualWidth;
         double vh = CanvasHostBorder.ActualHeight;
-        if (vw < 10 || vh < 10)
-        {
-            vw = ActualWidth > 200 ? ActualWidth - 40 : 1200;
-            vh = ActualHeight > 200 ? ActualHeight - 140 : 700;
-        }
+        if (vw < 10 || vh < 10) { vw = 1200; vh = 700; }
 
         double fitX = (vw - 80) / CurrentPage.WorldWidth;
         double fitY = (vh - 80) / CurrentPage.WorldHeight;
@@ -1183,6 +1384,7 @@ public partial class MainWindow : Window
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         ScheduleRebuildEdgeButtons();
+        RebuildResizeHandles();
     }
 
     private void SaveCurrentViewToPage()
@@ -1197,13 +1399,7 @@ public partial class MainWindow : Window
     private void RestoreViewFromPage()
     {
         if (CurrentPage is null) return;
-
-        if (double.IsNaN(CurrentPage.ViewPanX) || double.IsNaN(CurrentPage.ViewPanY))
-        {
-            CenterViewOnCanvas();
-            return;
-        }
-
+        if (double.IsNaN(CurrentPage.ViewPanX) || double.IsNaN(CurrentPage.ViewPanY)) { CenterViewOnCanvas(); return; }
         _viewZoom = CurrentPage.ViewZoom;
         _viewPanX = CurrentPage.ViewPanX;
         _viewPanY = CurrentPage.ViewPanY;
@@ -1212,6 +1408,7 @@ public partial class MainWindow : Window
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         ScheduleRebuildEdgeButtons();
+        RebuildResizeHandles();
     }
 
     private void ZoomInButton_Click(object sender, RoutedEventArgs e) => ZoomAtViewCenter(ZoomStepFactor);
@@ -1242,7 +1439,6 @@ public partial class MainWindow : Window
     private void CanvasHostBorder_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (CanvasHostBorder is null) return;
-
         if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
             double factor = e.Delta > 0 ? 1.15 : 1.0 / 1.15;
@@ -1261,10 +1457,6 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
     }
-
-    // =====================================================================
-    // Floating zoom widget drag
-    // =====================================================================
 
     private void FloatingZoomGrip_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -1290,22 +1482,16 @@ public partial class MainWindow : Window
     {
         if (!_draggingFloatingZoom) return;
         _draggingFloatingZoom = false;
-        if (sender is FrameworkElement el)
-        {
-            el.ReleaseMouseCapture();
-            el.Cursor = Cursors.SizeAll;
-        }
+        if (sender is FrameworkElement el) { el.ReleaseMouseCapture(); el.Cursor = Cursors.SizeAll; }
         e.Handled = true;
     }
 
     // =====================================================================
     // Page management
     // =====================================================================
-
     private void LoadCurrentPageIntoCanvas()
     {
         if (InkArea is null) return;
-
         InkArea.Strokes.StrokesChanged -= Strokes_Changed;
         InkArea.Strokes = CurrentPage.Strokes;
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
@@ -1321,12 +1507,11 @@ public partial class MainWindow : Window
         SyncUIWithSettings();
         UpdatePageNavigationUI();
 
-        if (CurrentPage.ViewInitialized)
-            RestoreViewFromPage();
-        else
-            CenterViewOnCanvas();
+        if (CurrentPage.ViewInitialized) RestoreViewFromPage();
+        else CenterViewOnCanvas();
 
         ScheduleRebuildEdgeButtons();
+        RebuildResizeHandles();
     }
 
     private void UpdatePageNavigationUI()
@@ -1356,7 +1541,6 @@ public partial class MainWindow : Window
         int slash = raw.IndexOf('/');
         if (slash >= 0) raw = raw.Substring(0, slash);
         raw = raw.Trim();
-
         if (int.TryParse(raw, out var n))
         {
             int idx = n - 1;
@@ -1411,7 +1595,6 @@ public partial class MainWindow : Window
             Spacing = CurrentPage.Spacing,
             Paper = CurrentPage.Paper
         };
-
         _pages.Insert(_currentPageIndex + 1, newPage);
         _currentPageIndex++;
         LoadCurrentPageIntoCanvas();
@@ -1423,53 +1606,34 @@ public partial class MainWindow : Window
     {
         if (_pages.Count <= 1)
         {
-            MessageBox.Show(this,
-                "You cannot delete the only page in a note.\n\nAdd another page first, then delete this one.",
-                "Cannot delete", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, "You cannot delete the only page in a note.", "Cannot delete", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-
         var answer = MessageBox.Show(this,
-            $"Delete page {_currentPageIndex + 1} of {_pages.Count}?\n\nEverything on this page will be removed.",
+            $"Delete page {_currentPageIndex + 1} of {_pages.Count}?",
             "Delete page", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-
         if (answer != MessageBoxResult.OK) return;
-
         _pages.RemoveAt(_currentPageIndex);
-        if (_currentPageIndex >= _pages.Count)
-            _currentPageIndex = _pages.Count - 1;
-
+        if (_currentPageIndex >= _pages.Count) _currentPageIndex = _pages.Count - 1;
         LoadCurrentPageIntoCanvas();
         MarkDirty();
         StatusText.Text = $"Deleted. Now on page {_currentPageIndex + 1} of {_pages.Count}.";
     }
 
     // =====================================================================
-    // Export PNG
+    // Export
     // =====================================================================
-
     private void ExportCurrentPagePng_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new SaveFileDialog
         {
             Filter = "PNG image (*.png)|*.png",
-            DefaultExt = ".png",
-            AddExtension = true,
-            FileName = "Page " + (_currentPageIndex + 1),
-            Title = "Export current page as PNG"
+            DefaultExt = ".png", AddExtension = true,
+            FileName = "Page " + (_currentPageIndex + 1)
         };
         if (dlg.ShowDialog(this) != true) return;
-
-        try
-        {
-            ExportPageToPng(CurrentPage, dlg.FileName);
-            StatusText.Text = "Exported: " + dlg.FileName;
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Could not export image.\n\n" + ex.Message,
-                "Export failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        try { ExportPageToPng(CurrentPage, dlg.FileName); StatusText.Text = "Exported: " + dlg.FileName; }
+        catch (Exception ex) { MessageBox.Show(this, "Could not export.\n\n" + ex.Message, "Export failed", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 
     private void ExportAllPagesPng_Click(object sender, RoutedEventArgs e)
@@ -1477,63 +1641,43 @@ public partial class MainWindow : Window
         var dlg = new SaveFileDialog
         {
             Filter = "PNG image (*.png)|*.png",
-            DefaultExt = ".png",
-            AddExtension = true,
-            FileName = "Page.png",
-            Title = "Choose a base name — each page becomes Page_01.png, Page_02.png, ..."
+            DefaultExt = ".png", AddExtension = true, FileName = "Page.png"
         };
         if (dlg.ShowDialog(this) != true) return;
-
         try
         {
             string dir = System.IO.Path.GetDirectoryName(dlg.FileName) ?? "";
             string baseName = System.IO.Path.GetFileNameWithoutExtension(dlg.FileName);
-
             for (int i = 0; i < _pages.Count; i++)
             {
                 string name = System.IO.Path.Combine(dir, $"{baseName}_{i + 1:D2}.png");
                 ExportPageToPng(_pages[i], name);
             }
-            StatusText.Text = $"Exported {_pages.Count} page(s) to {dir}";
+            StatusText.Text = $"Exported {_pages.Count} page(s).";
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Could not export images.\n\n" + ex.Message,
-                "Export failed", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
+        catch (Exception ex) { MessageBox.Show(this, "Could not export.\n\n" + ex.Message, "Export failed", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 
     private void ExportPageToPng(NotebookPage page, string path)
     {
-        Rect world = page.Strokes.Count > 0
-            ? page.Strokes.GetBounds()
-            : new Rect(0, 0, 800, 1120);
+        Rect world = page.Strokes.Count > 0 ? page.Strokes.GetBounds() : new Rect(0, 0, 800, 1120);
         world.Inflate(40, 40);
-
         double scale = 1.0;
         if (world.Width > ExportMaxDim) scale = ExportMaxDim / world.Width;
         if (world.Height * scale > ExportMaxDim) scale = ExportMaxDim / world.Height;
-
         int pxW = Math.Max(1, (int)Math.Round(world.Width * scale));
         int pxH = Math.Max(1, (int)Math.Round(world.Height * scale));
-
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
             dc.PushTransform(new TranslateTransform(-world.X * scale, -world.Y * scale));
             dc.PushTransform(new ScaleTransform(scale, scale));
             dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
-
-            foreach (var s in page.Strokes)
-                s.Draw(dc);
-
-            dc.Pop();
-            dc.Pop();
+            foreach (var s in page.Strokes) s.Draw(dc);
+            dc.Pop(); dc.Pop();
         }
-
         var rtb = new RenderTargetBitmap(pxW, pxH, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
-
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(rtb));
         using var fs = File.Create(path);
@@ -1541,24 +1685,31 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Panning + custom lasso
+    // Panning + lasso
     // =====================================================================
-
-    private Point ScreenToWorld(Point p)
-        => new Point((p.X - _viewPanX) / _viewZoom, (p.Y - _viewPanY) / _viewZoom);
+    private Point ScreenToWorld(Point p) => new Point((p.X - _viewPanX) / _viewZoom, (p.Y - _viewPanY) / _viewZoom);
 
     private void CanvasHostBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (CanvasHostBorder is null) return;
 
+        var screenPt = e.GetPosition(CanvasHostBorder);
         bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
         bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
         bool lassoDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Lasso;
 
+        // Resize first — if click is on a handle
+        if (lassoDrag && TryStartResize(screenPt))
+        {
+            CanvasHostBorder.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         if (middleDrag || handDrag)
         {
             _panning = true;
-            _panStart = e.GetPosition(CanvasHostBorder);
+            _panStart = screenPt;
             _panStartPanX = _viewPanX;
             _panStartPanY = _viewPanY;
             _panStartTime = DateTime.UtcNow;
@@ -1569,9 +1720,7 @@ public partial class MainWindow : Window
 
         if (lassoDrag)
         {
-            var screenPt = e.GetPosition(CanvasHostBorder);
             var worldPt = ScreenToWorld(screenPt);
-
             if (IsPointOnSelectedElement(worldPt) || IsPointOnSelectedStroke(worldPt))
             {
                 StartSelectionDrag(worldPt);
@@ -1579,7 +1728,6 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
-
             StartLasso(screenPt);
             CanvasHostBorder.CaptureMouse();
             e.Handled = true;
@@ -1589,8 +1737,14 @@ public partial class MainWindow : Window
     private void CanvasHostBorder_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (CanvasHostBorder is null) return;
-
         var screenPt = e.GetPosition(CanvasHostBorder);
+
+        if (_resizingHandle)
+        {
+            UpdateResize(ScreenToWorld(screenPt));
+            e.Handled = true;
+            return;
+        }
 
         if (_panning)
         {
@@ -1623,6 +1777,7 @@ public partial class MainWindow : Window
 
     private void CanvasHostBorder_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (_resizingHandle) { EndResize(); e.Handled = true; return; }
         if (_panning) { EndPan(); e.Handled = true; return; }
         if (_lassoActive) { EndLasso(); e.Handled = true; return; }
         if (_draggingSelection) { EndSelectionDrag(); e.Handled = true; }
@@ -1630,7 +1785,8 @@ public partial class MainWindow : Window
 
     private void Window_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
-        if (_panning) EndPan();
+        if (_resizingHandle) EndResize();
+        else if (_panning) EndPan();
         else if (_lassoActive) EndLasso();
         else if (_draggingSelection) EndSelectionDrag();
     }
@@ -1639,44 +1795,34 @@ public partial class MainWindow : Window
     {
         if (!_panning) return;
         _panning = false;
-
         if (CanvasHostBorder is not null)
         {
             if (CanvasHostBorder.IsMouseCaptured) CanvasHostBorder.ReleaseMouseCapture();
             if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
         }
-
         double dx = _viewPanX - _panStartPanX;
         double dy = _viewPanY - _panStartPanY;
         double elapsedMs = (DateTime.UtcNow - _panStartTime).TotalMilliseconds;
 
-        if (_tool == ToolMode.Hand
-            && Math.Abs(dx) >= SwipeMinDist
-            && Math.Abs(dx) > 2.5 * Math.Abs(dy)
-            && elapsedMs <= SwipeMaxDurationMs)
+        if (_tool == ToolMode.Hand && Math.Abs(dx) >= SwipeMinDist && Math.Abs(dx) > 2.5 * Math.Abs(dy) && elapsedMs <= SwipeMaxDurationMs)
         {
             _viewPanX = _panStartPanX;
             _viewPanY = _panStartPanY;
             if (ViewTransform is not null)
                 ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-
             if (dx < 0) NextPageButton_Click(this, new RoutedEventArgs());
             else PrevPageButton_Click(this, new RoutedEventArgs());
             UpdateCursor();
             ScheduleRebuildEdgeButtons();
             return;
         }
-
         ApplyView();
         UpdateCursor();
     }
 
-    // ---------------- Lasso ----------------
-
     private void StartLasso(Point screenPt)
     {
         if (CanvasHost is null) return;
-
         ClearElementSelection();
         if (InkArea is not null) InkArea.Select(new StrokeCollection());
 
@@ -1701,7 +1847,6 @@ public partial class MainWindow : Window
     private void UpdateLassoVisual()
     {
         if (_lassoVisual is null || _lassoPointsScreen.Count < 2) return;
-
         var geo = new StreamGeometry();
         using (var gc = geo.Open())
         {
@@ -1767,14 +1912,14 @@ public partial class MainWindow : Window
         }
 
         UpdateElementSelectionVisuals();
+        RebuildResizeHandles();
 
         int total = strokesIn.Count + _selectedElements.Count;
-        StatusText.Text = total > 0
-            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Drag inside to move. Delete to remove. Tap a colour to recolour."
-            : "Nothing selected.";
+        if (total > 0)
+            StatusText.Text = $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Drag inside to move. Drag corner handles to resize. Delete to remove.";
+        else
+            StatusText.Text = "Nothing selected.";
     }
-
-    // ---------------- Selection drag ----------------
 
     private bool IsPointOnSelectedElement(Point worldPt)
     {
@@ -1794,10 +1939,8 @@ public partial class MainWindow : Window
     {
         var selected = InkArea?.GetSelectedStrokes();
         if (selected is null || selected.Count == 0) return false;
-
         var hits = selected.HitTest(new[] { worldPt }, 6);
         if (hits.Count > 0) return true;
-
         var bounds = selected.GetBounds();
         bounds.Inflate(12, 12);
         return bounds.Contains(worldPt);
@@ -1807,7 +1950,6 @@ public partial class MainWindow : Window
     {
         _draggingSelection = true;
         _dragStartWorld = worldPt;
-
         _elementStartPositions.Clear();
         foreach (var el in _selectedElements)
             _elementStartPositions[el] = (InkCanvas.GetLeft(el), InkCanvas.GetTop(el));
@@ -1819,25 +1961,18 @@ public partial class MainWindow : Window
             foreach (var s in sel) _dragOriginalStrokes.Add(s);
             _dragPreviewStrokes = _dragOriginalStrokes;
         }
-        else
-        {
-            _dragOriginalStrokes = null;
-            _dragPreviewStrokes = null;
-        }
+        else { _dragOriginalStrokes = null; _dragPreviewStrokes = null; }
     }
 
     private void UpdateSelectionDrag(double dx, double dy)
     {
         if (CanvasHost is null) return;
-
         foreach (var el in _selectedElements)
-        {
             if (_elementStartPositions.TryGetValue(el, out var s))
             {
                 InkCanvas.SetLeft(el, s.L + dx);
                 InkCanvas.SetTop(el, s.T + dy);
             }
-        }
 
         if (InkArea is not null && _dragOriginalStrokes is not null && _dragOriginalStrokes.Count > 0)
         {
@@ -1849,74 +1984,57 @@ public partial class MainWindow : Window
                     pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
                 rebuilt.Add(new Stroke(pts, orig.DrawingAttributes.Clone()));
             }
-
             _applyingHistory = true;
             try
             {
                 if (_dragPreviewStrokes is not null && _dragPreviewStrokes.Count > 0)
                     InkArea.Strokes.Remove(_dragPreviewStrokes);
-
                 InkArea.Strokes.Add(rebuilt);
                 InkArea.Select(rebuilt);
             }
             finally { _applyingHistory = false; }
-
             _dragPreviewStrokes = rebuilt;
         }
-
         UpdateElementSelectionVisuals();
+        RebuildResizeHandles();
     }
 
     private void EndSelectionDrag()
     {
         if (!_draggingSelection) return;
         _draggingSelection = false;
-
         if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
             CanvasHostBorder.ReleaseMouseCapture();
 
-        if (InkArea is not null
-            && _dragOriginalStrokes is not null
-            && _dragPreviewStrokes is not null
-            && !ReferenceEquals(_dragPreviewStrokes, _dragOriginalStrokes)
-            && _dragOriginalStrokes.Count > 0)
+        if (InkArea is not null && _dragOriginalStrokes is not null && _dragPreviewStrokes is not null
+            && !ReferenceEquals(_dragPreviewStrokes, _dragOriginalStrokes) && _dragOriginalStrokes.Count > 0)
         {
             _undo.Push(new StrokeChange(_dragPreviewStrokes, _dragOriginalStrokes));
             _redo.Clear();
         }
-
         foreach (var el in _selectedElements)
-        {
             if (_elementStartPositions.TryGetValue(el, out var start))
             {
                 double nowL = InkCanvas.GetLeft(el);
                 double nowT = InkCanvas.GetTop(el);
                 if (Math.Abs(nowL - start.L) > 0.1 || Math.Abs(nowT - start.T) > 0.1)
                 {
-                    _undo.Push(new ElementMoveChange
-                    {
-                        Element = el,
-                        OldLeft = start.L, OldTop = start.T,
-                        NewLeft = nowL, NewTop = nowT
-                    });
+                    _undo.Push(new ElementMoveChange { Element = el, OldLeft = start.L, OldTop = start.T, NewLeft = nowL, NewTop = nowT });
                     _redo.Clear();
                 }
             }
-        }
-
         _elementStartPositions.Clear();
         _dragOriginalStrokes = null;
         _dragPreviewStrokes = null;
-
         MarkDirty();
     }
 
-    // ---------------- Selection clipboard / delete / copy / paste ----------------
-
+    // =====================================================================
+    // Clipboard / delete
+    // =====================================================================
     private bool DeleteSelection()
     {
         if (InkArea is null) return false;
-
         var selectedStrokes = InkArea.GetSelectedStrokes();
         bool didAnything = false;
 
@@ -1930,42 +2048,30 @@ public partial class MainWindow : Window
                 InkArea.Strokes.Remove(toRemove);
             }
             finally { _applyingHistory = false; }
-
             _undo.Push(new StrokeChange(new StrokeCollection(), selectedStrokes));
             _redo.Clear();
             didAnything = true;
         }
-
         if (_selectedElements.Count > 0)
         {
             var removed = new List<UIElement>(_selectedElements);
-            foreach (var el in removed)
-            {
-                if (InkArea.Children.Contains(el)) InkArea.Children.Remove(el);
-            }
+            foreach (var el in removed) if (InkArea.Children.Contains(el)) InkArea.Children.Remove(el);
             ClearElementSelection();
             didAnything = true;
         }
-
-        if (didAnything)
-        {
-            MarkDirty();
-            StatusText.Text = "Deleted selection.";
-        }
+        RebuildResizeHandles();
+        if (didAnything) { MarkDirty(); StatusText.Text = "Deleted selection."; }
         return didAnything;
     }
 
     private bool CopySelection()
     {
         if (InkArea is null) return false;
-
         var selectedStrokes = InkArea.GetSelectedStrokes();
         if (selectedStrokes.Count == 0) return false;
-
         _clipboardStrokes = new StrokeCollection();
         foreach (var s in selectedStrokes) _clipboardStrokes.Add(s);
         _pasteCounter = 0;
-
         StatusText.Text = $"Copied {selectedStrokes.Count} stroke(s).";
         return true;
     }
@@ -1985,7 +2091,6 @@ public partial class MainWindow : Window
 
         _pasteCounter++;
         double offset = 24.0 * _pasteCounter;
-
         var pasted = new StrokeCollection();
         foreach (var s in _clipboardStrokes)
         {
@@ -1994,40 +2099,31 @@ public partial class MainWindow : Window
                 pts.Add(new StylusPoint((float)(p.X + offset), (float)(p.Y + offset), p.PressureFactor));
             pasted.Add(new Stroke(pts, s.DrawingAttributes.Clone()));
         }
-
         _applyingHistory = true;
-        try
-        {
-            InkArea.Strokes.Add(pasted);
-        }
+        try { InkArea.Strokes.Add(pasted); }
         finally { _applyingHistory = false; }
-
         InkArea.Select(pasted);
         _undo.Push(new StrokeChange(pasted, new StrokeCollection()));
         _redo.Clear();
         MarkDirty();
-
+        RebuildResizeHandles();
         StatusText.Text = $"Pasted {pasted.Count} stroke(s).";
         return true;
     }
 
-    // ---------------- Element selection visuals ----------------
-
     private void ClearElementSelection()
     {
         _selectedElements.Clear();
-        if (CanvasHost is null) return;
+        if (CanvasHost is null) { RebuildResizeHandles(); return; }
         foreach (var v in _elementSelectionVisuals)
-        {
             if (v.Parent is Panel p) p.Children.Remove(v);
-        }
         _elementSelectionVisuals.Clear();
+        RebuildResizeHandles();
     }
 
     private void UpdateElementSelectionVisuals()
     {
         if (CanvasHost is null) return;
-
         foreach (var v in _elementSelectionVisuals)
             if (v.Parent is Panel p) p.Children.Remove(v);
         _elementSelectionVisuals.Clear();
@@ -2039,11 +2135,9 @@ public partial class MainWindow : Window
             double t = InkCanvas.GetTop(fe);
             double w = fe.ActualWidth > 0 ? fe.ActualWidth : 200;
             double h = fe.ActualHeight > 0 ? fe.ActualHeight : 30;
-
             var r = new Rectangle
             {
-                Width = w,
-                Height = h,
+                Width = w, Height = h,
                 Stroke = new SolidColorBrush(Color.FromArgb(200, 26, 115, 232)),
                 StrokeThickness = 1.5 / Math.Max(_viewZoom, 0.01),
                 StrokeDashArray = new DoubleCollection { 3, 2 },
@@ -2053,7 +2147,6 @@ public partial class MainWindow : Window
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(l, t, 0, 0)
             };
-
             CanvasHost.Children.Add(r);
             _elementSelectionVisuals.Add(r);
         }
@@ -2062,7 +2155,6 @@ public partial class MainWindow : Window
     // =====================================================================
     // Title bar buttons
     // =====================================================================
-
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
@@ -2078,10 +2170,6 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
     }
 
-    // =====================================================================
-    // Toolbar menus
-    // =====================================================================
-
     private void MenuButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is Button b && b.ContextMenu is ContextMenu cm)
@@ -2093,9 +2181,8 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Insert
+    // Insert / paste
     // =====================================================================
-
     private void InsertImage_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
@@ -2104,7 +2191,6 @@ public partial class MainWindow : Window
             Title = "Insert image"
         };
         if (dlg.ShowDialog(this) != true) return;
-
         try
         {
             var bmp = new BitmapImage();
@@ -2113,14 +2199,9 @@ public partial class MainWindow : Window
             bmp.UriSource = new Uri(dlg.FileName);
             bmp.EndInit();
             bmp.Freeze();
-
             AddImageToPage(bmp);
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Could not load image.\n\n" + ex.Message,
-                "Insert image", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
+        catch (Exception ex) { MessageBox.Show(this, "Could not load image.\n\n" + ex.Message, "Insert image", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     private void PasteClipboardImage_Click(object sender, RoutedEventArgs e)
@@ -2129,21 +2210,15 @@ public partial class MainWindow : Window
         {
             if (!Clipboard.ContainsImage())
             {
-                MessageBox.Show(this, "There is no image in the clipboard.",
-                    "Paste image", MessageBoxButton.OK, MessageBoxImage.Information);
+                StatusText.Text = "There is no image in the clipboard.";
                 return;
             }
             var src = Clipboard.GetImage();
             if (src is null) return;
-
             if (src.CanFreeze) src.Freeze();
             AddImageToPage(src);
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show(this, "Could not paste image.\n\n" + ex.Message,
-                "Paste image", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
+        catch (Exception ex) { MessageBox.Show(this, "Could not paste image.\n\n" + ex.Message, "Paste image", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     private void AddImageToPage(BitmapSource bmp)
@@ -2152,66 +2227,39 @@ public partial class MainWindow : Window
         double scale = 1.0;
         if (bmp.PixelWidth > maxDim) scale = maxDim / bmp.PixelWidth;
         if (bmp.PixelHeight * scale > maxDim) scale = maxDim / bmp.PixelHeight;
-
         double w = Math.Max(40, bmp.PixelWidth * scale);
         double h = Math.Max(40, bmp.PixelHeight * scale);
-
-        var img = new Image
-        {
-            Source = bmp,
-            Width = w,
-            Height = h,
-            Stretch = Stretch.Uniform
-        };
-
+        var img = new Image { Source = bmp, Width = w, Height = h, Stretch = Stretch.Uniform };
         PlaceOnCanvas(img);
         StatusText.Text = "Image inserted. Switch to Lasso to move or resize it.";
     }
 
     private void InsertText_Click(object sender, RoutedEventArgs e) => AddTextToPage(string.Empty);
 
-    // =====================================================================
-    // Paste from clipboard — individual boxes
-    // =====================================================================
     private void PasteClipboardText_Click(object sender, RoutedEventArgs e)
     {
         if (!Clipboard.ContainsText())
         {
-            MessageBox.Show(this, "There is no text in the clipboard.",
-                "Paste text", MessageBoxButton.OK, MessageBoxImage.Information);
+            StatusText.Text = "There is no text in the clipboard.";
             return;
         }
-
         string text = Clipboard.GetText();
         if (string.IsNullOrWhiteSpace(text)) return;
 
-        // Split into individual keywords / phrases. Any whitespace, newline,
-        // comma, semicolon, pipe, slash is treated as a separator.
         var tokens = new List<string>();
-        foreach (var raw in text.Split(
-                     new[] { '\r', '\n', '\t', ' ', ',', ';', '|', '/' },
-                     StringSplitOptions.RemoveEmptyEntries))
+        foreach (var raw in text.Split(new[] { '\r', '\n', '\t', ' ', ',', ';', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
         {
             var trimmed = raw.Trim();
             if (trimmed.Length > 0) tokens.Add(trimmed);
         }
-
         if (tokens.Count == 0) return;
 
-        // Each token becomes its own freely-movable text box.
-        // Lay them out in a grid so they don't overlap.
-        const double boxW = 180;
-        const double boxH = 42;
-        const double gap = 20;
-        const double margin = 60;
-
+        const double boxW = 180, boxH = 42, gap = 20, margin = 60;
         int perRow = 6;
         int numRows = (tokens.Count + perRow - 1) / perRow;
-
         double neededW = margin + perRow * (boxW + gap) + margin;
         double neededH = margin + numRows * (boxH + gap) + margin;
 
-        // Auto-grow the sheet if the tokens won't fit.
         if (neededW > CurrentPage.WorldWidth || neededH > CurrentPage.WorldHeight)
         {
             CurrentPage.WorldWidth = Math.Max(CurrentPage.WorldWidth, neededW);
@@ -2226,53 +2274,38 @@ public partial class MainWindow : Window
         {
             var tb = new TextBox
             {
-                Text = tokens[i],
-                AcceptsReturn = false,
-                TextWrapping = TextWrapping.NoWrap,
-                FontSize = 18,
-                Width = boxW,
-                MinHeight = 32,
+                Text = tokens[i], AcceptsReturn = false, TextWrapping = TextWrapping.NoWrap,
+                FontSize = 18, Width = boxW, MinHeight = 32,
                 Padding = new Thickness(8, 4, 8, 4),
                 Background = Brushes.White,
                 BorderBrush = new SolidColorBrush(Color.FromArgb(150, 26, 115, 232)),
                 BorderThickness = new Thickness(1),
                 VerticalContentAlignment = VerticalAlignment.Center
             };
-
             int row = i / perRow;
             int col = i % perRow;
-            double left = visLeft + margin + col * (boxW + gap);
-            double top = visTop + margin + row * (boxH + gap);
-
-            InkCanvas.SetLeft(tb, left);
-            InkCanvas.SetTop(tb, top);
+            InkCanvas.SetLeft(tb, visLeft + margin + col * (boxW + gap));
+            InkCanvas.SetTop(tb, visTop + margin + row * (boxH + gap));
             InkArea.Children.Add(tb);
         }
 
-        // Re-fit the view so the user sees everything they pasted.
         CenterViewOnCanvas();
-
         MarkDirty();
-        StatusText.Text = $"Pasted {tokens.Count} item(s) as individual boxes. Switch to Lasso to move them around.";
+        StatusText.Text = $"Pasted {tokens.Count} item(s) as individual boxes.";
     }
 
     private void AddTextToPage(string initialText)
     {
         var tb = new TextBox
         {
-            Text = initialText,
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            FontSize = 18,
-            Width = 260,
-            MinHeight = 32,
+            Text = initialText, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            FontSize = 18, Width = 260, MinHeight = 32,
             Padding = new Thickness(4, 2, 4, 2),
             Background = Brushes.Transparent,
             BorderBrush = new SolidColorBrush(Color.FromArgb(80, 26, 115, 232)),
             BorderThickness = new Thickness(1),
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto
         };
-
         PlaceOnCanvas(tb);
         tb.Focus();
         tb.CaretIndex = tb.Text.Length;
@@ -2281,39 +2314,30 @@ public partial class MainWindow : Window
     private void PlaceOnCanvas(FrameworkElement element)
     {
         if (InkArea is null) return;
-
         double visLeft = -_viewPanX / _viewZoom;
         double visTop = -_viewPanY / _viewZoom;
-
         double left = visLeft + 60;
         double top = visTop + 60 + (_insertCounter % 22) * 42;
         _insertCounter++;
-
         InkCanvas.SetLeft(element, left);
         InkCanvas.SetTop(element, top);
         InkCanvas.SetRight(element, double.NaN);
         InkCanvas.SetBottom(element, double.NaN);
-
         InkArea.Children.Add(element);
-
         MarkDirty();
     }
 
     private void PaletteButton_Click(object sender, RoutedEventArgs e)
     {
-        SidePanel.Visibility = SidePanel.Visibility == Visibility.Visible
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        SidePanel.Visibility = SidePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // =====================================================================
     // Page appearance
     // =====================================================================
-
     private void PaperThumb_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is RadioButton rb && rb.Tag is string name
-            && Enum.TryParse<PaperStyle>(name, out var ps))
+        if (sender is RadioButton rb && rb.Tag is string name && Enum.TryParse<PaperStyle>(name, out var ps))
         {
             CurrentPage.Paper = ps;
             UpdatePageBackground();
@@ -2328,33 +2352,28 @@ public partial class MainWindow : Window
         {
             CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
             UpdatePageBackground();
-            StatusText.Text = $"Background: {rb.ToolTip}";
             MarkDirty();
+            StatusText.Text = $"Background: {rb.ToolTip}";
         }
     }
 
     private void TemplateButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is RadioButton rb && rb.Tag is string name
-            && Enum.TryParse<PageTemplate>(name, out var t))
+        if (sender is RadioButton rb && rb.Tag is string name && Enum.TryParse<PageTemplate>(name, out var t))
         {
             CurrentPage.Template = t;
             UpdatePageBackground();
-            StatusText.Text = $"Template: {rb.ToolTip}";
             MarkDirty();
+            StatusText.Text = $"Template: {rb.ToolTip}";
         }
     }
 
-    // === Spacing 1–60 via slider ===
     private void SpacingSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_uiReady || _suppressSpacingChange) return;
         if (PageBackground is null) return;
-
         CurrentPage.Spacing = e.NewValue;
-        if (SpacingText is not null)
-            SpacingText.Text = ((int)Math.Round(e.NewValue)).ToString();
-
+        if (SpacingText is not null) SpacingText.Text = ((int)Math.Round(e.NewValue)).ToString();
         UpdatePageBackground();
         MarkDirty();
     }
@@ -2382,15 +2401,10 @@ public partial class MainWindow : Window
     private static Brush BuildPageBrush(NotebookPage page)
     {
         Brush baseBrush = BuildPaperBaseBrush(page.Paper, page.BackgroundColor);
-
-        if (page.Template == PageTemplate.Blank || page.Spacing <= 0)
-            return baseBrush;
-
+        if (page.Template == PageTemplate.Blank || page.Spacing <= 0) return baseBrush;
         double spacing = page.Spacing;
         var group = new DrawingGroup();
-        group.Children.Add(new GeometryDrawing(baseBrush, null,
-            new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
-
+        group.Children.Add(new GeometryDrawing(baseBrush, null, new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
         Color lineColor = GetLineColor(page.BackgroundColor);
         var linePen = new Pen(new SolidColorBrush(lineColor), 1);
 
@@ -2423,11 +2437,8 @@ public partial class MainWindow : Window
 
     private static Brush BuildPaperBaseBrush(PaperStyle paper, Color userColor)
     {
-        if (userColor != Colors.White)
-            return new SolidColorBrush(userColor);
-
-        if (paper == PaperStyle.White)
-            return new SolidColorBrush(Colors.White);
+        if (userColor != Colors.White) return new SolidColorBrush(userColor);
+        if (paper == PaperStyle.White) return new SolidColorBrush(Colors.White);
 
         var group = new DrawingGroup();
         group.Children.Add(new GeometryDrawing(
@@ -2457,9 +2468,7 @@ public partial class MainWindow : Window
     private static Color GetLineColor(Color bg)
     {
         double lum = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255.0;
-        return lum > 0.5
-            ? Color.FromArgb(120, 60, 60, 60)
-            : Color.FromArgb(120, 220, 220, 220);
+        return lum > 0.5 ? Color.FromArgb(120, 60, 60, 60) : Color.FromArgb(120, 220, 220, 220);
     }
 
     private static Color ParseHexColor(string hex, Color fallback)
@@ -2479,11 +2488,7 @@ public partial class MainWindow : Window
 
         if (PaperWhite is not null && PaperCrumpled is not null)
         {
-            RadioButton paperBtn = CurrentPage.Paper switch
-            {
-                PaperStyle.Crumpled => PaperCrumpled,
-                _ => PaperWhite
-            };
+            RadioButton paperBtn = CurrentPage.Paper switch { PaperStyle.Crumpled => PaperCrumpled, _ => PaperWhite };
             paperBtn.IsChecked = true;
         }
 
@@ -2515,7 +2520,6 @@ public partial class MainWindow : Window
             templateBtn.IsChecked = true;
         }
 
-        // Spacing slider (1–60) instead of old combo box.
         if (SpacingSlider is not null)
         {
             _suppressSpacingChange = true;
@@ -2531,20 +2535,15 @@ public partial class MainWindow : Window
     // =====================================================================
     // Tools
     // =====================================================================
-
     private void PenButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Pen;
         EndPan();
         ClearElementSelection();
-        if (InkArea is not null)
-        {
-            InkArea.IsHitTestVisible = true;
-            InkArea.EditingMode = InkCanvasEditingMode.Ink;
-        }
+        if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
         UpdateCursor();
-        StatusText.Text = "Pen selected (1).";
+        StatusText.Text = "Pen selected.";
         ShowToolPopup(PenButton, "Pen");
     }
 
@@ -2553,14 +2552,10 @@ public partial class MainWindow : Window
         _tool = ToolMode.Highlighter;
         EndPan();
         ClearElementSelection();
-        if (InkArea is not null)
-        {
-            InkArea.IsHitTestVisible = true;
-            InkArea.EditingMode = InkCanvasEditingMode.Ink;
-        }
+        if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
         UpdateCursor();
-        StatusText.Text = "Highlighter selected (2).";
+        StatusText.Text = "Highlighter selected.";
         ShowToolPopup(HighlighterButton, "Highlighter");
     }
 
@@ -2569,13 +2564,9 @@ public partial class MainWindow : Window
         _tool = ToolMode.Eraser;
         EndPan();
         ClearElementSelection();
-        if (InkArea is not null)
-        {
-            InkArea.IsHitTestVisible = true;
-            InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke;
-        }
+        if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke; }
         UpdateCursor();
-        if (StatusText is not null) StatusText.Text = "Eraser selected (3).";
+        StatusText.Text = "Eraser selected.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2583,17 +2574,10 @@ public partial class MainWindow : Window
     {
         _tool = ToolMode.Lasso;
         EndPan();
-
         if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
-
-        if (InkArea is not null)
-        {
-            InkArea.IsHitTestVisible = true;
-            InkArea.EditingMode = InkCanvasEditingMode.None;
-        }
+        if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.None; }
         UpdateCursor();
-        if (StatusText is not null)
-            StatusText.Text = "Lasso (4): drag around ink or items to select. Drag inside selection to move. Delete removes it. Ctrl+C / Ctrl+V copies / pastes.";
+        StatusText.Text = "Lasso: drag around ink or items to select. Drag handles to resize. Delete removes.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2602,8 +2586,8 @@ public partial class MainWindow : Window
         if (InkArea is null) return;
         int n = InkArea.GetSelectedStrokes().Count;
         int m = _selectedElements.Count;
-        if ((n > 0 || m > 0) && StatusText is not null)
-            StatusText.Text = $"Selected {n} stroke(s) and {m} item(s). Drag to move. Delete to remove. Ctrl+C to copy.";
+        if (n > 0 || m > 0) StatusText.Text = $"Selected {n} stroke(s) and {m} item(s).";
+        RebuildResizeHandles();
     }
 
     private void SelectAll_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -2616,12 +2600,11 @@ public partial class MainWindow : Window
             InkArea.EditingMode = InkCanvasEditingMode.None;
         }
         InkArea.Select(InkArea.Strokes);
-
         _selectedElements.Clear();
         foreach (var c in InkArea.Children)
             if (c is FrameworkElement fe) _selectedElements.Add(fe);
         UpdateElementSelectionVisuals();
-
+        RebuildResizeHandles();
         StatusText.Text = $"Selected all {InkArea.Strokes.Count} stroke(s) and {_selectedElements.Count} item(s).";
         e.Handled = true;
     }
@@ -2632,93 +2615,48 @@ public partial class MainWindow : Window
         ClearElementSelection();
         if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
-        if (StatusText is not null)
-            StatusText.Text = "Hand tool (5): drag to pan. Fast horizontal swipe turns the page.";
+        StatusText.Text = "Hand tool: drag to pan.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
     private void ClearButton_Click(object sender, RoutedEventArgs e)
     {
         if (InkArea is null) return;
-        if (InkArea.Strokes.Count == 0)
-        {
-            StatusText.Text = "The page is already empty.";
-            return;
-        }
-
+        if (InkArea.Strokes.Count == 0) { StatusText.Text = "The page is already empty."; return; }
         var answer = MessageBox.Show(this,
-            "Remove everything on this page?\n\nYou can still press Undo (Ctrl+Z) right after.",
-            "Clear page", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-
-        if (answer == MessageBoxResult.OK)
-        {
-            InkArea.Strokes.Clear();
-            StatusText.Text = "Page cleared.";
-        }
+            "Remove everything on this page?", "Clear page", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.OK) { InkArea.Strokes.Clear(); StatusText.Text = "Page cleared."; }
     }
 
     private void InkArea_StrokeCollected(object sender, InkCanvasStrokeCollectedEventArgs e)
     {
         var points = e.Stroke.StylusPoints;
         if (points.Count == 0) return;
-
-        float min = 1f, max = 0f;
-        foreach (var p in points)
-        {
-            min = Math.Min(min, p.PressureFactor);
-            max = Math.Max(max, p.PressureFactor);
-        }
-
-        bool varied = (max - min) > 0.01f;
-        string verdict = varied
-            ? "pressure detected"
-            : "no pressure change (mouse, or the tablet driver is not sending pressure)";
-
-        StatusText.Text = $"Last stroke: {points.Count} points, pressure {min:0.00} to {max:0.00} - {verdict}.";
-
-        if (!e.Stroke.DrawingAttributes.IsHighlighter)
-            SmoothCompletedStroke(e.Stroke);
+        if (!e.Stroke.DrawingAttributes.IsHighlighter) SmoothCompletedStroke(e.Stroke);
     }
 
     private void SmoothCompletedStroke(Stroke original)
     {
         if (InkArea is null) return;
-
         var pts = original.StylusPoints;
         int n = pts.Count;
         if (n < 3) return;
 
-        var rawX = new double[n];
-        var rawY = new double[n];
-        var rawP = new float[n];
-        for (int i = 0; i < n; i++)
-        {
-            rawX[i] = pts[i].X;
-            rawY[i] = pts[i].Y;
-            rawP[i] = pts[i].PressureFactor;
-        }
+        var rawX = new double[n]; var rawY = new double[n]; var rawP = new float[n];
+        for (int i = 0; i < n; i++) { rawX[i] = pts[i].X; rawY[i] = pts[i].Y; rawP[i] = pts[i].PressureFactor; }
 
-        var sx = new double[n];
-        var sy = new double[n];
-        var sp = new float[n];
+        var sx = new double[n]; var sy = new double[n]; var sp = new float[n];
         const int half = 2;
         for (int i = 0; i < n; i++)
         {
-            double sumX = 0, sumY = 0;
-            float sumP = 0;
-            int cnt = 0;
+            double sumX = 0, sumY = 0; float sumP = 0; int cnt = 0;
             for (int j = -half; j <= half; j++)
             {
                 int k = i + j;
                 if (k < 0 || k >= n) continue;
-                sumX += rawX[k];
-                sumY += rawY[k];
-                sumP += rawP[k];
-                cnt++;
+                sumX += rawX[k]; sumY += rawY[k]; sumP += rawP[k]; cnt++;
             }
-            sx[i] = sumX / cnt;
-            sy[i] = sumY / cnt;
-            sp[i] = sumP / cnt;
+            sx[i] = sumX / cnt; sy[i] = sumY / cnt; sp[i] = sumP / cnt;
         }
 
         const double step = 1.2;
@@ -2734,7 +2672,6 @@ public partial class MainWindow : Window
             double p0y = i > 0 ? sy[i - 1] : p1y - (p2y - p1y);
             double p3x = i < n - 2 ? sx[i + 2] : p2x + (p2x - p1x);
             double p3y = i < n - 2 ? sy[i + 2] : p2y + (p2y - p1y);
-
             double segLen = Math.Sqrt((p2x - p1x) * (p2x - p1x) + (p2y - p1y) * (p2y - p1y));
             int subdiv = Math.Max(1, (int)Math.Ceiling(segLen / step));
             if (subdiv > 500) subdiv = 500;
@@ -2746,7 +2683,6 @@ public partial class MainWindow : Window
                 double x = 0.5 * ((2 * p1x) + (-p0x + p2x) * t + (2 * p0x - 5 * p1x + 4 * p2x - p3x) * t2 + (-p0x + 3 * p1x - 3 * p2x + p3x) * t3);
                 double y = 0.5 * ((2 * p1y) + (-p0y + p2y) * t + (2 * p0y - 5 * p1y + 4 * p2y - p3y) * t2 + (-p0y + 3 * p1y - 3 * p2y + p3y) * t3);
                 float pressure = (float)(sp[i] + (sp[i + 1] - sp[i]) * t);
-
                 outPts.Add(new StylusPoint((float)x, (float)y, Clamp01(pressure)));
                 if (outPts.Count >= maxOut) break;
             }
@@ -2756,63 +2692,40 @@ public partial class MainWindow : Window
         var da = original.DrawingAttributes.Clone();
         da.FitToCurve = false;
         var smoothed = new Stroke(outPts, da);
-
         int idx = InkArea.Strokes.IndexOf(original);
         if (idx < 0) return;
-
         _applyingHistory = true;
-        try
-        {
-            InkArea.Strokes.RemoveAt(idx);
-            InkArea.Strokes.Insert(idx, smoothed);
-        }
-        finally
-        {
-            _applyingHistory = false;
-        }
-
+        try { InkArea.Strokes.RemoveAt(idx); InkArea.Strokes.Insert(idx, smoothed); }
+        finally { _applyingHistory = false; }
         ReplaceStrokeInUndoStack(original, smoothed);
     }
 
     private void ReplaceStrokeInUndoStack(Stroke original, Stroke smoothed)
     {
         if (_undo.Count == 0) return;
-
         var drained = new List<object>();
         bool replaced = false;
-
         while (_undo.Count > 0)
         {
             var c = _undo.Pop();
-
             if (!replaced && c is StrokeChange sc && sc.Added.Contains(original))
             {
                 var newAdded = new StrokeCollection();
-                foreach (var s in sc.Added)
-                    newAdded.Add(s == original ? smoothed : s);
+                foreach (var s in sc.Added) newAdded.Add(s == original ? smoothed : s);
                 drained.Add(new StrokeChange(newAdded, sc.Removed));
                 replaced = true;
                 break;
             }
-
             drained.Add(c);
         }
-
-        for (int i = drained.Count - 1; i >= 0; i--)
-            _undo.Push(drained[i]);
+        for (int i = drained.Count - 1; i >= 0; i--) _undo.Push(drained[i]);
     }
 
-    private static float Clamp01(float v)
-    {
-        if (v < 0f) return 0f;
-        if (v > 1f) return 1f;
-        return v;
-    }
+    private static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
 
     // =====================================================================
     // Undo / redo
     // =====================================================================
-
     private void Strokes_Changed(object? sender, StrokeCollectionChangedEventArgs e)
     {
         if (_applyingHistory) return;
@@ -2831,6 +2744,7 @@ public partial class MainWindow : Window
         ReverseChange(change);
         _redo.Push(change);
         MarkDirty();
+        RebuildResizeHandles();
     }
 
     private void Redo_Executed(object sender, ExecutedRoutedEventArgs e)
@@ -2840,6 +2754,7 @@ public partial class MainWindow : Window
         ForwardChange(change);
         _undo.Push(change);
         MarkDirty();
+        RebuildResizeHandles();
     }
 
     private void ReverseChange(object change)
@@ -2885,16 +2800,13 @@ public partial class MainWindow : Window
     // =====================================================================
     // New / Open / Save
     // =====================================================================
-
     private void New_Executed(object sender, ExecutedRoutedEventArgs e)
     {
         if (!ConfirmDiscardChanges()) return;
-
         _pages.Clear();
         _pages.Add(new NotebookPage());
         _currentPageIndex = 0;
         LoadCurrentPageIntoCanvas();
-
         _currentPath = null;
         _dirty = false;
         UpdateTitle();
@@ -2904,16 +2816,8 @@ public partial class MainWindow : Window
     private void Open_Executed(object sender, ExecutedRoutedEventArgs e)
     {
         if (!ConfirmDiscardChanges()) return;
-
-        var dialog = new OpenFileDialog
-        {
-            Filter = FileFilter,
-            DefaultExt = FileExtension,
-            Title = "Open a Canvaas note"
-        };
-
-        if (dialog.ShowDialog(this) == true)
-            OpenFromFile(dialog.FileName);
+        var dialog = new OpenFileDialog { Filter = FileFilter, DefaultExt = FileExtension, Title = "Open a Canvaas note" };
+        if (dialog.ShowDialog(this) == true) OpenFromFile(dialog.FileName);
     }
 
     private void Save_Executed(object sender, ExecutedRoutedEventArgs e) => SaveCurrent();
@@ -2925,13 +2829,10 @@ public partial class MainWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Filter = FileFilter,
-            DefaultExt = FileExtension,
-            AddExtension = true,
+            Filter = FileFilter, DefaultExt = FileExtension, AddExtension = true,
             Title = "Save your Canvaas note",
             FileName = _currentPath is null ? "My note" : System.IO.Path.GetFileNameWithoutExtension(_currentPath)
         };
-
         if (dialog.ShowDialog(this) != true) return false;
         return SaveToFile(dialog.FileName);
     }
@@ -2939,7 +2840,6 @@ public partial class MainWindow : Window
     private bool SaveToFile(string path)
     {
         string tempPath = path + ".tmp";
-
         try
         {
             using (var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
@@ -2954,7 +2854,6 @@ public partial class MainWindow : Window
                     CurrentPageIndex = _currentPageIndex,
                     Pages = new List<PageManifest>()
                 };
-
                 foreach (var page in _pages)
                 {
                     manifest.Pages.Add(new PageManifest
@@ -2967,7 +2866,6 @@ public partial class MainWindow : Window
                         WorldHeight = page.WorldHeight
                     });
                 }
-
                 var manifestEntry = zip.CreateEntry(ManifestEntryName);
                 using (var entryStream = manifestEntry.Open())
                     JsonSerializer.Serialize(entryStream, manifest, JsonOptions);
@@ -2978,24 +2876,19 @@ public partial class MainWindow : Window
                     using var inkBuffer = new MemoryStream();
                     _pages[i].Strokes.Save(inkBuffer);
                     inkBuffer.Position = 0;
-
                     var inkEntry = zip.CreateEntry(string.Format(PageEntryFormat, i));
                     using var entryStream = inkEntry.Open();
                     inkBuffer.CopyTo(entryStream);
                 }
             }
-
             File.Move(tempPath, path, overwrite: true);
         }
         catch (Exception ex)
         {
             TryDelete(tempPath);
-            MessageBox.Show(this,
-                "Canvaas could not save your note.\n\nYour previous saved file (if any) was not changed.\n\nDetails: " + ex.Message,
-                "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, "Save failed.\n\n" + ex.Message, "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
-
         _currentPath = path;
         _dirty = false;
         UpdateTitle();
@@ -3007,32 +2900,17 @@ public partial class MainWindow : Window
     {
         List<NotebookPage> loadedPages;
         int loadedCurrentPage = 0;
-
         try
         {
             using var fileStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             using var zip = new ZipArchive(fileStream, ZipArchiveMode.Read);
-
-            var manifestEntry = zip.GetEntry(ManifestEntryName)
-                ?? throw new InvalidDataException("This is not a Canvaas note (manifest.json is missing).");
-
+            var manifestEntry = zip.GetEntry(ManifestEntryName) ?? throw new InvalidDataException("Not a Canvaas note.");
             Manifest? manifest;
             using (var entryStream = manifestEntry.Open())
                 manifest = JsonSerializer.Deserialize<Manifest>(entryStream, JsonOptions);
-
-            if (manifest is null)
-                throw new InvalidDataException("The note's manifest.json is empty.");
-
-            if (manifest.FormatVersion > CurrentFormatVersion)
-            {
-                MessageBox.Show(this,
-                    "This note was saved by a newer version of Canvaas and cannot be opened by this version.\n\nNothing was changed.",
-                    "Newer file version", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
+            if (manifest is null) throw new InvalidDataException("Manifest is empty.");
 
             loadedPages = new List<NotebookPage>();
-
             if (manifest.FormatVersion >= 3 && manifest.Pages is { Count: > 0 })
             {
                 for (int i = 0; i < manifest.Pages.Count; i++)
@@ -3045,7 +2923,6 @@ public partial class MainWindow : Window
                     };
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;
-
                     if (pm.WorldWidth is double ww && ww >= 100) page.WorldWidth = ww;
                     if (pm.WorldHeight is double wh && wh >= 100) page.WorldHeight = wh;
 
@@ -3056,7 +2933,6 @@ public partial class MainWindow : Window
                         using (var es = inkEntry.Open()) es.CopyTo(buffer);
                         buffer.Position = 0;
                         page.Strokes = new StrokeCollection(buffer);
-
                         if (page.Strokes.Count > 0)
                         {
                             var b = page.Strokes.GetBounds();
@@ -3066,17 +2942,11 @@ public partial class MainWindow : Window
                     }
                     loadedPages.Add(page);
                 }
-
                 loadedCurrentPage = Math.Clamp(manifest.CurrentPageIndex, 0, loadedPages.Count - 1);
             }
             else
             {
                 var page = new NotebookPage();
-                if (manifest.FormatVersion >= 2)
-                {
-                    if (Enum.TryParse<PageTemplate>("Blank", out var t)) page.Template = t;
-                }
-
                 var inkEntry = zip.GetEntry(LegacyInkEntryName);
                 if (inkEntry is not null)
                 {
@@ -3084,26 +2954,14 @@ public partial class MainWindow : Window
                     using (var es = inkEntry.Open()) es.CopyTo(buffer);
                     buffer.Position = 0;
                     page.Strokes = new StrokeCollection(buffer);
-
-                    if (page.Strokes.Count > 0)
-                    {
-                        var b = page.Strokes.GetBounds();
-                        if (b.Right + 200 > page.WorldWidth) page.WorldWidth = b.Right + 200;
-                        if (b.Bottom + 200 > page.WorldHeight) page.WorldHeight = b.Bottom + 200;
-                    }
                 }
                 loadedPages.Add(page);
-                loadedCurrentPage = 0;
             }
-
-            if (loadedPages.Count == 0)
-                loadedPages.Add(new NotebookPage());
+            if (loadedPages.Count == 0) loadedPages.Add(new NotebookPage());
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this,
-                "Canvaas could not open this file.\n\nThe file was not changed, and your current page is still here.\n\nDetails: " + ex.Message,
-                "Open failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, "Could not open.\n\n" + ex.Message, "Open failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
 
@@ -3111,31 +2969,25 @@ public partial class MainWindow : Window
         _pages.AddRange(loadedPages);
         _currentPageIndex = loadedCurrentPage;
         LoadCurrentPageIntoCanvas();
-
         _currentPath = path;
         _dirty = false;
         UpdateTitle();
-        StatusText.Text = $"Opened: {path}  ({_pages.Count} page{(_pages.Count == 1 ? "" : "s")})";
+        StatusText.Text = $"Opened: {path}";
     }
 
     // =====================================================================
-    // Unsaved-changes protection and small helpers
+    // Helpers
     // =====================================================================
-
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (!ConfirmDiscardChanges())
-            e.Cancel = true;
+        if (!ConfirmDiscardChanges()) e.Cancel = true;
     }
 
     private bool ConfirmDiscardChanges()
     {
         if (!_dirty) return true;
-
-        var answer = MessageBox.Show(this,
-            "You have unsaved changes. Save them first?",
-            "Unsaved changes", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-
+        var answer = MessageBox.Show(this, "You have unsaved changes. Save them first?", "Unsaved changes",
+            MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
         return answer switch
         {
             MessageBoxResult.Yes => SaveCurrent(),
@@ -3161,7 +3013,6 @@ public partial class MainWindow : Window
 
     private static void TryDelete(string path)
     {
-        try { if (File.Exists(path)) File.Delete(path); }
-        catch { }
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 }
