@@ -267,10 +267,9 @@ public partial class MainWindow : Window
     private int _pdfPageSizeIndex = 0;
     private int _pdfOrientationIndex = 0;
 
-    // Library / Tab mode
     private readonly ObservableCollection<NoteCardItem> _libraryItems = new();
     private bool _tabMode = false;
-    private readonly DispatcherTimer _topHoverTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
+    private readonly DispatcherTimer _topHoverTimer = new() { Interval = TimeSpan.FromMilliseconds(800) };
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
@@ -322,7 +321,10 @@ public partial class MainWindow : Window
             _topHoverTimer.Stop();
             if (!_tabMode) return;
             if (TitleBarBorder != null && !TitleBarBorder.IsMouseOver)
+            {
                 TitleBarBorder.Visibility = Visibility.Collapsed;
+                if (TopToolbarBorder != null) TopToolbarBorder.Visibility = Visibility.Collapsed;
+            }
         };
 
         var dpd = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
@@ -350,9 +352,7 @@ public partial class MainWindow : Window
 
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                if (LibraryView is not null) LibraryView.Visibility = Visibility.Visible;
-                if (EditorView is not null) EditorView.Visibility = Visibility.Collapsed;
-                LoadLibrary();
+                ShowLibrary();
             }), DispatcherPriority.Background);
         };
 
@@ -387,28 +387,13 @@ public partial class MainWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
             "Canvaas");
 
-    private void ShowLibrary()
-    {
-        EditorView.Visibility = Visibility.Collapsed;
-        LibraryView.Visibility = Visibility.Visible;
-        TitleBarText.Text = "Canvaas";
-        LoadLibrary();
-    }
-
-    private void ShowEditor()
-    {
-        LibraryView.Visibility = Visibility.Collapsed;
-        EditorView.Visibility = Visibility.Visible;
-        UpdateTitle();
-    }
-
     private void LoadLibrary()
     {
         _libraryItems.Clear();
         try
         {
-            Directory.CreateDirectory(LibraryFolder);
-            foreach (var f in Directory.GetFiles(LibraryFolder, "*.canvaas"))
+            System.IO.Directory.CreateDirectory(LibraryFolder);
+            foreach (var f in System.IO.Directory.GetFiles(LibraryFolder, "*.canvaas"))
             {
                 var info = new FileInfo(f);
                 int pageCount = 1;
@@ -456,14 +441,10 @@ public partial class MainWindow : Window
     {
         var palette = new[]
         {
-            Color.FromRgb(0xE5, 0x39, 0x35),
-            Color.FromRgb(0x26, 0xC6, 0xDA),
-            Color.FromRgb(0xCD, 0xDC, 0x39),
-            Color.FromRgb(0xFF, 0xB3, 0x00),
-            Color.FromRgb(0x43, 0xA0, 0x47),
-            Color.FromRgb(0x8E, 0x24, 0xAA),
-            Color.FromRgb(0xFF, 0x70, 0x43),
-            Color.FromRgb(0xD4, 0xE1, 0x57),
+            Color.FromRgb(0xE5, 0x39, 0x35), Color.FromRgb(0x26, 0xC6, 0xDA),
+            Color.FromRgb(0xCD, 0xDC, 0x39), Color.FromRgb(0xFF, 0xB3, 0x00),
+            Color.FromRgb(0x43, 0xA0, 0x47), Color.FromRgb(0x8E, 0x24, 0xAA),
+            Color.FromRgb(0xFF, 0x70, 0x43), Color.FromRgb(0xD4, 0xE1, 0x57),
         };
         int hash = path.GetHashCode();
         return new SolidColorBrush(palette[Math.Abs(hash) % palette.Length]);
@@ -494,13 +475,13 @@ public partial class MainWindow : Window
         _currentPath = null;
         _dirty = false;
         ShowEditor();
-        StatusText.Text = "New book. Draw and save.";
+        StatusText.Text = "New book.";
     }
 
     private void LibraryOpenFile_Click(object sender, RoutedEventArgs e)
     {
         if (!ConfirmDiscardChanges()) return;
-        var dlg = new OpenFileDialog { Filter = FileFilter, DefaultExt = FileExtension, Title = "Open a Canvaas note" };
+        var dlg = new OpenFileDialog { Filter = FileFilter, DefaultExt = FileExtension };
         if (dlg.ShowDialog(this) == true)
         {
             OpenFromFile(dlg.FileName);
@@ -508,23 +489,34 @@ public partial class MainWindow : Window
         }
     }
 
-    // =====================================================================
-    // Tab mode
-    // =====================================================================
+    private void ShowLibrary()
+    {
+        if (EditorView != null) EditorView.Visibility = Visibility.Collapsed;
+        if (LibraryView != null) LibraryView.Visibility = Visibility.Visible;
+        if (TitleBarText != null) TitleBarText.Text = "Canvaas";
+        LoadLibrary();
+    }
+
+    private void ShowEditor()
+    {
+        if (LibraryView != null) LibraryView.Visibility = Visibility.Collapsed;
+        if (EditorView != null) EditorView.Visibility = Visibility.Visible;
+        UpdateTitle();
+    }
+
     private void ToggleTabMode()
     {
         _tabMode = !_tabMode;
-
         if (_tabMode)
         {
-            TitleBarBorder.Visibility = Visibility.Collapsed;
-            TopToolbarBorder.Visibility = Visibility.Collapsed;
+            if (TitleBarBorder != null) TitleBarBorder.Visibility = Visibility.Collapsed;
+            if (TopToolbarBorder != null) TopToolbarBorder.Visibility = Visibility.Collapsed;
             StatusText.Text = "Tab mode. Move mouse to top edge to show header.";
         }
         else
         {
-            TitleBarBorder.Visibility = Visibility.Visible;
-            TopToolbarBorder.Visibility = Visibility.Visible;
+            if (TitleBarBorder != null) TitleBarBorder.Visibility = Visibility.Visible;
+            if (TopToolbarBorder != null) TopToolbarBorder.Visibility = Visibility.Visible;
             StatusText.Text = "Exited tab mode.";
         }
     }
@@ -533,10 +525,10 @@ public partial class MainWindow : Window
     {
         if (!_tabMode) return;
         var pos = e.GetPosition(this);
-
         if (pos.Y < 6)
         {
             if (TitleBarBorder != null) TitleBarBorder.Visibility = Visibility.Visible;
+            if (TopToolbarBorder != null) TopToolbarBorder.Visibility = Visibility.Visible;
             _topHoverTimer.Stop();
         }
         else if (pos.Y > 44 && TitleBarBorder != null
@@ -723,7 +715,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Selection toolbar
+    // Selection action toolbar
     // =====================================================================
     private void SelToolDuplicate_Click(object sender, RoutedEventArgs e) => DuplicateSelection();
     private void SelToolCopy_Click(object sender, RoutedEventArgs e) => CopySelection();
@@ -939,8 +931,7 @@ public partial class MainWindow : Window
     // =====================================================================
     private void ChromeToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        bool show = TopToolbarBorder.Visibility != Visibility.Visible;
-        TopToolbarBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        ToggleTabMode();
     }
 
     // =====================================================================
@@ -1072,7 +1063,9 @@ public partial class MainWindow : Window
             }
             else stack.Push(item);
         }
-    }    // =====================================================================
+    }
+
+    // =====================================================================
     // Edge buttons
     // =====================================================================
     private void ScheduleRebuildEdgeButtons()
@@ -1139,22 +1132,7 @@ public partial class MainWindow : Window
     private void AddEdgeButton(double x, double y, ExpandDirection dir, string tooltip)
     {
         var btn = new Button
-        { Content = "\uE710", ToolTip = tooltip, Tag = dir,
-          Width = 30, Height = 30, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 16,
-          Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x73, 0xE8)), Background = Brushes.White, Cursor = Cursors.Hand };
-        btn.Template = (ControlTemplate)XamlReader.Parse(@"
-            <ControlTemplate xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation"" TargetType=""Button"">
-                <Grid>
-                    <Border x:Name=""Bd"" Background=""{TemplateBinding Background}"" CornerRadius=""15"" BorderBrush=""#1A73E8"" BorderThickness=""1.4""/>
-                    <ContentPresenter HorizontalAlignment=""Center"" VerticalAlignment=""Center""/>
-                </Grid>
-                <ControlTemplate.Triggers>
-                    <Trigger Property=""IsMouseOver"" Value=""True"">
-                        <Setter TargetName=""Bd"" Property=""Background"" Value=""#1A73E8""/>
-                        <Setter Property=""Foreground"" Value=""White""/>
-                    </Trigger>
-                </ControlTemplate.Triggers>
-            </ControlTemplate>");
+        { Style = (Style)FindResource("EdgeAddButton"), Content = "\uE710", ToolTip = tooltip, Tag = dir };
         btn.Click += EdgeButton_Click;
         Canvas.SetLeft(btn, x); Canvas.SetTop(btn, y);
         EdgeButtonOverlay.Children.Add(btn);
@@ -1167,7 +1145,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Resize handles
+    // Resize handles + selection toolbar
     // =====================================================================
     private void RebuildResizeHandles()
     {
@@ -1561,7 +1539,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Colour palette data
+    // Colour palette
     // =====================================================================
     private void PopulateToolColorGrid()
     {
@@ -1895,7 +1873,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Fullscreen
+    // Fullscreen (debounced + remembers previous size)
     // =====================================================================
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
 
@@ -1931,7 +1909,10 @@ public partial class MainWindow : Window
             Left = 0; Top = 0; Width = sw; Height = sh;
             Topmost = true;
             if (hwnd != IntPtr.Zero)
+            {
                 SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+            }
             StatusText.Text = "Fullscreen. Press ESC or F11 to exit.";
         }
         else
@@ -1939,7 +1920,6 @@ public partial class MainWindow : Window
             Topmost = _preFullscreenTopmost;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
-
             if (_preFullscreenWindowState == WindowState.Maximized)
             {
                 WindowState = WindowState.Maximized;
@@ -1957,9 +1937,10 @@ public partial class MainWindow : Window
                     Height = _preFullscreenBounds.Height;
                 }
             }
-
             if (hwnd != IntPtr.Zero)
+            {
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
             StatusText.Text = "Exited fullscreen.";
         }
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
@@ -2089,39 +2070,6 @@ public partial class MainWindow : Window
         { PanBy(-e.Delta, 0); e.Handled = true; }
         else { PanBy(0, -e.Delta); e.Handled = true; }
     }
-
-    private void FloatingZoomGrip_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement el) return;
-        _draggingFloatingZoom = true;
-        _floatingZoomDragStart = e.GetPosition(this);
-        _floatingZoomStartX = FloatingZoomTransform.X;
-        _floatingZoomStartY = FloatingZoomTransform.Y;
-        el.CaptureMouse();
-        el.Cursor = Cursors.SizeAll;
-        e.Handled = true;
-    }
-
-    private void FloatingZoomGrip_MouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_draggingFloatingZoom) return;
-        var p = e.GetPosition(this);
-        FloatingZoomTransform.X = _floatingZoomStartX + (p.X - _floatingZoomDragStart.X);
-        FloatingZoomTransform.Y = _floatingZoomStartY + (p.Y - _floatingZoomDragStart.Y);
-    }
-
-    private void FloatingZoomGrip_MouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_draggingFloatingZoom) return;
-        _draggingFloatingZoom = false;
-        if (sender is FrameworkElement el) { el.ReleaseMouseCapture(); el.Cursor = Cursors.SizeAll; }
-        e.Handled = true;
-    }
-
-    // Fields for floating zoom drag
-    private bool _draggingFloatingZoom;
-    private Point _floatingZoomDragStart;
-    private double _floatingZoomStartX, _floatingZoomStartY;
 
     // =====================================================================
     // Page management
@@ -2336,6 +2284,7 @@ public partial class MainWindow : Window
         {
             var printDialog = new PrintDialog();
             if (printDialog.ShowDialog() != true) return;
+
             double pw = printDialog.PrintableAreaWidth;
             double ph = printDialog.PrintableAreaHeight;
 
@@ -2351,6 +2300,7 @@ public partial class MainWindow : Window
                 FixedPage.SetLeft(img, 0);
                 FixedPage.SetTop(img, 0);
                 fixedPage.Children.Add(img);
+
                 var pc = new PageContent();
                 ((IAddChild)pc).AddChild(fixedPage);
                 document.Pages.Add(pc);
@@ -2395,6 +2345,9 @@ public partial class MainWindow : Window
         return rtb;
     }
 
+    // =====================================================================
+    // PDF import
+    // =====================================================================
     private void ImportPdf_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = "PDF files (*.pdf)|*.pdf", Title = "Insert PDF" };
@@ -2407,7 +2360,6 @@ public partial class MainWindow : Window
             {
                 MessageBox.Show(this,
                     "PDF rendering is not available on this system.\n\n" +
-                    "You need Windows 10 or later with the Windows Runtime PDF APIs.\n\n" +
                     "Alternative: open the PDF in a viewer, screenshot each page, and use Paste from Clipboard.",
                     "PDF import not available", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
@@ -2435,6 +2387,7 @@ public partial class MainWindow : Window
                 InkCanvas.SetLeft(img, 0);
                 InkCanvas.SetTop(img, 0);
                 newPage.Elements.Add(img);
+
                 _pages.Insert(originalIndex + 1 + i, newPage);
             }
 
@@ -2463,6 +2416,7 @@ public partial class MainWindow : Window
             if (getFileMethod is null) return null;
             var op = getFileMethod.Invoke(null, new object[] { path });
             if (op is null) return null;
+
             var storageFile = AwaitWinRtOp(op);
             if (storageFile is null) return null;
 
@@ -2472,6 +2426,7 @@ public partial class MainWindow : Window
             if (loadMethod is null) return null;
             var loadOp = loadMethod.Invoke(null, new[] { storageFile });
             if (loadOp is null) return null;
+
             var pdfDoc = AwaitWinRtOp(loadOp);
             if (pdfDoc is null) return null;
 
@@ -2480,14 +2435,18 @@ public partial class MainWindow : Window
 
             var pages = new List<BitmapSource>();
             var getPageMethod = pdfDocType.GetMethod("GetPage");
+
             for (uint i = 0; i < count; i++)
             {
                 var page = getPageMethod?.Invoke(pdfDoc, new object[] { i });
                 if (page is null) continue;
+
                 var bmp = RenderPdfPageToBitmap(page);
                 if (bmp is not null) pages.Add(bmp);
+
                 (page as IDisposable)?.Dispose();
             }
+
             (pdfDoc as IDisposable)?.Dispose();
             return pages;
         }
@@ -2521,18 +2480,22 @@ public partial class MainWindow : Window
         {
             var streamType = Type.GetType("Windows.Storage.Streams.InMemoryRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime");
             if (streamType is null) return null;
+
             var stream = Activator.CreateInstance(streamType);
             if (stream is null) return null;
 
             var renderMethod = pdfPage.GetType().GetMethod("RenderToStreamAsync",
-                BindingFlags.Public | BindingFlags.Instance, null, new[] { streamType }, null);
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { streamType }, null);
             if (renderMethod is null) return null;
+
             var op = renderMethod.Invoke(pdfPage, new[] { stream });
             if (op is null) return null;
             AwaitWinRtOp(op);
 
             var getInputStreamMethod = streamType.GetMethod("GetInputStreamAt",
-                BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(ulong) }, null);
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { typeof(ulong) }, null);
             var sizeProp = streamType.GetProperty("Size");
             ulong size = (ulong)(sizeProp?.GetValue(stream) ?? 0UL);
             if (size == 0) return null;
@@ -2544,18 +2507,21 @@ public partial class MainWindow : Window
             if (dataReaderType is null) return null;
 
             var createReaderMethod = dataReaderType.GetMethod("CreateDataReader",
-                BindingFlags.Public | BindingFlags.Static, null, new[] { inputStream.GetType() }, null);
+                BindingFlags.Public | BindingFlags.Static,
+                null, new[] { inputStream.GetType() }, null);
             var reader = createReaderMethod?.Invoke(null, new[] { inputStream });
             if (reader is null) return null;
 
             var loadAsyncMethod = dataReaderType.GetMethod("LoadAsync",
-                BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(uint) }, null);
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { typeof(uint) }, null);
             var loadOp = loadAsyncMethod?.Invoke(reader, new object[] { (uint)size });
             if (loadOp is null) return null;
             AwaitWinRtOp(loadOp);
 
             var readBytesMethod = dataReaderType.GetMethod("ReadBytes",
-                BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(byte[]) }, null);
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { typeof(byte[]) }, null);
             var bytes = new byte[size];
             readBytesMethod?.Invoke(reader, new object[] { bytes });
 
@@ -3724,7 +3690,7 @@ public partial class MainWindow : Window
         {
             Filter = FileFilter, DefaultExt = FileExtension, AddExtension = true,
             Title = "Save your Canvaas note",
-            InitialDirectory = Directory.Exists(LibraryFolder) ? LibraryFolder : "",
+            InitialDirectory = System.IO.Directory.Exists(LibraryFolder) ? LibraryFolder : "",
             FileName = _currentPath is null ? "My note" : System.IO.Path.GetFileNameWithoutExtension(_currentPath)
         };
         if (dialog.ShowDialog(this) != true) return false;
