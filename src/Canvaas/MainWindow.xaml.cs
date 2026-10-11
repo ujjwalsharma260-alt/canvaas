@@ -272,21 +272,6 @@ public partial class MainWindow : Window
         public Brush AccentBrush { get; set; } = Brushes.Gray;
     }
 
-    // Library / Tab mode
-    private readonly ObservableCollection<NoteCardItem> _libraryItems = new();
-    private bool _tabMode = false;
-    private Rect _preFullscreenBounds = Rect.Empty;
-    private readonly DispatcherTimer _topHoverTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
-
-    public sealed class NoteCardItem
-    {
-        public string FilePath { get; set; } = "";
-        public string Title { get; set; } = "";
-        public int PageCount { get; set; }
-        public string TimeAgo { get; set; } = "";
-        public Brush AccentBrush { get; set; } = Brushes.Gray;
-    }
-
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
     private static string SettingsFilePath
