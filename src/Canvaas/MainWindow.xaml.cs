@@ -24,7 +24,7 @@ namespace Canvaas;
 
 public partial class MainWindow : Window
 {
-    private const int CurrentFormatVersion = 6;
+    private const int CurrentFormatVersion = 7;
     private const string FileExtension = ".canvaas";
     private const string FileFilter = "Canvaas note (*.canvaas)|*.canvaas";
     private const string ManifestEntryName = "manifest.json";
@@ -89,6 +89,9 @@ public partial class MainWindow : Window
         public string? Paper { get; set; }
         public double? WorldWidth { get; set; }
         public double? WorldHeight { get; set; }
+        public double? PatternOpacity { get; set; }
+        public double? PatternThickness { get; set; }
+        public double? PatternDotSize { get; set; }
     }
 
     private sealed class Manifest
@@ -105,7 +108,10 @@ public partial class MainWindow : Window
     {
         public double PointerSize { get; set; } = 12.0;
         public int CursorStyleIndex { get; set; } = 2;
+        public bool ShowCursorDot { get; set; } = true;
         public Dictionary<string, string>? Shortcuts { get; set; }
+        public int PdfPageSizeIndex { get; set; } = 0;
+        public int PdfOrientationIndex { get; set; } = 0;
     }
 
     private sealed class StrokeChange
@@ -145,10 +151,14 @@ public partial class MainWindow : Window
     private sealed class NotebookPage
     {
         public StrokeCollection Strokes { get; set; } = new StrokeCollection();
+        public List<UIElement> Elements { get; set; } = new();
         public Color BackgroundColor { get; set; } = Colors.White;
         public PageTemplate Template { get; set; } = PageTemplate.Blank;
         public double Spacing { get; set; } = 40;
         public PaperStyle Paper { get; set; } = PaperStyle.White;
+        public double PatternOpacity { get; set; } = 50;
+        public double PatternThickness { get; set; } = 1.0;
+        public double PatternDotSize { get; set; } = 1.2;
         public double WorldWidth { get; set; } = A4Width;
         public double WorldHeight { get; set; } = A4Height;
         public double ViewZoom { get; set; } = 1.0;
@@ -176,8 +186,11 @@ public partial class MainWindow : Window
 
     private bool _suppressCounterChange;
     private bool _suppressSpacingChange;
+    private bool _suppressPatternChange;
     private bool _fullscreenMode;
     private bool _uiReady;
+
+    private DateTime _lastFullscreenToggle = DateTime.MinValue;
 
     private WindowState _preFullscreenWindowState = WindowState.Maximized;
     private bool _preFullscreenTopmost = false;
@@ -188,6 +201,7 @@ public partial class MainWindow : Window
     private bool _pressureEnabled = true;
     private PenCursorStyle _cursorStyle = PenCursorStyle.HollowRingDot;
     private double _pointerSize = 12.0;
+    private bool _showCursorDot = true;
 
     private Cursor? _hollowRingCursor;
 
@@ -198,6 +212,7 @@ public partial class MainWindow : Window
     private double _viewZoom = 1.0;
     private double _viewPanX = 0;
     private double _viewPanY = 0;
+    private double _lastBrushZoom = -1;
 
     private bool _rebuildEdgeScheduled;
 
@@ -219,7 +234,6 @@ public partial class MainWindow : Window
     private StrokeCollection? _clipboardStrokes;
     private int _pasteCounter = 0;
 
-    // Smooth drag preview via bitmap
     private Image? _strokeDragImage;
     private Rect _strokeDragStartBounds;
     private double _lastDragDx, _lastDragDy;
@@ -270,6 +284,7 @@ public partial class MainWindow : Window
 
         if (PointerSizeSlider is not null) PointerSizeSlider.Value = _pointerSize;
         if (PointerSizeText is not null) PointerSizeText.Text = ((int)Math.Round(_pointerSize)).ToString();
+        if (ShowCursorDotCheck is not null) ShowCursorDotCheck.IsChecked = _showCursorDot;
 
         if (CursorCombo is not null)
             CursorCombo.SelectedIndex = _cursorStyle switch
@@ -335,22 +350,190 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
+    // Main menu (hamburger)
+    // =====================================================================
+    private void MenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (MainMenuFlyout is null) return;
+        MainMenuFlyout.Visibility = MainMenuFlyout.Visibility == Visibility.Visible
+            ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void MenuButton2_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.ContextMenu is ContextMenu cm)
+        {
+            cm.PlacementTarget = b;
+            cm.Placement = PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuFlyout.Visibility = Visibility.Collapsed;
+        OpenSettingsPanel("Settings");
+    }
+
+    private void OpenShortcuts_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuFlyout.Visibility = Visibility.Collapsed;
+        OpenSettingsPanel("Keyboard shortcuts");
+    }
+
+    private void OpenSettingsPanel(string title)
+    {
+        if (SettingsOverlay is null) return;
+        if (SettingsTitle is not null) SettingsTitle.Text = title;
+        SyncSettingsUI();
+        SettingsOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void CloseSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (SettingsOverlay is not null) SettingsOverlay.Visibility = Visibility.Collapsed;
+        SaveSettings();
+    }
+
+    private void SettingsOverlay_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Close only if click was on the semi-transparent backdrop, not the panel
+        if (e.OriginalSource == SettingsOverlay)
+        {
+            if (SettingsOverlay is not null) SettingsOverlay.Visibility = Visibility.Collapsed;
+            SaveSettings();
+        }
+    }
+
+    private void RateThisApp_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuFlyout.Visibility = Visibility.Collapsed;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://github.com/ujjwalsharma260-alt/canvaas",
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
+    private void SendFeedback_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuFlyout.Visibility = Visibility.Collapsed;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "mailto:feedback@example.com?subject=Canvaas%20feedback",
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
+    private void MoreApps_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuFlyout.Visibility = Visibility.Collapsed;
+        StatusText.Text = "More apps coming soon.";
+    }
+
+    // =====================================================================
+    // Settings sync
+    // =====================================================================
+    private void SyncSettingsUI()
+    {
+        if (PatternOpacitySlider is not null)
+        {
+            _suppressPatternChange = true;
+            PatternOpacitySlider.Value = Math.Clamp(CurrentPage.PatternOpacity, 0, 100);
+            _suppressPatternChange = false;
+            if (PatternOpacityText is not null) PatternOpacityText.Text = ((int)CurrentPage.PatternOpacity).ToString();
+        }
+        if (PatternThicknessSlider is not null)
+        {
+            _suppressPatternChange = true;
+            PatternThicknessSlider.Value = Math.Clamp(CurrentPage.PatternThickness, 0.5, 4);
+            _suppressPatternChange = false;
+            if (PatternThicknessText is not null) PatternThicknessText.Text = CurrentPage.PatternThickness.ToString("0.0");
+        }
+        if (PatternDotSizeSlider is not null)
+        {
+            _suppressPatternChange = true;
+            PatternDotSizeSlider.Value = Math.Clamp(CurrentPage.PatternDotSize, 0.5, 4);
+            _suppressPatternChange = false;
+            if (PatternDotSizeText is not null) PatternDotSizeText.Text = CurrentPage.PatternDotSize.ToString("0.0");
+        }
+        if (ShowCursorDotCheck is not null) ShowCursorDotCheck.IsChecked = _showCursorDot;
+
+        if (PdfPageSizeCombo is not null) PdfPageSizeCombo.SelectedIndex = Math.Clamp(_pdfPageSizeIndex, 0, 4);
+        if (PdfOrientationCombo is not null) PdfOrientationCombo.SelectedIndex = Math.Clamp(_pdfOrientationIndex, 0, 1);
+    }
+
+    private int _pdfPageSizeIndex = 0;
+    private int _pdfOrientationIndex = 0;
+
+    private void PatternOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady || _suppressPatternChange) return;
+        CurrentPage.PatternOpacity = e.NewValue;
+        if (PatternOpacityText is not null) PatternOpacityText.Text = ((int)e.NewValue).ToString();
+        UpdatePageBackground();
+        MarkDirty();
+    }
+
+    private void PatternThicknessSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady || _suppressPatternChange) return;
+        CurrentPage.PatternThickness = e.NewValue;
+        if (PatternThicknessText is not null) PatternThicknessText.Text = e.NewValue.ToString("0.0");
+        UpdatePageBackground();
+        MarkDirty();
+    }
+
+    private void PatternDotSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady || _suppressPatternChange) return;
+        CurrentPage.PatternDotSize = e.NewValue;
+        if (PatternDotSizeText is not null) PatternDotSizeText.Text = e.NewValue.ToString("0.0");
+        UpdatePageBackground();
+        MarkDirty();
+    }
+
+    private void ShowCursorDotCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_uiReady) return;
+        _showCursorDot = ShowCursorDotCheck.IsChecked == true;
+        RebuildHollowRingCursor();
+        UpdateCursor();
+        SaveSettings();
+    }
+
+    private void ResetAllSettings_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var (id, _, def) in ShortcutActions) _shortcuts[id] = def;
+        _showCursorDot = true;
+        _pointerSize = 12;
+        CurrentPage.PatternOpacity = 50;
+        CurrentPage.PatternThickness = 1.0;
+        CurrentPage.PatternDotSize = 1.2;
+        RefreshShortcutUI();
+        SyncSettingsUI();
+        if (PointerSizeSlider is not null) PointerSizeSlider.Value = 12;
+        UpdatePageBackground();
+        RebuildHollowRingCursor();
+        UpdateCursor();
+        SaveSettings();
+        StatusText.Text = "Settings reset to defaults.";
+    }
+
+    // =====================================================================
     // Selection action toolbar
     // =====================================================================
-    private void SelToolDuplicate_Click(object sender, RoutedEventArgs e)
-    {
-        DuplicateSelection();
-    }
-
-    private void SelToolCopy_Click(object sender, RoutedEventArgs e)
-    {
-        CopySelection();
-    }
-
-    private void SelToolDelete_Click(object sender, RoutedEventArgs e)
-    {
-        DeleteSelection();
-    }
+    private void SelToolDuplicate_Click(object sender, RoutedEventArgs e) => DuplicateSelection();
+    private void SelToolCopy_Click(object sender, RoutedEventArgs e) => CopySelection();
+    private void SelToolDelete_Click(object sender, RoutedEventArgs e) => DeleteSelection();
 
     private void DuplicateSelection()
     {
@@ -385,35 +568,24 @@ public partial class MainWindow : Window
             {
                 var newTb = new TextBox
                 {
-                    Text = tb.Text,
-                    FontSize = tb.FontSize,
-                    Width = tb.Width,
-                    Height = tb.Height,
-                    Foreground = tb.Foreground,
-                    AcceptsReturn = tb.AcceptsReturn,
-                    TextWrapping = tb.TextWrapping,
-                    Padding = tb.Padding,
-                    Background = tb.Background,
-                    BorderBrush = tb.BorderBrush,
-                    BorderThickness = tb.BorderThickness
+                    Text = tb.Text, FontSize = tb.FontSize, Width = tb.Width, Height = tb.Height,
+                    Foreground = tb.Foreground, AcceptsReturn = tb.AcceptsReturn,
+                    TextWrapping = tb.TextWrapping, Padding = tb.Padding,
+                    Background = tb.Background, BorderBrush = tb.BorderBrush, BorderThickness = tb.BorderThickness
                 };
                 InkCanvas.SetLeft(newTb, InkCanvas.GetLeft(fe) + offset);
                 InkCanvas.SetTop(newTb, InkCanvas.GetTop(fe) + offset);
                 InkArea.Children.Add(newTb);
+                CurrentPage.Elements.Add(newTb);
                 newElements.Add(newTb);
             }
             else if (fe is Image img)
             {
-                var newImg = new Image
-                {
-                    Source = img.Source,
-                    Width = img.Width,
-                    Height = img.Height,
-                    Stretch = img.Stretch
-                };
+                var newImg = new Image { Source = img.Source, Width = img.Width, Height = img.Height, Stretch = img.Stretch };
                 InkCanvas.SetLeft(newImg, InkCanvas.GetLeft(fe) + offset);
                 InkCanvas.SetTop(newImg, InkCanvas.GetTop(fe) + offset);
                 InkArea.Children.Add(newImg);
+                CurrentPage.Elements.Add(newImg);
                 newElements.Add(newImg);
             }
         }
@@ -439,7 +611,7 @@ public partial class MainWindow : Window
         if (vh < 100) vh = 700;
 
         Canvas.SetLeft(ColorSquareRoot, 24);
-        Canvas.SetTop(ColorSquareRoot, Math.Max(24, vh - 140));
+        Canvas.SetTop(ColorSquareRoot, Math.Max(24, vh - 150));
     }
 
     private void ColorSquareDragHandle_MouseDown(object sender, MouseButtonEventArgs e)
@@ -517,14 +689,6 @@ public partial class MainWindow : Window
         foreach (var item in _shortcutItems)
             if (item.ActionId == actionId) { item.KeyLabel = "Press a key…"; break; }
         Focus();
-    }
-
-    private void ResetShortcuts_Click(object sender, RoutedEventArgs e)
-    {
-        foreach (var (id, _, def) in ShortcutActions) _shortcuts[id] = def;
-        RefreshShortcutUI();
-        SaveSettings();
-        StatusText.Text = "Shortcuts reset to defaults.";
     }
 
     private static string KeyToLabel(Key key, ModifierKeys mods)
@@ -848,8 +1012,7 @@ public partial class MainWindow : Window
     {
         if (SelectionToolbar is null) return;
         double centerX = (sl + sr) / 2.0;
-        // Toolbar is ~110px wide, ~40px tall
-        double tx = centerX - 55;
+        double tx = centerX - 62;
         double ty = st - 48;
         if (ty < 4) ty = st + 4;
         SelectionToolbar.Margin = new Thickness(tx, ty, 0, 0);
@@ -1062,7 +1225,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Settings
+    // Settings persistence
     // =====================================================================
     private void LoadSettings()
     {
@@ -1082,6 +1245,9 @@ public partial class MainWindow : Window
                 3 => PenCursorStyle.Hidden,
                 _ => PenCursorStyle.HollowRingDot
             };
+            _showCursorDot = s.ShowCursorDot;
+            _pdfPageSizeIndex = Math.Clamp(s.PdfPageSizeIndex, 0, 4);
+            _pdfOrientationIndex = Math.Clamp(s.PdfOrientationIndex, 0, 1);
             if (s.Shortcuts is not null) _shortcuts = new Dictionary<string, string>(s.Shortcuts);
         }
         catch { }
@@ -1098,7 +1264,10 @@ public partial class MainWindow : Window
             {
                 PointerSize = _pointerSize,
                 CursorStyleIndex = (int)_cursorStyle,
-                Shortcuts = _shortcuts
+                ShowCursorDot = _showCursorDot,
+                Shortcuts = _shortcuts,
+                PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
+                PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex
             };
             File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOptions));
         }
@@ -1106,30 +1275,45 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Cursor
+    // Cursor (adaptive colour + optional dot)
     // =====================================================================
     private void RebuildHollowRingCursor()
     {
         try
         {
+            // Pick colors based on the current page bg brightness
+            bool darkBg = IsDarkColor(CurrentPage.BackgroundColor);
+
+            Brush ringBrush = darkBg ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)); // amber
+            Brush dotBrush = darkBg ? Brushes.White : Brushes.Black;
+
             double ringRadius = _pointerSize / 2.0;
             double dotRadius = Math.Max(1.0, ringRadius * 0.17);
             int size = (int)Math.Ceiling(_pointerSize + 8);
             if (size < 20) size = 20;
             if (size > 60) size = 60;
             double center = size / 2.0;
+
             var visual = new DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                var ringPen = new Pen(Brushes.Black, 1.3);
+                var ringPen = new Pen(ringBrush, 1.4);
                 dc.DrawEllipse(null, ringPen, new Point(center, center), ringRadius, ringRadius);
-                dc.DrawEllipse(Brushes.Black, null, new Point(center, center), dotRadius, dotRadius);
+
+                if (_showCursorDot)
+                    dc.DrawEllipse(dotBrush, null, new Point(center, center), dotRadius, dotRadius);
             }
             var rtb = new RenderTargetBitmap(size, size, 96, 96, PixelFormats.Pbgra32);
             rtb.Render(visual);
             _hollowRingCursor = CreateCursorFromBitmap(rtb, size / 2, size / 2);
         }
         catch { _hollowRingCursor = Cursors.Cross; }
+    }
+
+    private static bool IsDarkColor(Color c)
+    {
+        double lum = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+        return lum < 0.5;
     }
 
     private static Cursor CreateCursorFromBitmap(BitmapSource bmp, int hotX, int hotY)
@@ -1330,6 +1514,14 @@ public partial class MainWindow : Window
     // =====================================================================
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // ESC always exits fullscreen first (regardless of custom bindings)
+        if (_fullscreenMode && e.Key == Key.Escape)
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+            return;
+        }
+
         if (_capturingShortcut)
         {
             if (e.Key == Key.Escape)
@@ -1353,6 +1545,27 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Settings overlay open? Only ESC closes it
+        if (SettingsOverlay is not null && SettingsOverlay.Visibility == Visibility.Visible)
+        {
+            if (e.Key == Key.Escape)
+            {
+                SettingsOverlay.Visibility = Visibility.Collapsed;
+                SaveSettings();
+                e.Handled = true;
+            }
+            return;
+        }
+
+        // Menu flyout open? ESC closes it
+        if (MainMenuFlyout is not null && MainMenuFlyout.Visibility == Visibility.Visible
+            && e.Key == Key.Escape)
+        {
+            MainMenuFlyout.Visibility = Visibility.Collapsed;
+            e.Handled = true;
+            return;
+        }
+
         var modsNow = Keyboard.Modifiers;
         bool textBoxFocused = Keyboard.FocusedElement is TextBox;
 
@@ -1364,7 +1577,12 @@ public partial class MainWindow : Window
             if (MatchesShortcut("delete", e.Key, modsNow) && DeleteSelection()) { e.Handled = true; return; }
             if (MatchesShortcut("copy", e.Key, modsNow) && CopySelection()) { e.Handled = true; return; }
             if (MatchesShortcut("cut", e.Key, modsNow) && CutSelection()) { e.Handled = true; return; }
-            if (MatchesShortcut("paste", e.Key, modsNow) && PasteClipboard()) { e.Handled = true; return; }
+            if (MatchesShortcut("paste", e.Key, modsNow))
+            {
+                PasteAnything();
+                e.Handled = true;
+                return;
+            }
             if (MatchesShortcut("selectall", e.Key, modsNow)) { ApplicationCommands.SelectAll.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("undo", e.Key, modsNow)) { ApplicationCommands.Undo.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("redo", e.Key, modsNow)) { ApplicationCommands.Redo.Execute(null, this); e.Handled = true; return; }
@@ -1393,12 +1611,109 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Fullscreen
+    // Ctrl+V universal paste
+    // =====================================================================
+    private void PasteAnything()
+    {
+        if (InkArea is null) return;
+
+        // 1) Try image from clipboard
+        try
+        {
+            if (Clipboard.ContainsImage())
+            {
+                var src = Clipboard.GetImage();
+                if (src is not null)
+                {
+                    if (src.CanFreeze) src.Freeze();
+                    AddImageToPage(src);
+                    return;
+                }
+            }
+        }
+        catch { }
+
+        // 2) Try text from clipboard (splits into keyword boxes)
+        try
+        {
+            if (Clipboard.ContainsText())
+            {
+                string text = Clipboard.GetText();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    PasteTextAsKeywordBoxes(text);
+                    return;
+                }
+            }
+        }
+        catch { }
+
+        // 3) Fall back to internal stroke clipboard
+        PasteClipboard();
+    }
+
+    private void PasteTextAsKeywordBoxes(string text)
+    {
+        if (InkArea is null) return;
+        var tokens = new List<string>();
+        foreach (var raw in text.Split(new[] { '\r', '\n', '\t', ' ', ',', ';', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = raw.Trim();
+            if (trimmed.Length > 0) tokens.Add(trimmed);
+        }
+        if (tokens.Count == 0) return;
+
+        const double boxW = 180, boxH = 42, gap = 20, margin = 60;
+        int perRow = 6;
+        int numRows = (tokens.Count + perRow - 1) / perRow;
+        double neededW = margin + perRow * (boxW + gap) + margin;
+        double neededH = margin + numRows * (boxH + gap) + margin;
+
+        if (neededW > CurrentPage.WorldWidth || neededH > CurrentPage.WorldHeight)
+        {
+            CurrentPage.WorldWidth = Math.Max(CurrentPage.WorldWidth, neededW);
+            CurrentPage.WorldHeight = Math.Max(CurrentPage.WorldHeight, neededH);
+            ApplyWorldSizeToCanvas();
+        }
+
+        double visLeft = -_viewPanX / _viewZoom;
+        double visTop = -_viewPanY / _viewZoom;
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            var tb = new TextBox
+            {
+                Text = tokens[i], AcceptsReturn = false, TextWrapping = TextWrapping.NoWrap,
+                FontSize = 18, Width = boxW, MinHeight = 32,
+                Padding = new Thickness(8, 4, 8, 4),
+                Background = Brushes.White,
+                BorderBrush = new SolidColorBrush(Color.FromArgb(150, 26, 115, 232)),
+                BorderThickness = new Thickness(1),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            int row = i / perRow;
+            int col = i % perRow;
+            InkCanvas.SetLeft(tb, visLeft + margin + col * (boxW + gap));
+            InkCanvas.SetTop(tb, visTop + margin + row * (boxH + gap));
+            InkArea.Children.Add(tb);
+            CurrentPage.Elements.Add(tb);
+        }
+        CenterViewOnCanvas();
+        MarkDirty();
+        StatusText.Text = $"Pasted {tokens.Count} item(s) as individual boxes.";
+    }
+
+    // =====================================================================
+    // Fullscreen (with debounce)
     // =====================================================================
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
 
     private void ToggleFullscreen()
     {
+        // Debounce: ignore if we toggled within last 400 ms
+        var now = DateTime.UtcNow;
+        if ((now - _lastFullscreenToggle).TotalMilliseconds < 400) return;
+        _lastFullscreenToggle = now;
+
         _fullscreenMode = !_fullscreenMode;
         if (TitleBarBorder is not null)
             TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
@@ -1446,6 +1761,15 @@ public partial class MainWindow : Window
         ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+
+        // Rebuild pattern if zoom changed significantly (screen-constant lines)
+        if (Math.Abs(_lastBrushZoom - _viewZoom) > 0.001)
+        {
+            _lastBrushZoom = _viewZoom;
+            if (CurrentPage.Template != PageTemplate.Blank)
+                UpdatePageBackground();
+        }
+
         SaveCurrentViewToPage();
         ScheduleRebuildEdgeButtons();
         RebuildResizeHandles();
@@ -1487,6 +1811,7 @@ public partial class MainWindow : Window
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+        _lastBrushZoom = _viewZoom;
         ScheduleRebuildEdgeButtons();
         RebuildResizeHandles();
     }
@@ -1511,6 +1836,7 @@ public partial class MainWindow : Window
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
         if (ZoomText is not null && !ZoomText.IsFocused)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+        _lastBrushZoom = _viewZoom;
         ScheduleRebuildEdgeButtons();
         RebuildResizeHandles();
     }
@@ -1587,9 +1913,23 @@ public partial class MainWindow : Window
     private void LoadCurrentPageIntoCanvas()
     {
         if (InkArea is null) return;
+
+        // Save current page's elements
+        if (_pages.Count > 0 && _currentPageIndex >= 0 && _currentPageIndex < _pages.Count)
+        {
+            var oldPage = _pages[_currentPageIndex];
+            oldPage.Elements.Clear();
+            foreach (var c in InkArea.Children) oldPage.Elements.Add(c);
+        }
+
         InkArea.Strokes.StrokesChanged -= Strokes_Changed;
         InkArea.Strokes = CurrentPage.Strokes;
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
+
+        // Restore elements for the new page
+        InkArea.Children.Clear();
+        foreach (var el in CurrentPage.Elements) InkArea.Children.Add(el);
+
         ApplyWorldSizeToCanvas();
         _undo.Clear();
         _redo.Clear();
@@ -1597,8 +1937,13 @@ public partial class MainWindow : Window
         ClearElementSelection();
         SyncUIWithSettings();
         UpdatePageNavigationUI();
+
         if (CurrentPage.ViewInitialized) RestoreViewFromPage();
         else CenterViewOnCanvas();
+
+        RebuildHollowRingCursor();
+        UpdateCursor();
+
         ScheduleRebuildEdgeButtons();
         RebuildResizeHandles();
     }
@@ -1680,7 +2025,10 @@ public partial class MainWindow : Window
             BackgroundColor = CurrentPage.BackgroundColor,
             Template = CurrentPage.Template,
             Spacing = CurrentPage.Spacing,
-            Paper = CurrentPage.Paper
+            Paper = CurrentPage.Paper,
+            PatternOpacity = CurrentPage.PatternOpacity,
+            PatternThickness = CurrentPage.PatternThickness,
+            PatternDotSize = CurrentPage.PatternDotSize
         };
         _pages.Insert(_currentPageIndex + 1, newPage);
         _currentPageIndex++;
@@ -1708,7 +2056,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Export
+    // Export PNG
     // =====================================================================
     private void ExportCurrentPagePng_Click(object sender, RoutedEventArgs e)
     {
@@ -1780,19 +2128,11 @@ public partial class MainWindow : Window
             var document = new FixedDocument();
             foreach (var page in _pages)
             {
-                var fixedPage = new FixedPage
-                {
-                    Width = pw,
-                    Height = ph,
-                    Background = Brushes.White
-                };
-
+                var fixedPage = new FixedPage { Width = pw, Height = ph, Background = Brushes.White };
                 var img = new Image
                 {
                     Source = RenderPageForPrint(page, (int)pw, (int)ph),
-                    Width = pw,
-                    Height = ph,
-                    Stretch = Stretch.Uniform
+                    Width = pw, Height = ph, Stretch = Stretch.Uniform
                 };
                 FixedPage.SetLeft(img, 0);
                 FixedPage.SetTop(img, 0);
@@ -1802,7 +2142,6 @@ public partial class MainWindow : Window
                 ((IAddChild)pc).AddChild(fixedPage);
                 document.Pages.Add(pc);
             }
-
             printDialog.PrintDocument(document.DocumentPaginator, "Canvaas note");
             StatusText.Text = "Printed. Choose 'Microsoft Print to PDF' to save as PDF.";
         }
@@ -1828,7 +2167,6 @@ public partial class MainWindow : Window
         using (var dc = dv.RenderOpen())
         {
             dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, targetWidth, targetHeight));
-
             double ox = (targetWidth - pxW) / 2.0;
             double oy = (targetHeight - pxH) / 2.0;
             dc.PushTransform(new TranslateTransform(ox, oy));
@@ -1838,24 +2176,229 @@ public partial class MainWindow : Window
             foreach (var s in page.Strokes) s.Draw(dc);
             dc.Pop(); dc.Pop(); dc.Pop();
         }
-
         var rtb = new RenderTargetBitmap(targetWidth, targetHeight, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
         rtb.Freeze();
         return rtb;
     }
 
+    // =====================================================================
+    // PDF import (via Windows.Data.Pdf reflection — requires Win10+)
+    // =====================================================================
     private void ImportPdf_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = "PDF files (*.pdf)|*.pdf", Title = "Insert PDF" };
         if (dlg.ShowDialog(this) != true) return;
 
-        MessageBox.Show(this,
-            "PDF import requires an external library that isn't included in this build.\n\n" +
-            "Workaround: open the PDF in any viewer, take a screenshot of each page, " +
-            "then use Paste Image from Clipboard (or Insert Image).\n\n" +
-            "If you want native PDF import, tell the developer to add the PdfPig NuGet package.",
-            "PDF import", MessageBoxButton.OK, MessageBoxImage.Information);
+        try
+        {
+            var pages = RenderPdfToBitmaps(dlg.FileName);
+            if (pages == null || pages.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "PDF rendering is not available on this system.\n\n" +
+                    "You need Windows 10 or later with the Windows Runtime PDF APIs.\n\n" +
+                    "Alternative: open the PDF in a viewer, screenshot each page, and use Paste from Clipboard.",
+                    "PDF import not available", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Save current page index so we return here
+            int originalIndex = _currentPageIndex;
+
+            // Insert each PDF page as a separate notebook page AFTER the current one
+            for (int i = 0; i < pages.Count; i++)
+            {
+                var newPage = new NotebookPage
+                {
+                    BackgroundColor = Colors.White,
+                    Template = PageTemplate.Blank,
+                    Paper = PaperStyle.White,
+                    WorldWidth = A4Width,
+                    WorldHeight = A4Height
+                };
+
+                // Add the rendered image as an element on that page
+                var img = new Image
+                {
+                    Source = pages[i],
+                    Width = A4Width,
+                    Height = A4Height,
+                    Stretch = Stretch.Uniform
+                };
+                InkCanvas.SetLeft(img, 0);
+                InkCanvas.SetTop(img, 0);
+                newPage.Elements.Add(img);
+
+                _pages.Insert(originalIndex + 1 + i, newPage);
+            }
+
+            // Jump to the first PDF page
+            _currentPageIndex = originalIndex + 1;
+            LoadCurrentPageIntoCanvas();
+            MarkDirty();
+            StatusText.Text = $"Inserted {pages.Count} PDF page(s) as new notebook pages. Use ← / → to navigate.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "PDF import failed.\n\n" + ex.Message,
+                "PDF import", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static List<BitmapSource>? RenderPdfToBitmaps(string path)
+    {
+        try
+        {
+            // Load types via reflection so the app compiles even without the Windows SDK TFM
+            var pdfDocType = Type.GetType("Windows.Data.Pdf.PdfDocument, Windows.Data.Pdf, ContentType=WindowsRuntime");
+            var storageFileType = Type.GetType("Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime");
+            if (pdfDocType is null || storageFileType is null) return null;
+
+            // Get StorageFile from path
+            var getFileMethod = storageFileType.GetMethod("GetFileFromPathAsync",
+                BindingFlags.Public | BindingFlags.Static);
+            if (getFileMethod is null) return null;
+            var op = getFileMethod.Invoke(null, new object[] { path });
+            if (op is null) return null;
+
+            // Block until async completes
+            var storageFile = AwaitWinRtOp(op);
+            if (storageFile is null) return null;
+
+            // Load PDF
+            var loadMethod = pdfDocType.GetMethod("LoadFromFileAsync",
+                BindingFlags.Public | BindingFlags.Static,
+                null,
+                new[] { storageFileType },
+                null);
+            if (loadMethod is null) return null;
+            var loadOp = loadMethod.Invoke(null, new[] { storageFile });
+            if (loadOp is null) return null;
+
+            var pdfDoc = AwaitWinRtOp(loadOp);
+            if (pdfDoc is null) return null;
+
+            int count = (int)(pdfDocType.GetProperty("PageCount")?.GetValue(pdfDoc) ?? 0);
+            if (count <= 0) return null;
+
+            var pages = new List<BitmapSource>();
+            var getPageMethod = pdfDocType.GetMethod("GetPage");
+            var indexerMethod = pdfDocType.GetMethod("GetPage",
+                BindingFlags.Public | BindingFlags.Instance,
+                null,
+                new[] { typeof(uint) },
+                null) ?? getPageMethod;
+
+            for (uint i = 0; i < count; i++)
+            {
+                var page = indexerMethod?.Invoke(pdfDoc, new object[] { i });
+                if (page is null) continue;
+
+                var bmp = RenderPdfPageToBitmap(page);
+                if (bmp is not null) pages.Add(bmp);
+
+                (page as IDisposable)?.Dispose();
+            }
+
+            (pdfDoc as IDisposable)?.Dispose();
+            return pages;
+        }
+        catch { return null; }
+    }
+
+    private static object? AwaitWinRtOp(object op)
+    {
+        // op is an IAsyncOperation<T>. Use GetAwaiter().GetResult() via reflection.
+        try
+        {
+            var asTaskMethod = op.GetType().GetMethod("AsTask",
+                BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            if (asTaskMethod is not null)
+            {
+                var task = asTaskMethod.Invoke(op, null) as System.Threading.Tasks.Task;
+                if (task is not null)
+                {
+                    task.Wait(5000);
+                    var resultProp = task.GetType().GetProperty("Result");
+                    return resultProp?.GetValue(task);
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static BitmapSource? RenderPdfPageToBitmap(object pdfPage)
+    {
+        try
+        {
+            // Use PdfPage.RenderToStreamAsync to render into an InMemoryRandomAccessStream,
+            // then copy bytes into a BitmapImage.
+            var streamType = Type.GetType("Windows.Storage.Streams.InMemoryRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime");
+            if (streamType is null) return null;
+
+            var stream = Activator.CreateInstance(streamType);
+            if (stream is null) return null;
+
+            var renderMethod = pdfPage.GetType().GetMethod("RenderToStreamAsync",
+                BindingFlags.Public | BindingFlags.Instance,
+                null,
+                new[] { streamType },
+                null);
+            if (renderMethod is null) return null;
+
+            var op = renderMethod.Invoke(pdfPage, new[] { stream });
+            if (op is null) return null;
+            AwaitWinRtOp(op);
+
+            // Now read the stream bytes
+            var getInputStreamMethod = streamType.GetMethod("GetInputStreamAt",
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { typeof(ulong) }, null);
+            var sizeProp = streamType.GetProperty("Size");
+            ulong size = (ulong)(sizeProp?.GetValue(stream) ?? 0UL);
+            if (size == 0) return null;
+
+            var inputStream = getInputStreamMethod?.Invoke(stream, new object[] { 0UL });
+            if (inputStream is null) return null;
+
+            // Use DataReader to read bytes
+            var dataReaderType = Type.GetType("Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType=WindowsRuntime");
+            if (dataReaderType is null) return null;
+
+            var createReaderMethod = dataReaderType.GetMethod("CreateDataReader",
+                BindingFlags.Public | BindingFlags.Static,
+                null, new[] { inputStream.GetType() }, null);
+            var reader = createReaderMethod?.Invoke(null, new[] { inputStream });
+            if (reader is null) return null;
+
+            var loadAsyncMethod = dataReaderType.GetMethod("LoadAsync",
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { typeof(uint) }, null);
+            var loadOp = loadAsyncMethod?.Invoke(reader, new object[] { (uint)size });
+            if (loadOp is null) return null;
+            AwaitWinRtOp(loadOp);
+
+            var readBytesMethod = dataReaderType.GetMethod("ReadBytes",
+                BindingFlags.Public | BindingFlags.Instance,
+                null, new[] { typeof(byte[]) }, null);
+            var bytes = new byte[size];
+            readBytesMethod?.Invoke(reader, new object[] { bytes });
+
+            (reader as IDisposable)?.Dispose();
+            (inputStream as IDisposable)?.Dispose();
+            (stream as IDisposable)?.Dispose();
+
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.EndInit();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch { return null; }
     }
 
     // =====================================================================
@@ -1866,6 +2409,11 @@ public partial class MainWindow : Window
     private void CanvasHostBorder_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (CanvasHostBorder is null) return;
+
+        // Hide flyouts when clicking on canvas
+        if (MainMenuFlyout is not null && MainMenuFlyout.Visibility == Visibility.Visible)
+            MainMenuFlyout.Visibility = Visibility.Collapsed;
+
         var screenPt = e.GetPosition(CanvasHostBorder);
         bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
         bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
@@ -1885,17 +2433,9 @@ public partial class MainWindow : Window
             _panStartPanX = _viewPanX;
             _panStartPanY = _viewPanY;
             CanvasHostBorder.CaptureMouse();
-
-            // Hide cursor during pan so pen tip is visible
             CanvasHostBorder.Cursor = Cursors.None;
             if (InkArea is not null) InkArea.Cursor = Cursors.None;
-
-            // Bitmap cache for smooth panning
-            if (CanvasHost is not null)
-            {
-                try { CanvasHost.CacheMode = new BitmapCache(); } catch { }
-            }
-
+            if (CanvasHost is not null) { try { CanvasHost.CacheMode = new BitmapCache(); } catch { } }
             e.Handled = true;
             return;
         }
@@ -1929,7 +2469,6 @@ public partial class MainWindow : Window
             _viewPanY = _panStartPanY + (screenPt.Y - _panStart.Y);
             if (ViewTransform is not null)
                 ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-            // NO rebuild during pan — only update transform
             e.Handled = true;
             return;
         }
@@ -2065,7 +2604,7 @@ public partial class MainWindow : Window
         RebuildResizeHandles();
         int total = strokesIn.Count + _selectedElements.Count;
         StatusText.Text = total > 0
-            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s). Drag handles to resize."
+            ? $"Selected {strokesIn.Count} stroke(s) and {_selectedElements.Count} item(s)."
             : "Nothing selected.";
     }
 
@@ -2093,16 +2632,12 @@ public partial class MainWindow : Window
         return bounds.Contains(worldPt);
     }
 
-    // =====================================================================
-    // Selection drag — smooth bitmap preview
-    // =====================================================================
     private void StartSelectionDrag(Point worldPt)
     {
         _draggingSelection = true;
         _dragStartWorld = worldPt;
         _lastDragDx = 0;
         _lastDragDy = 0;
-
         HideSelectionToolbar();
 
         _elementStartPositions.Clear();
@@ -2118,7 +2653,6 @@ public partial class MainWindow : Window
             var bounds = _dragOriginalStrokes.GetBounds();
             _strokeDragStartBounds = bounds;
 
-            // Render strokes once to a bitmap for smooth preview
             var bmp = RenderStrokesToBitmap(_dragOriginalStrokes, bounds);
             _strokeDragImage = new Image
             {
@@ -2134,7 +2668,6 @@ public partial class MainWindow : Window
             Canvas.SetTop(_strokeDragImage, st);
             CanvasHost.Children.Add(_strokeDragImage);
 
-            // Remove originals from InkArea
             _applyingHistory = true;
             try
             {
@@ -2166,8 +2699,7 @@ public partial class MainWindow : Window
             dc.PushTransform(new ScaleTransform(2, 2));
             dc.DrawRectangle(Brushes.Transparent, null, bounds);
             foreach (var s in strokes) s.Draw(dc);
-            dc.Pop();
-            dc.Pop();
+            dc.Pop(); dc.Pop();
         }
         var rtb = new RenderTargetBitmap(pxW, pxH, dpi, dpi, PixelFormats.Pbgra32);
         rtb.Render(dv);
@@ -2177,7 +2709,6 @@ public partial class MainWindow : Window
 
     private void UpdateSelectionDrag(double dx, double dy)
     {
-        // Move live elements (fast)
         foreach (var el in _selectedElements)
             if (_elementStartPositions.TryGetValue(el, out var s))
             {
@@ -2185,7 +2716,6 @@ public partial class MainWindow : Window
                 InkCanvas.SetTop(el, s.T + dy);
             }
 
-        // Move bitmap preview (fast)
         if (_strokeDragImage is not null)
         {
             double sl = _viewPanX + (_strokeDragStartBounds.Left + dx) * _viewZoom;
@@ -2194,7 +2724,6 @@ public partial class MainWindow : Window
             Canvas.SetTop(_strokeDragImage, st);
         }
 
-        // Translate resize handles by the delta only
         double sdx = (dx - _lastDragDx) * _viewZoom;
         double sdy = (dy - _lastDragDy) * _viewZoom;
         TranslateResizeHandles(sdx, sdy);
@@ -2218,14 +2747,12 @@ public partial class MainWindow : Window
         if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
             CanvasHostBorder.ReleaseMouseCapture();
 
-        // Remove bitmap preview
         if (_strokeDragImage is not null && CanvasHost is not null)
         {
             CanvasHost.Children.Remove(_strokeDragImage);
             _strokeDragImage = null;
         }
 
-        // Apply stroke shift
         if (InkArea is not null && _dragOriginalStrokes is not null && _dragOriginalStrokes.Count > 0)
         {
             var shifted = new StrokeCollection();
@@ -2248,7 +2775,6 @@ public partial class MainWindow : Window
             _redo.Clear();
         }
 
-        // Element undo entries
         foreach (var el in _selectedElements)
             if (_elementStartPositions.TryGetValue(el, out var start))
             {
@@ -2294,7 +2820,11 @@ public partial class MainWindow : Window
         if (_selectedElements.Count > 0)
         {
             var removed = new List<UIElement>(_selectedElements);
-            foreach (var el in removed) if (InkArea.Children.Contains(el)) InkArea.Children.Remove(el);
+            foreach (var el in removed)
+            {
+                if (InkArea.Children.Contains(el)) InkArea.Children.Remove(el);
+                if (CurrentPage.Elements.Contains(el)) CurrentPage.Elements.Remove(el);
+            }
             ClearElementSelection();
             didAnything = true;
         }
@@ -2404,16 +2934,6 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
     }
 
-    private void MenuButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is Button b && b.ContextMenu is ContextMenu cm)
-        {
-            cm.PlacementTarget = b;
-            cm.Placement = PlacementMode.Bottom;
-            cm.IsOpen = true;
-        }
-    }
-
     // =====================================================================
     // Insert / paste
     // =====================================================================
@@ -2470,51 +2990,7 @@ public partial class MainWindow : Window
         if (!Clipboard.ContainsText()) { StatusText.Text = "No text in clipboard."; return; }
         string text = Clipboard.GetText();
         if (string.IsNullOrWhiteSpace(text)) return;
-
-        var tokens = new List<string>();
-        foreach (var raw in text.Split(new[] { '\r', '\n', '\t', ' ', ',', ';', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            var trimmed = raw.Trim();
-            if (trimmed.Length > 0) tokens.Add(trimmed);
-        }
-        if (tokens.Count == 0) return;
-
-        const double boxW = 180, boxH = 42, gap = 20, margin = 60;
-        int perRow = 6;
-        int numRows = (tokens.Count + perRow - 1) / perRow;
-        double neededW = margin + perRow * (boxW + gap) + margin;
-        double neededH = margin + numRows * (boxH + gap) + margin;
-
-        if (neededW > CurrentPage.WorldWidth || neededH > CurrentPage.WorldHeight)
-        {
-            CurrentPage.WorldWidth = Math.Max(CurrentPage.WorldWidth, neededW);
-            CurrentPage.WorldHeight = Math.Max(CurrentPage.WorldHeight, neededH);
-            ApplyWorldSizeToCanvas();
-        }
-
-        double visLeft = -_viewPanX / _viewZoom;
-        double visTop = -_viewPanY / _viewZoom;
-        for (int i = 0; i < tokens.Count; i++)
-        {
-            var tb = new TextBox
-            {
-                Text = tokens[i], AcceptsReturn = false, TextWrapping = TextWrapping.NoWrap,
-                FontSize = 18, Width = boxW, MinHeight = 32,
-                Padding = new Thickness(8, 4, 8, 4),
-                Background = Brushes.White,
-                BorderBrush = new SolidColorBrush(Color.FromArgb(150, 26, 115, 232)),
-                BorderThickness = new Thickness(1),
-                VerticalContentAlignment = VerticalAlignment.Center
-            };
-            int row = i / perRow;
-            int col = i % perRow;
-            InkCanvas.SetLeft(tb, visLeft + margin + col * (boxW + gap));
-            InkCanvas.SetTop(tb, visTop + margin + row * (boxH + gap));
-            InkArea.Children.Add(tb);
-        }
-        CenterViewOnCanvas();
-        MarkDirty();
-        StatusText.Text = $"Pasted {tokens.Count} item(s) as individual boxes.";
+        PasteTextAsKeywordBoxes(text);
     }
 
     private void AddTextToPage(string initialText)
@@ -2547,6 +3023,7 @@ public partial class MainWindow : Window
         InkCanvas.SetRight(element, double.NaN);
         InkCanvas.SetBottom(element, double.NaN);
         InkArea.Children.Add(element);
+        CurrentPage.Elements.Add(element);
         MarkDirty();
     }
 
@@ -2575,6 +3052,8 @@ public partial class MainWindow : Window
         {
             CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
             UpdatePageBackground();
+            RebuildHollowRingCursor();
+            UpdateCursor();
             MarkDirty();
             StatusText.Text = $"Background: {rb.ToolTip}";
         }
@@ -2618,18 +3097,27 @@ public partial class MainWindow : Window
     private void UpdatePageBackground()
     {
         if (PageBackground is null) return;
-        PageBackground.Fill = BuildPageBrush(CurrentPage);
+        PageBackground.Fill = BuildPageBrush(CurrentPage, _viewZoom);
     }
 
-    private static Brush BuildPageBrush(NotebookPage page)
+    private static Brush BuildPageBrush(NotebookPage page, double viewZoom)
     {
         Brush baseBrush = BuildPaperBaseBrush(page.Paper, page.BackgroundColor);
         if (page.Template == PageTemplate.Blank || page.Spacing <= 0) return baseBrush;
+
         double spacing = page.Spacing;
         var group = new DrawingGroup();
-        group.Children.Add(new GeometryDrawing(baseBrush, null, new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
-        Color lineColor = GetLineColor(page.BackgroundColor);
-        var linePen = new Pen(new SolidColorBrush(lineColor), 1);
+        group.Children.Add(new GeometryDrawing(baseBrush, null,
+            new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
+
+        Color lineColor = GetLineColor(page.BackgroundColor, page.PatternOpacity);
+        // Screen-constant thickness: divide by view zoom so lines look the same at any zoom
+        double lineThickness = page.PatternThickness / Math.Max(viewZoom, 0.01);
+        if (lineThickness < 0.1) lineThickness = 0.1;
+        if (lineThickness > 8) lineThickness = 8;
+
+        var linePen = new Pen(new SolidColorBrush(lineColor), lineThickness);
+
         if (page.Template == PageTemplate.Ruled)
         {
             group.Children.Add(new GeometryDrawing(null, linePen,
@@ -2644,9 +3132,13 @@ public partial class MainWindow : Window
         }
         else if (page.Template == PageTemplate.Dot)
         {
+            double dotRadius = page.PatternDotSize / Math.Max(viewZoom, 0.01);
+            if (dotRadius < 0.3) dotRadius = 0.3;
+            if (dotRadius > 6) dotRadius = 6;
             group.Children.Add(new GeometryDrawing(new SolidColorBrush(lineColor), null,
-                new EllipseGeometry(new Point(spacing / 2, spacing / 2), 1.2, 1.2)));
+                new EllipseGeometry(new Point(spacing / 2, spacing / 2), dotRadius, dotRadius)));
         }
+
         return new DrawingBrush(group)
         {
             TileMode = TileMode.Tile,
@@ -2683,10 +3175,13 @@ public partial class MainWindow : Window
         };
     }
 
-    private static Color GetLineColor(Color bg)
+    private static Color GetLineColor(Color bg, double opacityPercent)
     {
         double lum = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255.0;
-        return lum > 0.5 ? Color.FromArgb(120, 60, 60, 60) : Color.FromArgb(120, 220, 220, 220);
+        byte alpha = (byte)Math.Clamp(opacityPercent * 2.55, 0, 255);
+        return lum > 0.5
+            ? Color.FromArgb(alpha, 60, 60, 60)
+            : Color.FromArgb(alpha, 220, 220, 220);
     }
 
     private static Color ParseHexColor(string hex, Color fallback)
@@ -2742,6 +3237,7 @@ public partial class MainWindow : Window
             SpacingText.Text = ((int)Math.Round(CurrentPage.Spacing)).ToString();
 
         UpdatePageBackground();
+        SyncSettingsUI();
     }
 
     // =====================================================================
@@ -2785,7 +3281,7 @@ public partial class MainWindow : Window
         if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.None; }
         UpdateCursor();
-        StatusText.Text = "Lasso: drag around ink or items. Resize with handles. Delete removes.";
+        StatusText.Text = "Lasso: drag around ink or items.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2833,7 +3329,15 @@ public partial class MainWindow : Window
         if (InkArea.Strokes.Count == 0) { StatusText.Text = "Already empty."; return; }
         var answer = MessageBox.Show(this, "Remove everything on this page?", "Clear page",
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (answer == MessageBoxResult.OK) { InkArea.Strokes.Clear(); StatusText.Text = "Page cleared."; }
+        if (answer == MessageBoxResult.OK)
+        {
+            InkArea.Strokes.Clear();
+            // Also remove elements
+            var toRemove = new List<UIElement>(InkArea.Children);
+            foreach (var el in toRemove) { InkArea.Children.Remove(el); CurrentPage.Elements.Remove(el); }
+            ClearElementSelection();
+            StatusText.Text = "Page cleared.";
+        }
     }
 
     private void InkArea_StrokeCollected(object sender, InkCanvasStrokeCollectedEventArgs e)
@@ -2844,7 +3348,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Stroke smoothing — endpoints preserved so strokes don't shrink
+    // Stroke smoothing (preserves endpoints so strokes don't shrink)
     // =====================================================================
     private void SmoothCompletedStroke(Stroke original)
     {
@@ -2858,11 +3362,9 @@ public partial class MainWindow : Window
 
         var sx = new double[n]; var sy = new double[n]; var sp = new float[n];
 
-        // Preserve the exact start and end points so strokes don't shrink
         sx[0] = rawX[0]; sy[0] = rawY[0]; sp[0] = rawP[0];
         sx[n - 1] = rawX[n - 1]; sy[n - 1] = rawY[n - 1]; sp[n - 1] = rawP[n - 1];
 
-        // Light 3-tap average only on interior points
         for (int i = 1; i < n - 1; i++)
         {
             int lo = i - 1; int hi = i + 1;
@@ -3053,6 +3555,14 @@ public partial class MainWindow : Window
 
     private bool SaveToFile(string path)
     {
+        // Ensure current page elements are captured before saving
+        if (_pages.Count > 0 && InkArea is not null)
+        {
+            var oldPage = _pages[_currentPageIndex];
+            oldPage.Elements.Clear();
+            foreach (var c in InkArea.Children) oldPage.Elements.Add(c);
+        }
+
         string tempPath = path + ".tmp";
         try
         {
@@ -3077,7 +3587,10 @@ public partial class MainWindow : Window
                         Spacing = page.Spacing,
                         Paper = page.Paper.ToString(),
                         WorldWidth = page.WorldWidth,
-                        WorldHeight = page.WorldHeight
+                        WorldHeight = page.WorldHeight,
+                        PatternOpacity = page.PatternOpacity,
+                        PatternThickness = page.PatternThickness,
+                        PatternDotSize = page.PatternDotSize
                     });
                 }
                 var manifestEntry = zip.CreateEntry(ManifestEntryName);
@@ -3133,7 +3646,10 @@ public partial class MainWindow : Window
                     var page = new NotebookPage
                     {
                         BackgroundColor = ParseHexColor(pm.BackgroundColor ?? "#FFFFFF", Colors.White),
-                        Spacing = pm.Spacing is double s && s > 0 ? Math.Clamp(s, 1, 60) : 40
+                        Spacing = pm.Spacing is double s && s > 0 ? Math.Clamp(s, 1, 60) : 40,
+                        PatternOpacity = pm.PatternOpacity ?? 50,
+                        PatternThickness = pm.PatternThickness ?? 1.0,
+                        PatternDotSize = pm.PatternDotSize ?? 1.2
                     };
                     if (Enum.TryParse<PageTemplate>(pm.Template, out var t)) page.Template = t;
                     if (Enum.TryParse<PaperStyle>(pm.Paper, out var ps)) page.Paper = ps;

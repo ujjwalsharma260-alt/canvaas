@@ -6,6 +6,8 @@
         Width="1280" Height="800" MinWidth="720" MinHeight="480"
         WindowStartupLocation="CenterScreen" WindowState="Maximized"
         WindowStyle="None" Background="#E6E6E6"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
         Closing="Window_Closing"
         PreviewMouseUp="Window_PreviewMouseUp"
         PreviewKeyDown="Window_PreviewKeyDown">
@@ -18,8 +20,10 @@
         <Style x:Key="ToolIconRadio" TargetType="RadioButton">
             <Setter Property="Width" Value="42"/><Setter Property="Height" Value="34"/>
             <Setter Property="Margin" Value="2,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="16"/><Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="FontSize" Value="18"/><Setter Property="Foreground" Value="#333333"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="RadioButton">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
@@ -39,8 +43,10 @@
         <Style x:Key="ToolIconButton" TargetType="Button">
             <Setter Property="Width" Value="42"/><Setter Property="Height" Value="34"/>
             <Setter Property="Margin" Value="2,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="16"/><Setter Property="Foreground" Value="#444444"/>
+            <Setter Property="FontSize" Value="18"/><Setter Property="Foreground" Value="#333333"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" SnapsToDevicePixels="True">
@@ -58,8 +64,9 @@
         <Style x:Key="SmallIconButton" TargetType="Button">
             <Setter Property="Width" Value="30"/><Setter Property="Height" Value="26"/>
             <Setter Property="Margin" Value="1,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="#333333"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
@@ -75,9 +82,10 @@
 
         <Style x:Key="EdgeAddButton" TargetType="Button">
             <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="16"/>
             <Setter Property="Foreground" Value="#1A73E8"/><Setter Property="Background" Value="White"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
                     <Grid>
@@ -95,13 +103,13 @@
         </Style>
 
         <Style x:Key="QuickColorButton" TargetType="Button">
-            <Setter Property="Width" Value="26"/><Setter Property="Height" Value="26"/>
-            <Setter Property="Margin" Value="3"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/>
+            <Setter Property="Margin" Value="4"/><Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
                     <Grid>
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="13" BorderBrush="#CCCCCC" BorderThickness="1"/>
-                        <Border x:Name="Hover" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="14" Visibility="Collapsed"/>
+                        <Ellipse x:Name="Bd" Fill="{TemplateBinding Background}" Stroke="#D0D0D0" StrokeThickness="1.5"/>
+                        <Ellipse x:Name="Hover" Stroke="#1A73E8" StrokeThickness="2.5" Visibility="Collapsed"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -115,9 +123,9 @@
         <Style x:Key="SelActionButton" TargetType="Button">
             <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
             <Setter Property="Margin" Value="1,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="15"/><Setter Property="Foreground" Value="#333333"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="16"/><Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Background" Value="Transparent"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="5">
@@ -203,8 +211,9 @@
 
         <Style x:Key="TitleBarButton" TargetType="Button">
             <Setter Property="Width" Value="46"/><Setter Property="Height" Value="36"/>
-            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="14"/>
             <Setter Property="Foreground" Value="White"/><Setter Property="Background" Value="Transparent"/>
+            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
             <Setter Property="shell:WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
@@ -229,6 +238,31 @@
                     </ControlTemplate.Triggers>
                 </ControlTemplate></Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="MenuFlyoutButton" TargetType="Button">
+            <Setter Property="Height" Value="42"/><Setter Property="Padding" Value="16,0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Background" Value="Transparent"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                        <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#F0F0F0"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#E0E0E0"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsSlider" TargetType="Slider">
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="100"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Width" Value="220"/>
         </Style>
 
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
@@ -302,6 +336,8 @@
                 </StackPanel>
                 <Button x:Name="ChromeToggleButton" DockPanel.Dock="Left" Style="{StaticResource TitleBarButton}"
                         Content="&#xE700;" ToolTip="Show / hide toolbars (Tab)" Click="ChromeToggleButton_Click"/>
+                <Button x:Name="MenuButton" DockPanel.Dock="Left" Style="{StaticResource TitleBarButton}"
+                        Content="&#xE712;" ToolTip="Menu" Click="MenuButton_Click"/>
                 <TextBlock x:Name="TitleBarText" Foreground="White" FontSize="13" FontWeight="SemiBold"
                            VerticalAlignment="Center" Margin="8,0,0,0"/>
             </DockPanel>
@@ -335,7 +371,7 @@
                         </Button.ContextMenu>
                     </Button>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
-                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert / paste" Click="MenuButton_Click">
+                    <Button x:Name="AddMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE710;" ToolTip="Insert / paste" Click="MenuButton2_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Insert Image…" Click="InsertImage_Click"/>
@@ -347,7 +383,7 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
-                    <Button x:Name="SaveMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE700;" ToolTip="File menu" Click="MenuButton_Click">
+                    <Button x:Name="SaveMenuButton" Style="{StaticResource ToolIconButton}" Content="&#xE700;" ToolTip="File menu" Click="MenuButton2_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="New" Command="ApplicationCommands.New"/>
@@ -404,16 +440,11 @@
 
             <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True"/>
             <Canvas x:Name="HandleOverlay" ClipToBounds="True"/>
-            <Canvas x:Name="SelectionActionHost" ClipToBounds="False"/>
 
-            <!-- Floating selection action toolbar -->
-            <Border x:Name="SelectionToolbar" Background="White" BorderBrush="#CCCCCC" BorderThickness="1"
-                    CornerRadius="8" Padding="2" Visibility="Collapsed"
-                    HorizontalAlignment="Left" VerticalAlignment="Top"
-                    Panel.ZIndex="100">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.25" Color="Black"/>
-                </Border.Effect>
+            <Border x:Name="SelectionToolbar" Background="White" BorderBrush="#D0D0D0" BorderThickness="1"
+                    CornerRadius="8" Padding="3" Visibility="Collapsed"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" Panel.ZIndex="100">
+                <Border.Effect><DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.25" Color="Black"/></Border.Effect>
                 <StackPanel Orientation="Horizontal">
                     <Button x:Name="SelToolDuplicate" Style="{StaticResource SelActionButton}"
                             Content="&#xE8C8;" ToolTip="Duplicate" Click="SelToolDuplicate_Click"/>
@@ -424,27 +455,27 @@
                 </StackPanel>
             </Border>
 
-            <!-- Draggable quick-color square -->
+            <!-- Draggable quick-colour square -->
             <Canvas x:Name="ColorSquareHost" ClipToBounds="False" Background="{x:Null}">
-                <Border x:Name="ColorSquareRoot" Width="150" Background="White"
-                        BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="10">
+                <Border x:Name="ColorSquareRoot" Background="White"
+                        BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="12" Padding="0">
                     <Border.Effect>
-                        <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.28" Color="Black"/>
+                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.3" Color="Black"/>
                     </Border.Effect>
                     <StackPanel>
-                        <Border x:Name="ColorSquareDragHandle" Height="20" Background="#F5F5F5"
-                                CornerRadius="10,10,0,0" Cursor="SizeAll"
+                        <Border x:Name="ColorSquareDragHandle" Height="22" Background="#FAFAFA"
+                                CornerRadius="12,12,0,0" Cursor="SizeAll"
                                 MouseLeftButtonDown="ColorSquareDragHandle_MouseDown"
                                 MouseMove="ColorSquareDragHandle_MouseMove"
                                 MouseLeftButtonUp="ColorSquareDragHandle_MouseUp">
-                            <TextBlock Text="⣿" Foreground="#999999" FontSize="13"
+                            <TextBlock Text="⣿" Foreground="#BBBBBB" FontSize="14"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <UniformGrid Columns="4" Margin="4,4,4,6">
+                        <UniformGrid Columns="2" Margin="6,6,6,8">
                             <Button x:Name="QuickColor1" Style="{StaticResource QuickColorButton}" Background="#111111" Tag="#111111" Click="QuickColor_Click" ToolTip="Black"/>
-                            <Button x:Name="QuickColor2" Style="{StaticResource QuickColorButton}" Background="#C62828" Tag="#C62828" Click="QuickColor_Click" ToolTip="Red"/>
-                            <Button x:Name="QuickColor3" Style="{StaticResource QuickColorButton}" Background="#1565C0" Tag="#1565C0" Click="QuickColor_Click" ToolTip="Blue"/>
-                            <Button x:Name="QuickColor4" Style="{StaticResource QuickColorButton}" Background="#2E7D32" Tag="#2E7D32" Click="QuickColor_Click" ToolTip="Green"/>
+                            <Button x:Name="QuickColor2" Style="{StaticResource QuickColorButton}" Background="#E53935" Tag="#E53935" Click="QuickColor_Click" ToolTip="Red"/>
+                            <Button x:Name="QuickColor3" Style="{StaticResource QuickColorButton}" Background="#1E88E5" Tag="#1E88E5" Click="QuickColor_Click" ToolTip="Blue"/>
+                            <Button x:Name="QuickColor4" Style="{StaticResource QuickColorButton}" Background="#43A047" Tag="#43A047" Click="QuickColor_Click" ToolTip="Green"/>
                         </UniformGrid>
                     </StackPanel>
                 </Border>
@@ -506,29 +537,6 @@
                                     TickFrequency="1" IsSnapToTickEnabled="True"
                                     VerticalAlignment="Center" ValueChanged="PointerSizeSlider_ValueChanged"/>
                         </DockPanel>
-
-                        <TextBlock Text="Keyboard Shortcuts" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                        <TextBlock Text="Click a button, then press the key you want." FontSize="11" Foreground="#777777" Margin="0,0,0,8" TextWrapping="Wrap"/>
-                        <ItemsControl x:Name="ShortcutList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,3">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="#333333" FontSize="12"/>
-                                        <Button Grid.Column="1" Content="{Binding KeyLabel}" MinWidth="90" Height="26"
-                                                Tag="{Binding ActionId}" Click="ShortcutChange_Click"
-                                                FontSize="12" Padding="6,2"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <Button x:Name="ResetShortcutsButton" Content="Reset to defaults"
-                                Margin="0,12,0,0" Height="28" HorizontalAlignment="Left" Padding="10,2"
-                                Click="ResetShortcuts_Click"/>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -567,6 +575,201 @@
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
             </Border>
+
+            <!-- Hamburger flyout menu -->
+            <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Margin="8,42,0,0" Width="220" Background="White"
+                    BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="8"
+                    Visibility="Collapsed" Panel.ZIndex="400">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="14" ShadowDepth="4" Opacity="0.22" Color="Black"/>
+                </Border.Effect>
+                <StackPanel>
+                    <Button Style="{StaticResource MenuFlyoutButton}" Click="OpenSettings_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <TextBlock Text="Settings" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource MenuFlyoutButton}" Click="OpenShortcuts_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE765;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <TextBlock Text="Shortcuts" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Rectangle Height="1" Fill="#EEEEEE"/>
+                    <Button Style="{StaticResource MenuFlyoutButton}" Click="RateThisApp_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <TextBlock Text="Rate This App" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource MenuFlyoutButton}" Click="SendFeedback_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE715;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <TextBlock Text="Send Feedback" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource MenuFlyoutButton}" Click="MoreApps_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE71D;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <TextBlock Text="More Apps" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Settings modal overlay -->
+            <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Panel.ZIndex="500"
+                  Background="#AA000000" MouseDown="SettingsOverlay_MouseDown">
+                <Border Background="White" Width="620" MaxHeight="720"
+                        BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="12"
+                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="24" ShadowDepth="6" Opacity="0.35" Color="Black"/>
+                    </Border.Effect>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Background="#F5F5F5" CornerRadius="12,12,0,0">
+                            <DockPanel Margin="20,14">
+                                <Button x:Name="CloseSettingsButton" DockPanel.Dock="Right" Width="32" Height="32"
+                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                        FontFamily="Segoe MDL2 Assets" Content="&#xE711;" FontSize="14"
+                                        Click="CloseSettings_Click"/>
+                                <TextBlock x:Name="SettingsTitle" Text="Settings" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="#333333" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,20">
+                            <StackPanel>
+                                <!-- Appearance -->
+                                <TextBlock Text="Appearance" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Pattern darkness" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="PatternOpacitySlider" Minimum="0" Maximum="100" Value="50"
+                                            IsSnapToTickEnabled="True" TickFrequency="1" VerticalAlignment="Center"
+                                            ValueChanged="PatternOpacitySlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="PatternOpacityText" Text="50" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Line thickness" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="PatternThicknessSlider" Minimum="0.5" Maximum="4" Value="1"
+                                            IsSnapToTickEnabled="True" TickFrequency="0.5" VerticalAlignment="Center"
+                                            ValueChanged="PatternThicknessSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="PatternThicknessText" Text="1.0" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Dot size" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="PatternDotSizeSlider" Minimum="0.5" Maximum="4" Value="1.2"
+                                            IsSnapToTickEnabled="True" TickFrequency="0.1" VerticalAlignment="Center"
+                                            ValueChanged="PatternDotSizeSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="PatternDotSizeText" Text="1.2" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
+                                </Grid>
+
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,12,0,20"/>
+
+                                <!-- Cursor -->
+                                <TextBlock Text="Cursor" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+
+                                <CheckBox x:Name="ShowCursorDotCheck" Content="Show dot in cursor centre" Margin="0,0,0,12"
+                                          Foreground="#555555" FontSize="13"
+                                          Checked="ShowCursorDotCheck_Changed" Unchecked="ShowCursorDotCheck_Changed"/>
+
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,12,0,20"/>
+
+                                <!-- PDF export -->
+                                <TextBlock Text="PDF export" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Page size" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <ComboBox Grid.Column="1" x:Name="PdfPageSizeCombo" Width="200" HorizontalAlignment="Left" SelectedIndex="0">
+                                        <ComboBoxItem Content="A4"/>
+                                        <ComboBoxItem Content="Letter"/>
+                                        <ComboBoxItem Content="Legal"/>
+                                        <ComboBoxItem Content="A3"/>
+                                        <ComboBoxItem Content="A5"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Orientation" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <ComboBox Grid.Column="1" x:Name="PdfOrientationCombo" Width="200" HorizontalAlignment="Left" SelectedIndex="0">
+                                        <ComboBoxItem Content="Portrait"/>
+                                        <ComboBoxItem Content="Landscape"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,12,0,20"/>
+
+                                <!-- Shortcuts -->
+                                <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,6"/>
+                                <TextBlock Text="Click a button, then press the key you want. Press Esc to cancel."
+                                           FontSize="12" Foreground="#777777" Margin="0,0,0,12" TextWrapping="Wrap"/>
+                                <ItemsControl x:Name="ShortcutList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Foreground="#333333" FontSize="13"/>
+                                                <Button Grid.Column="1" Content="{Binding KeyLabel}" MinWidth="100" Height="28"
+                                                        Tag="{Binding ActionId}" Click="ShortcutChange_Click"
+                                                        FontSize="12" Padding="8,2"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <Border Grid.Row="2" Background="#F5F5F5" CornerRadius="0,0,12,12" BorderBrush="#EEEEEE" BorderThickness="0,1,0,0">
+                            <DockPanel Margin="20,12">
+                                <Button DockPanel.Dock="Right" Content="Done" MinWidth="90" Height="32"
+                                        Click="CloseSettings_Click"/>
+                                <Button Content="Reset to defaults" Height="32" Padding="12,2"
+                                        HorizontalAlignment="Left" Click="ResetAllSettings_Click"/>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
 
         <Popup x:Name="ToolOptionsPopup" Placement="Bottom" StaysOpen="False"
