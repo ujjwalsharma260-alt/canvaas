@@ -18,7 +18,6 @@
     </shell:WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <!-- Dark theme toolbar button -->
         <Style x:Key="DarkToolButton" TargetType="Button">
             <Setter Property="Width" Value="38"/>
             <Setter Property="Height" Value="32"/>
@@ -36,7 +35,6 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#4A4A4A"/></Trigger>
                         <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#5A5A5A"/></Trigger>
-                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="#666666"/></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate></Setter.Value>
             </Setter>
@@ -116,10 +114,6 @@
                     </ControlTemplate.Triggers>
                 </ControlTemplate></Setter.Value>
             </Setter>
-        </Style>
-
-        <Style x:Key="DarkSlider" TargetType="Slider">
-            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
         <Style x:Key="ColorSwatchDark" TargetType="RadioButton">
@@ -245,7 +239,6 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ===== TITLE BAR (purple) ===== -->
         <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#7B2FBE" Height="36">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
@@ -262,12 +255,8 @@
             </DockPanel>
         </Border>
 
-        <!-- ===== MAIN AREA ===== -->
         <Grid Grid.Row="1">
 
-            <!-- ============================================================ -->
-            <!-- LIBRARY VIEW                                                  -->
-            <!-- ============================================================ -->
             <Grid x:Name="LibraryView" Background="#1A1A1A">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -275,7 +264,6 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Top bar -->
                 <Border Grid.Row="0" Background="#2A2A2A" BorderBrush="#3A3A3A" BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10">
                         <TextBlock Text="Sort:" Foreground="#DDDDDD" VerticalAlignment="Center" FontSize="13" Margin="0,0,6,0"/>
@@ -292,7 +280,6 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Grid of notes -->
                 <ScrollViewer Grid.Row="1" Padding="12" VerticalScrollBarVisibility="Auto">
                     <ItemsControl x:Name="LibraryItemsControl">
                         <ItemsControl.ItemsPanel>
@@ -326,7 +313,6 @@
                     </ItemsControl>
                 </ScrollViewer>
 
-                <!-- Bottom bar -->
                 <Border Grid.Row="2" Background="#2A2A2A" BorderBrush="#3A3A3A" BorderThickness="0,1,0,0" Padding="12,6">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                         <Button Content="&#xE710;  Create empty book" Click="CreateEmptyBook_Click"
@@ -337,20 +323,15 @@
                 </Border>
             </Grid>
 
-            <!-- ============================================================ -->
-            <!-- EDITOR VIEW                                                   -->
-            <!-- ============================================================ -->
             <Grid x:Name="EditorView" Background="#202020" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <!-- Top dark toolbar -->
                 <Border x:Name="TopToolbarBorder" Grid.Row="0" Background="#3A3A3A"
                         BorderBrush="#555555" BorderThickness="0,0,0,1">
                     <DockPanel Margin="6,4">
-                        <!-- Tools (left) -->
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <RadioButton x:Name="PenButton" Style="{StaticResource DarkToolRadio}" GroupName="Tools" Content="&#xE70F;" ToolTip="Pen (1)" Click="PenButton_Click"/>
                             <RadioButton x:Name="HighlighterButton" Style="{StaticResource DarkToolRadio}" GroupName="Tools" Content="&#xE7E6;" ToolTip="Highlighter (2)" Click="HighlighterButton_Click"/>
@@ -363,7 +344,6 @@
                             <Button x:Name="RedoButton" Style="{StaticResource DarkToolButton}" Content="&#xE7A6;" ToolTip="Redo (Ctrl+Y)" Command="ApplicationCommands.Redo"/>
                         </StackPanel>
 
-                        <!-- Right group -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="PaletteButton" Style="{StaticResource DarkToolButton}" Content="&#xE790;" ToolTip="Settings" Click="PaletteButton_Click"/>
                             <Rectangle Width="1" Margin="6,6" Fill="#555555"/>
@@ -421,7 +401,6 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Canvas area -->
                 <Grid Grid.Row="1">
                     <Border x:Name="CanvasHostBorder" Background="#2A2A2A" ClipToBounds="True"
                             PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
@@ -459,7 +438,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Colour square (draggable) -->
                     <Canvas x:Name="ColorSquareHost" ClipToBounds="False" Background="{x:Null}">
                         <Border x:Name="ColorSquareRoot" Background="White" BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="12" Padding="0">
                             <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.3" Color="Black"/></Border.Effect>
@@ -521,7 +499,6 @@
                         </Border>
                     </Canvas>
 
-                    <!-- Floating zoom (draggable) -->
                     <Border x:Name="FloatingZoom" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                             Margin="0,0,28,28" Background="#CC2A2A2A" BorderBrush="#555555" BorderThickness="1"
                             CornerRadius="10" Padding="4,3">
@@ -558,7 +535,6 @@
             </Grid>
         </Grid>
 
-        <!-- Hamburger flyout -->
         <Border x:Name="MainMenuFlyout" Grid.Row="1" HorizontalAlignment="Left" VerticalAlignment="Top"
                 Margin="8,8,0,0" Width="220" Background="#2A2A2A"
                 BorderBrush="#444444" BorderThickness="1" CornerRadius="8"
@@ -599,7 +575,6 @@
             </StackPanel>
         </Border>
 
-        <!-- Settings overlay (dark theme) -->
         <Grid x:Name="SettingsOverlay" Grid.Row="1" Visibility="Collapsed" Panel.ZIndex="500"
               Background="#CC000000" MouseDown="SettingsOverlay_MouseDown">
             <Border Background="#2A2A2A" Width="640" MaxHeight="760"
@@ -778,5 +753,61 @@
                 </Grid>
             </Border>
         </Grid>
+
+        <Popup x:Name="ToolOptionsPopup" Placement="Bottom" StaysOpen="False"
+               AllowsTransparency="True" PopupAnimation="Fade">
+            <Border Background="#2A2A2A" BorderBrush="#444444" BorderThickness="1"
+                    CornerRadius="10" Padding="14,12">
+                <StackPanel Width="252">
+                    <TextBlock x:Name="ToolPopupTitle" Text="Pen" FontSize="13" FontWeight="SemiBold"
+                               Foreground="#EEEEEE" Margin="0,0,0,10"/>
+                    <ItemsControl x:Name="ToolColorGrid">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Columns="6"/></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Tag="{Binding Hex}" Background="{Binding Brush}"
+                                        Click="ToolColorButton_Click"
+                                        Width="34" Height="34" Margin="3" BorderThickness="0">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Grid>
+                                                <Ellipse Fill="{TemplateBinding Background}" Stroke="#555555" StrokeThickness="1"/>
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Border Background="#3A3A3A" CornerRadius="4" Height="46" Margin="0,10,0,0" Padding="8,0">
+                        <Path x:Name="ToolThicknessPreview" HorizontalAlignment="Left" VerticalAlignment="Center"
+                              Stroke="#EEEEEE" StrokeThickness="2.5"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              Data="M 4,22 C 28,6 50,38 74,20 C 98,2 120,38 144,18 C 168,-2 190,32 214,16"/>
+                    </Border>
+                    <Slider x:Name="ToolSizeSlider" Minimum="1" Maximum="20" Value="2.5"
+                            TickFrequency="0.5" IsSnapToTickEnabled="True" Margin="0,10,0,0"
+                            ValueChanged="ToolSizeSlider_ValueChanged"/>
+                    <CheckBox x:Name="ToolPressureToggle" Content="Pressure" Margin="0,10,0,0" IsChecked="True"
+                              Foreground="#CCCCCC"
+                              Checked="ToolPressureToggle_Changed" Unchecked="ToolPressureToggle_Changed"/>
+                </StackPanel>
+            </Border>
+        </Popup>
+
+        <ComboBox x:Name="PdfPageSizeCombo" Visibility="Collapsed" SelectedIndex="0">
+            <ComboBoxItem Content="A4"/>
+            <ComboBoxItem Content="Letter"/>
+            <ComboBoxItem Content="Legal"/>
+            <ComboBoxItem Content="A3"/>
+            <ComboBoxItem Content="A5"/>
+        </ComboBox>
+
+        <ComboBox x:Name="PdfOrientationCombo" Visibility="Collapsed" SelectedIndex="0">
+            <ComboBoxItem Content="Portrait"/>
+            <ComboBoxItem Content="Landscape"/>
+        </ComboBox>
     </Grid>
 </Window>
