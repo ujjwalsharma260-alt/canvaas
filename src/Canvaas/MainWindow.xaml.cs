@@ -114,6 +114,15 @@ public partial class MainWindow : Window
         public Dictionary<string, string>? Shortcuts { get; set; }
         public int PdfPageSizeIndex { get; set; } = 0;
         public int PdfOrientationIndex { get; set; } = 0;
+        public string? DefBackground { get; set; }
+        public string? DefTemplate { get; set; }
+        public string? DefPaper { get; set; }
+        public double? DefSpacing { get; set; }
+        public double? DefPatternOpacity { get; set; }
+        public double? DefPatternThickness { get; set; }
+        public double? DefPatternDotSize { get; set; }
+        public string[]? LightQuick { get; set; }
+        public string[]? DarkQuick { get; set; }
     }
 
     private sealed class StrokeChange
@@ -332,10 +341,11 @@ public partial class MainWindow : Window
         if (CanvasHostBorder is not null)
             CanvasHostBorder.SizeChanged += (s, e) => ScheduleRebuildEdgeButtons();
 
-        _pages.Add(new NotebookPage());
+        _pages.Add(NewStyledPage());
         _currentPageIndex = 0;
 
         PopulateToolColorGrid();
+        WireQuickColorRightClick();
         LoadCurrentPageIntoCanvas();
 
         PenButton.IsChecked = true;
@@ -664,6 +674,8 @@ public partial class MainWindow : Window
     {
         _shortcuts.Clear();
         foreach (var (id, _, def) in ShortcutActions) _shortcuts[id] = def;
+        if (_savedStyle?.Shortcuts is not null)
+            foreach (var kv in _savedStyle.Shortcuts) _shortcuts[kv.Key] = kv.Value;
         if (ShortcutList is not null) ShortcutList.ItemsSource = _shortcutItems;
         RefreshShortcutUI();
     }
@@ -1250,11 +1262,20 @@ public partial class MainWindow : Window
             _pdfPageSizeIndex = Math.Clamp(s.PdfPageSizeIndex, 0, 4);
             _pdfOrientationIndex = Math.Clamp(s.PdfOrientationIndex, 0, 1);
             if (s.Shortcuts is not null) _shortcuts = new Dictionary<string, string>(s.Shortcuts);
+            _savedStyle = s;
+            if (s.LightQuick is { Length: 4 }) _lightQuick = s.LightQuick;
+            if (s.DarkQuick is { Length: 4 }) _darkQuick = s.DarkQuick;
         }
         catch { }
     }
 
     private void SaveSettings()
+    {
+        if (!_uiReady) return;
+        SaveSettingsCore();
+    }
+
+    private void SaveSettingsCore()
     {
         try
         {
@@ -1270,6 +1291,7 @@ public partial class MainWindow : Window
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
                 PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex
             };
+            CaptureStyle(s);
             File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOptions));
         }
         catch { }
@@ -1940,6 +1962,7 @@ public partial class MainWindow : Window
         _suppressCounterChange = false;
         if (PrevPageButton is not null) PrevPageButton.IsEnabled = _currentPageIndex > 0;
         if (NextPageButton is not null) NextPageButton.IsEnabled = true;
+        if (PrevPageButton is not null) PrevPageButton.Opacity = PrevPageButton.IsEnabled ? 1.0 : 0.4;
     }
 
     private void PageCounterBox_KeyDown(object sender, KeyEventArgs e)
@@ -2232,6 +2255,42 @@ public partial class MainWindow : Window
     }
 
     private static List<BitmapSource>? RenderPdfToBitmaps(string path)
+    {
+        try
+        {
+            return System.Threading.Tasks.Task.Run(() => RenderPdfCoreAsync(path)).GetAwaiter().GetResult();
+        }
+        catch { return null; }
+    }
+
+    private static async System.Threading.Tasks.Task<List<BitmapSource>?> RenderPdfCoreAsync(string path)
+    {
+        var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+        var doc = await global::Windows.Data.Pdf.PdfDocument.LoadFromFileAsync(file);
+        var result = new List<BitmapSource>();
+        for (uint i = 0; i < doc.PageCount; i++)
+        {
+            using var page = doc.GetPage(i);
+            using var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+            var options = new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = 1600 };
+            await page.RenderToStreamAsync(stream, options);
+            using var input = stream.GetInputStreamAt(0);
+            using var reader = new global::Windows.Storage.Streams.DataReader(input);
+            await reader.LoadAsync((uint)stream.Size);
+            var bytes = new byte[stream.Size];
+            reader.ReadBytes(bytes);
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.EndInit();
+            bmp.Freeze();
+            result.Add(bmp);
+        }
+        return result;
+    }
+
+    private static List<BitmapSource>? RenderPdfToBitmapsOld(string path)
     {
         try
         {
@@ -3017,6 +3076,7 @@ public partial class MainWindow : Window
         if (sender is RadioButton rb && rb.Tag is string hex)
         {
             CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
+            ApplyThemeToChrome();
             UpdatePageBackground();
             RebuildHollowRingCursor();
             UpdateCursor();
@@ -3200,6 +3260,7 @@ public partial class MainWindow : Window
         }
         if (SpacingText is not null)
             SpacingText.Text = ((int)Math.Round(CurrentPage.Spacing)).ToString();
+        ApplyThemeToChrome();
 
         UpdatePageBackground();
         SyncSettingsUI();
@@ -3487,7 +3548,7 @@ public partial class MainWindow : Window
     {
         if (!ConfirmDiscardChanges()) return;
         _pages.Clear();
-        _pages.Add(new NotebookPage());
+        _pages.Add(NewStyledPage());
         _currentPageIndex = 0;
         LoadCurrentPageIntoCanvas();
         _currentPath = null;
@@ -3676,7 +3737,7 @@ public partial class MainWindow : Window
     // =====================================================================
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (!ConfirmDiscardChanges()) e.Cancel = true;
+        if (!ConfirmDiscardChanges()) e.Cancel = true; else SaveSettings();
     }
 
     private bool ConfirmDiscardChanges()
@@ -3705,6 +3766,125 @@ public partial class MainWindow : Window
         string text = $"{name}{(_dirty ? " *" : "")} - Canvaas";
         Title = text;
         if (TitleBarText is not null) TitleBarText.Text = text;
+    }
+
+    private AppSettings? _savedStyle;
+    private string[] _lightQuick = { "#000000", "#E53935", "#1E88E5", "#43A047" };
+    private string[] _darkQuick = { "#FFFFFF", "#FF6B6B", "#64B5F6", "#81C784" };
+    private bool _quickIsDark;
+
+    private static Color Blend(Color a, Color b, double t) =>
+        Color.FromRgb((byte)(a.R + (b.R - a.R) * t), (byte)(a.G + (b.G - a.G) * t), (byte)(a.B + (b.B - a.B) * t));
+
+    private static string ColorToHex(Color c) =>
+        "#" + c.R.ToString("X2") + c.G.ToString("X2") + c.B.ToString("X2");
+
+    private NotebookPage NewStyledPage()
+    {
+        var p = new NotebookPage();
+        var s = _savedStyle;
+        if (s is null) return p;
+        if (!string.IsNullOrEmpty(s.DefBackground)) p.BackgroundColor = ParseHexColor(s.DefBackground, Colors.White);
+        if (Enum.TryParse<PageTemplate>(s.DefTemplate, out var t)) p.Template = t;
+        if (Enum.TryParse<PaperStyle>(s.DefPaper, out var ps)) p.Paper = ps;
+        if (s.DefSpacing is double sp && sp > 0) p.Spacing = Math.Clamp(sp, 1, 60);
+        if (s.DefPatternOpacity is double po) p.PatternOpacity = po;
+        if (s.DefPatternThickness is double pt) p.PatternThickness = pt;
+        if (s.DefPatternDotSize is double pd) p.PatternDotSize = pd;
+        return p;
+    }
+
+    private void CaptureStyle(AppSettings s)
+    {
+        s.LightQuick = _lightQuick;
+        s.DarkQuick = _darkQuick;
+        if (_pages.Count > 0)
+        {
+            var p = CurrentPage;
+            s.DefBackground = ColorToHex(p.BackgroundColor);
+            s.DefTemplate = p.Template.ToString();
+            s.DefPaper = p.Paper.ToString();
+            s.DefSpacing = p.Spacing;
+            s.DefPatternOpacity = p.PatternOpacity;
+            s.DefPatternThickness = p.PatternThickness;
+            s.DefPatternDotSize = p.PatternDotSize;
+        }
+        else if (_savedStyle is not null)
+        {
+            s.DefBackground = _savedStyle.DefBackground;
+            s.DefTemplate = _savedStyle.DefTemplate;
+            s.DefPaper = _savedStyle.DefPaper;
+            s.DefSpacing = _savedStyle.DefSpacing;
+            s.DefPatternOpacity = _savedStyle.DefPatternOpacity;
+            s.DefPatternThickness = _savedStyle.DefPatternThickness;
+            s.DefPatternDotSize = _savedStyle.DefPatternDotSize;
+        }
+        _savedStyle = s;
+    }
+
+    private void ApplyThemeToChrome()
+    {
+        bool dark = IsDarkColor(CurrentPage.BackgroundColor);
+        var oldSet = _quickIsDark ? _darkQuick : _lightQuick;
+        var newSet = dark ? _darkQuick : _lightQuick;
+        if (dark != _quickIsDark)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                if (ParseHexColor(oldSet[i], Colors.Black) == _penColor)
+                { _penColor = ParseHexColor(newSet[i], Colors.Black); break; }
+            }
+        }
+        _quickIsDark = dark;
+
+        var btns = new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 };
+        for (int i = 0; i < 4; i++)
+        {
+            if (btns[i] is null) continue;
+            btns[i].Tag = newSet[i];
+            btns[i].Background = new SolidColorBrush(ParseHexColor(newSet[i], Colors.Black));
+        }
+
+        Color bg = CurrentPage.BackgroundColor;
+        Color navBg = dark ? Blend(bg, Colors.White, 0.10) : Blend(bg, Colors.Black, 0.05);
+        Color navBorder = dark ? Blend(bg, Colors.White, 0.25) : Blend(bg, Colors.Black, 0.30);
+        var fg = new SolidColorBrush(dark ? Color.FromRgb(0xE6, 0xE6, 0xE6) : Color.FromRgb(0x22, 0x22, 0x22));
+        if (NavBar is not null)
+        {
+            NavBar.Background = new SolidColorBrush(navBg);
+            NavBar.BorderBrush = new SolidColorBrush(navBorder);
+        }
+        foreach (var b in new[] { PrevPageButton, NextPageButton, ZoomInButton, ZoomOutButton, ZoomResetButton })
+            if (b is not null) b.Foreground = fg;
+        if (PageCounterBox is not null) PageCounterBox.Foreground = fg;
+        if (ZoomText is not null) ZoomText.Foreground = fg;
+        if (PrevPageButton is not null) PrevPageButton.Opacity = PrevPageButton.IsEnabled ? 1.0 : 0.4;
+        ApplyPenAttributes();
+    }
+
+    private void WireQuickColorRightClick()
+    {
+        foreach (var b in new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 })
+        {
+            b.MouseRightButtonUp += QuickColor_RightClick;
+            b.ToolTip = "Click: use this colour. Right-click: save the current pen colour here.";
+        }
+    }
+
+    private void QuickColor_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Button b) return;
+        int idx = Array.IndexOf(new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 }, b);
+        if (idx < 0) return;
+        string hex = ColorToHex(_penColor);
+        var set = _quickIsDark ? _darkQuick : _lightQuick;
+        set[idx] = hex;
+        b.Tag = hex;
+        b.Background = new SolidColorBrush(_penColor);
+        HighlightToolbarColor();
+        SaveSettings();
+        StatusText.Text = "Saved " + hex + " in this colour box.";
+        e.Handled = true;
     }
 
     private static void TryDelete(string path)
