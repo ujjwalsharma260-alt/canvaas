@@ -52,6 +52,7 @@ public partial class MainWindow : Window
     private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_FRAMECHANGED = 0x0020;
 
     private enum ExpandDirection { Right, Left, Up, Down }
     private enum ResizeHandle { NW, N, NE, E, SE, S, SW, W }
@@ -216,10 +217,6 @@ public partial class MainWindow : Window
 
     private bool _rebuildEdgeScheduled;
 
-    private bool _draggingFloatingZoom;
-    private Point _floatingZoomDragStart;
-    private double _floatingZoomStartX, _floatingZoomStartY;
-
     private int _insertCounter = 0;
 
     private readonly List<UIElement> _selectedElements = new();
@@ -256,6 +253,9 @@ public partial class MainWindow : Window
     private Rect _resizeStartBounds;
     private StrokeCollection? _resizeOriginalStrokes;
     private List<(UIElement El, double L, double T, double W, double H, double FS)> _resizeOriginalElements = new();
+
+    private int _pdfPageSizeIndex = 0;
+    private int _pdfOrientationIndex = 0;
 
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
@@ -397,7 +397,6 @@ public partial class MainWindow : Window
 
     private void SettingsOverlay_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        // Close only if click was on the semi-transparent backdrop, not the panel
         if (e.OriginalSource == SettingsOverlay)
         {
             if (SettingsOverlay is not null) SettingsOverlay.Visibility = Visibility.Collapsed;
@@ -470,9 +469,6 @@ public partial class MainWindow : Window
         if (PdfPageSizeCombo is not null) PdfPageSizeCombo.SelectedIndex = Math.Clamp(_pdfPageSizeIndex, 0, 4);
         if (PdfOrientationCombo is not null) PdfOrientationCombo.SelectedIndex = Math.Clamp(_pdfOrientationIndex, 0, 1);
     }
-
-    private int _pdfPageSizeIndex = 0;
-    private int _pdfOrientationIndex = 0;
 
     private void PatternOpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
@@ -747,7 +743,6 @@ public partial class MainWindow : Window
     {
         bool show = TopToolbarBorder.Visibility != Visibility.Visible;
         TopToolbarBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        SidePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // =====================================================================
@@ -1281,10 +1276,8 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Pick colors based on the current page bg brightness
             bool darkBg = IsDarkColor(CurrentPage.BackgroundColor);
-
-            Brush ringBrush = darkBg ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)); // amber
+            Brush ringBrush = darkBg ? Brushes.White : new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07));
             Brush dotBrush = darkBg ? Brushes.White : Brushes.Black;
 
             double ringRadius = _pointerSize / 2.0;
@@ -1299,7 +1292,6 @@ public partial class MainWindow : Window
             {
                 var ringPen = new Pen(ringBrush, 1.4);
                 dc.DrawEllipse(null, ringPen, new Point(center, center), ringRadius, ringRadius);
-
                 if (_showCursorDot)
                     dc.DrawEllipse(dotBrush, null, new Point(center, center), dotRadius, dotRadius);
             }
@@ -1514,7 +1506,7 @@ public partial class MainWindow : Window
     // =====================================================================
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // ESC always exits fullscreen first (regardless of custom bindings)
+        // ESC always exits fullscreen first
         if (_fullscreenMode && e.Key == Key.Escape)
         {
             ToggleFullscreen();
@@ -1545,7 +1537,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Settings overlay open? Only ESC closes it
         if (SettingsOverlay is not null && SettingsOverlay.Visibility == Visibility.Visible)
         {
             if (e.Key == Key.Escape)
@@ -1557,7 +1548,6 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Menu flyout open? ESC closes it
         if (MainMenuFlyout is not null && MainMenuFlyout.Visibility == Visibility.Visible
             && e.Key == Key.Escape)
         {
@@ -1577,12 +1567,7 @@ public partial class MainWindow : Window
             if (MatchesShortcut("delete", e.Key, modsNow) && DeleteSelection()) { e.Handled = true; return; }
             if (MatchesShortcut("copy", e.Key, modsNow) && CopySelection()) { e.Handled = true; return; }
             if (MatchesShortcut("cut", e.Key, modsNow) && CutSelection()) { e.Handled = true; return; }
-            if (MatchesShortcut("paste", e.Key, modsNow))
-            {
-                PasteAnything();
-                e.Handled = true;
-                return;
-            }
+            if (MatchesShortcut("paste", e.Key, modsNow)) { PasteAnything(); e.Handled = true; return; }
             if (MatchesShortcut("selectall", e.Key, modsNow)) { ApplicationCommands.SelectAll.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("undo", e.Key, modsNow)) { ApplicationCommands.Undo.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("redo", e.Key, modsNow)) { ApplicationCommands.Redo.Execute(null, this); e.Handled = true; return; }
@@ -1617,7 +1602,6 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        // 1) Try image from clipboard
         try
         {
             if (Clipboard.ContainsImage())
@@ -1633,7 +1617,6 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        // 2) Try text from clipboard (splits into keyword boxes)
         try
         {
             if (Clipboard.ContainsText())
@@ -1648,7 +1631,6 @@ public partial class MainWindow : Window
         }
         catch { }
 
-        // 3) Fall back to internal stroke clipboard
         PasteClipboard();
     }
 
@@ -1703,13 +1685,12 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Fullscreen (with debounce)
+    // Fullscreen (debounced + fully chrome-free)
     // =====================================================================
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
 
     private void ToggleFullscreen()
     {
-        // Debounce: ignore if we toggled within last 400 ms
         var now = DateTime.UtcNow;
         if ((now - _lastFullscreenToggle).TotalMilliseconds < 400) return;
         _lastFullscreenToggle = now;
@@ -1723,6 +1704,7 @@ public partial class MainWindow : Window
             AppWindowChrome.ResizeBorderThickness = _fullscreenMode ? new Thickness(0) : new Thickness(6);
         }
         ReleaseAllCaptures();
+
         IntPtr hwnd;
         try { hwnd = new WindowInteropHelper(this).Handle; } catch { hwnd = IntPtr.Zero; }
 
@@ -1737,7 +1719,12 @@ public partial class MainWindow : Window
             double sh = SystemParameters.PrimaryScreenHeight;
             Left = 0; Top = 0; Width = sw; Height = sh;
             Topmost = true;
-            if (hwnd != IntPtr.Zero) SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW);
+            if (hwnd != IntPtr.Zero)
+            {
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+                // Call again to force Windows to fully re-evaluate the frame
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+            }
             StatusText.Text = "Fullscreen. Press ESC or F11 to exit.";
         }
         else
@@ -1746,7 +1733,10 @@ public partial class MainWindow : Window
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
             WindowState = _preFullscreenWindowState;
-            if (hwnd != IntPtr.Zero) SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE);
+            if (hwnd != IntPtr.Zero)
+            {
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
             StatusText.Text = "Exited fullscreen.";
         }
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
@@ -1759,10 +1749,9 @@ public partial class MainWindow : Window
     {
         if (ViewTransform is null) return;
         ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-        if (ZoomText is not null && !ZoomText.IsFocused)
+        if (ZoomText is not null)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
 
-        // Rebuild pattern if zoom changed significantly (screen-constant lines)
         if (Math.Abs(_lastBrushZoom - _viewZoom) > 0.001)
         {
             _lastBrushZoom = _viewZoom;
@@ -1809,7 +1798,7 @@ public partial class MainWindow : Window
         _viewPanY = (vh - CurrentPage.WorldHeight * _viewZoom) / 2.0;
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-        if (ZoomText is not null && !ZoomText.IsFocused)
+        if (ZoomText is not null)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         _lastBrushZoom = _viewZoom;
         ScheduleRebuildEdgeButtons();
@@ -1834,7 +1823,7 @@ public partial class MainWindow : Window
         _viewPanY = CurrentPage.ViewPanY;
         if (ViewTransform is not null)
             ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-        if (ZoomText is not null && !ZoomText.IsFocused)
+        if (ZoomText is not null)
             ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
         _lastBrushZoom = _viewZoom;
         ScheduleRebuildEdgeButtons();
@@ -1861,8 +1850,7 @@ public partial class MainWindow : Window
             double target = Math.Clamp(pct / 100.0, MinZoom, MaxZoom);
             ZoomAtViewCenter(target / _viewZoom);
         }
-        if (!ZoomText.IsFocused)
-            ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
+        ZoomText.Text = $"{(int)Math.Round(_viewZoom * 100)}%";
     }
 
     private void CanvasHostBorder_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -1879,34 +1867,6 @@ public partial class MainWindow : Window
         else { PanBy(0, -e.Delta); e.Handled = true; }
     }
 
-    private void FloatingZoomGrip_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement el) return;
-        _draggingFloatingZoom = true;
-        _floatingZoomDragStart = e.GetPosition(this);
-        _floatingZoomStartX = FloatingZoomTransform.X;
-        _floatingZoomStartY = FloatingZoomTransform.Y;
-        el.CaptureMouse();
-        el.Cursor = Cursors.SizeAll;
-        e.Handled = true;
-    }
-
-    private void FloatingZoomGrip_MouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_draggingFloatingZoom) return;
-        var p = e.GetPosition(this);
-        FloatingZoomTransform.X = _floatingZoomStartX + (p.X - _floatingZoomDragStart.X);
-        FloatingZoomTransform.Y = _floatingZoomStartY + (p.Y - _floatingZoomDragStart.Y);
-    }
-
-    private void FloatingZoomGrip_MouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (!_draggingFloatingZoom) return;
-        _draggingFloatingZoom = false;
-        if (sender is FrameworkElement el) { el.ReleaseMouseCapture(); el.Cursor = Cursors.SizeAll; }
-        e.Handled = true;
-    }
-
     // =====================================================================
     // Page management
     // =====================================================================
@@ -1914,12 +1874,11 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        // Save current page's elements
         if (_pages.Count > 0 && _currentPageIndex >= 0 && _currentPageIndex < _pages.Count)
         {
             var oldPage = _pages[_currentPageIndex];
             oldPage.Elements.Clear();
-                        foreach (var c in InkArea.Children)
+            foreach (var c in InkArea.Children)
                 if (c is UIElement uie) oldPage.Elements.Add(uie);
         }
 
@@ -1927,7 +1886,6 @@ public partial class MainWindow : Window
         InkArea.Strokes = CurrentPage.Strokes;
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
 
-        // Restore elements for the new page
         InkArea.Children.Clear();
         foreach (var el in CurrentPage.Elements) InkArea.Children.Add(el);
 
@@ -2184,7 +2142,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // PDF import (via Windows.Data.Pdf reflection — requires Win10+)
+    // PDF import (Windows.Data.Pdf reflection)
     // =====================================================================
     private void ImportPdf_Click(object sender, RoutedEventArgs e)
     {
@@ -2204,10 +2162,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Save current page index so we return here
             int originalIndex = _currentPageIndex;
-
-            // Insert each PDF page as a separate notebook page AFTER the current one
             for (int i = 0; i < pages.Count; i++)
             {
                 var newPage = new NotebookPage
@@ -2219,7 +2174,6 @@ public partial class MainWindow : Window
                     WorldHeight = A4Height
                 };
 
-                // Add the rendered image as an element on that page
                 var img = new Image
                 {
                     Source = pages[i],
@@ -2234,7 +2188,6 @@ public partial class MainWindow : Window
                 _pages.Insert(originalIndex + 1 + i, newPage);
             }
 
-            // Jump to the first PDF page
             _currentPageIndex = originalIndex + 1;
             LoadCurrentPageIntoCanvas();
             MarkDirty();
@@ -2251,28 +2204,22 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Load types via reflection so the app compiles even without the Windows SDK TFM
             var pdfDocType = Type.GetType("Windows.Data.Pdf.PdfDocument, Windows.Data.Pdf, ContentType=WindowsRuntime");
             var storageFileType = Type.GetType("Windows.Storage.StorageFile, Windows.Storage, ContentType=WindowsRuntime");
             if (pdfDocType is null || storageFileType is null) return null;
 
-            // Get StorageFile from path
             var getFileMethod = storageFileType.GetMethod("GetFileFromPathAsync",
                 BindingFlags.Public | BindingFlags.Static);
             if (getFileMethod is null) return null;
             var op = getFileMethod.Invoke(null, new object[] { path });
             if (op is null) return null;
 
-            // Block until async completes
             var storageFile = AwaitWinRtOp(op);
             if (storageFile is null) return null;
 
-            // Load PDF
             var loadMethod = pdfDocType.GetMethod("LoadFromFileAsync",
                 BindingFlags.Public | BindingFlags.Static,
-                null,
-                new[] { storageFileType },
-                null);
+                null, new[] { storageFileType }, null);
             if (loadMethod is null) return null;
             var loadOp = loadMethod.Invoke(null, new[] { storageFile });
             if (loadOp is null) return null;
@@ -2285,15 +2232,10 @@ public partial class MainWindow : Window
 
             var pages = new List<BitmapSource>();
             var getPageMethod = pdfDocType.GetMethod("GetPage");
-            var indexerMethod = pdfDocType.GetMethod("GetPage",
-                BindingFlags.Public | BindingFlags.Instance,
-                null,
-                new[] { typeof(uint) },
-                null) ?? getPageMethod;
 
             for (uint i = 0; i < count; i++)
             {
-                var page = indexerMethod?.Invoke(pdfDoc, new object[] { i });
+                var page = getPageMethod?.Invoke(pdfDoc, new object[] { i });
                 if (page is null) continue;
 
                 var bmp = RenderPdfPageToBitmap(page);
@@ -2310,7 +2252,6 @@ public partial class MainWindow : Window
 
     private static object? AwaitWinRtOp(object op)
     {
-        // op is an IAsyncOperation<T>. Use GetAwaiter().GetResult() via reflection.
         try
         {
             var asTaskMethod = op.GetType().GetMethod("AsTask",
@@ -2334,8 +2275,6 @@ public partial class MainWindow : Window
     {
         try
         {
-            // Use PdfPage.RenderToStreamAsync to render into an InMemoryRandomAccessStream,
-            // then copy bytes into a BitmapImage.
             var streamType = Type.GetType("Windows.Storage.Streams.InMemoryRandomAccessStream, Windows.Storage.Streams, ContentType=WindowsRuntime");
             if (streamType is null) return null;
 
@@ -2344,16 +2283,13 @@ public partial class MainWindow : Window
 
             var renderMethod = pdfPage.GetType().GetMethod("RenderToStreamAsync",
                 BindingFlags.Public | BindingFlags.Instance,
-                null,
-                new[] { streamType },
-                null);
+                null, new[] { streamType }, null);
             if (renderMethod is null) return null;
 
             var op = renderMethod.Invoke(pdfPage, new[] { stream });
             if (op is null) return null;
             AwaitWinRtOp(op);
 
-            // Now read the stream bytes
             var getInputStreamMethod = streamType.GetMethod("GetInputStreamAt",
                 BindingFlags.Public | BindingFlags.Instance,
                 null, new[] { typeof(ulong) }, null);
@@ -2364,7 +2300,6 @@ public partial class MainWindow : Window
             var inputStream = getInputStreamMethod?.Invoke(stream, new object[] { 0UL });
             if (inputStream is null) return null;
 
-            // Use DataReader to read bytes
             var dataReaderType = Type.GetType("Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType=WindowsRuntime");
             if (dataReaderType is null) return null;
 
@@ -2411,7 +2346,6 @@ public partial class MainWindow : Window
     {
         if (CanvasHostBorder is null) return;
 
-        // Hide flyouts when clicking on canvas
         if (MainMenuFlyout is not null && MainMenuFlyout.Visibility == Visibility.Visible)
             MainMenuFlyout.Visibility = Visibility.Collapsed;
 
@@ -3030,7 +2964,7 @@ public partial class MainWindow : Window
 
     private void PaletteButton_Click(object sender, RoutedEventArgs e)
     {
-        SidePanel.Visibility = SidePanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        OpenSettingsPanel("Settings");
     }
 
     // =====================================================================
@@ -3112,7 +3046,6 @@ public partial class MainWindow : Window
             new RectangleGeometry(new Rect(0, 0, spacing, spacing))));
 
         Color lineColor = GetLineColor(page.BackgroundColor, page.PatternOpacity);
-        // Screen-constant thickness: divide by view zoom so lines look the same at any zoom
         double lineThickness = page.PatternThickness / Math.Max(viewZoom, 0.01);
         if (lineThickness < 0.1) lineThickness = 0.1;
         if (lineThickness > 8) lineThickness = 8;
@@ -3333,7 +3266,6 @@ public partial class MainWindow : Window
         if (answer == MessageBoxResult.OK)
         {
             InkArea.Strokes.Clear();
-            // Also remove elements
             var toRemove = new List<UIElement>();
             foreach (var c in InkArea.Children)
                 if (c is UIElement uie) toRemove.Add(uie);
@@ -3354,9 +3286,6 @@ public partial class MainWindow : Window
         if (!e.Stroke.DrawingAttributes.IsHighlighter) SmoothCompletedStroke(e.Stroke);
     }
 
-    // =====================================================================
-    // Stroke smoothing (preserves endpoints so strokes don't shrink)
-    // =====================================================================
     private void SmoothCompletedStroke(Stroke original)
     {
         if (InkArea is null) return;
@@ -3562,13 +3491,13 @@ public partial class MainWindow : Window
 
     private bool SaveToFile(string path)
     {
-        // Ensure current page elements are captured before saving
         if (_pages.Count > 0 && InkArea is not null)
         {
             var oldPage = _pages[_currentPageIndex];
             oldPage.Elements.Clear();
             foreach (var c in InkArea.Children)
-                if (c is UIElement uie) oldPage.Elements.Add(uie);        }
+                if (c is UIElement uie) oldPage.Elements.Add(uie);
+        }
 
         string tempPath = path + ".tmp";
         try

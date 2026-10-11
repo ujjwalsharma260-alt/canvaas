@@ -61,25 +61,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="SmallIconButton" TargetType="Button">
-            <Setter Property="Width" Value="30"/><Setter Property="Height" Value="26"/>
-            <Setter Property="Margin" Value="1,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
-            <Setter Property="FontSize" Value="14"/><Setter Property="Foreground" Value="#333333"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
-            <Setter Property="Template">
-                <Setter.Value><ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/></Trigger>
-                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/></Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate></Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="EdgeAddButton" TargetType="Button">
             <Setter Property="Width" Value="30"/><Setter Property="Height" Value="30"/>
             <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/><Setter Property="FontSize" Value="16"/>
@@ -140,13 +121,13 @@
         </Style>
 
         <Style x:Key="ColorSwatch" TargetType="RadioButton">
-            <Setter Property="Width" Value="46"/><Setter Property="Height" Value="46"/>
+            <Setter Property="Width" Value="42"/><Setter Property="Height" Value="42"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="RadioButton">
                     <Grid>
-                        <Border x:Name="SwatchBorder" Background="{TemplateBinding Background}" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4"/>
-                        <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="5" Visibility="Collapsed"/>
+                        <Border x:Name="SwatchBorder" Background="{TemplateBinding Background}" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="6"/>
+                        <Border x:Name="SelectionRing" BorderBrush="#1A73E8" BorderThickness="2" CornerRadius="7" Visibility="Collapsed"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True"><Setter TargetName="SelectionRing" Property="Visibility" Value="Visible"/></Trigger>
@@ -178,7 +159,7 @@
         </Style>
 
         <Style x:Key="TemplateThumb" TargetType="RadioButton">
-            <Setter Property="Width" Value="54"/><Setter Property="Height" Value="70"/>
+            <Setter Property="Width" Value="60"/><Setter Property="Height" Value="78"/>
             <Setter Property="Margin" Value="4"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="RadioButton">
@@ -258,15 +239,8 @@
             </Setter>
         </Style>
 
-        <Style x:Key="SettingsSlider" TargetType="Slider">
-            <Setter Property="Minimum" Value="0"/>
-            <Setter Property="Maximum" Value="100"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Width" Value="220"/>
-        </Style>
-
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
-            <DrawingBrush.Drawing><GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,54,70"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing>
+            <DrawingBrush.Drawing><GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,60,78"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing>
         </DrawingBrush>
         <DrawingBrush x:Key="PreviewRuled" TileMode="Tile" Viewport="0,0,10,10" ViewportUnits="Absolute">
             <DrawingBrush.Drawing><DrawingGroup>
@@ -347,7 +321,7 @@
                 BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Visibility="Collapsed">
             <DockPanel Margin="8,6">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style" Click="PaletteButton_Click"/>
+                    <Button x:Name="PaletteButton" Style="{StaticResource ToolIconButton}" Content="&#xE790;" ToolTip="Page style (Settings)" Click="PaletteButton_Click"/>
                     <Rectangle Width="1" Margin="6,6" Fill="#DDDDDD"/>
                     <Button x:Name="PrevPageButton" Style="{StaticResource ToolIconButton}" Content="&#xE76B;" ToolTip="Previous page" Click="PrevPageButton_Click"/>
                     <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="4,0" MinWidth="76">
@@ -455,7 +429,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- Draggable quick-colour square -->
             <Canvas x:Name="ColorSquareHost" ClipToBounds="False" Background="{x:Null}">
                 <Border x:Name="ColorSquareRoot" Background="White"
                         BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="12" Padding="0">
@@ -481,102 +454,12 @@
                 </Border>
             </Canvas>
 
-            <!-- Side panel -->
-            <Border x:Name="SidePanel" HorizontalAlignment="Right" Width="320"
-                    Background="#FFFFFF" BorderBrush="#E0E0E0" BorderThickness="1,0,0,0" Visibility="Collapsed">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="18,16">
-                        <TextBlock Text="Paper" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,0,0,6"/>
-                        <UniformGrid Columns="2">
-                            <RadioButton x:Name="PaperWhite" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperWhite}" ToolTip="Plain white" Click="PaperThumb_Click" Tag="White"/>
-                            <RadioButton x:Name="PaperCrumpled" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperCrumpled}" ToolTip="Crumpled" Click="PaperThumb_Click" Tag="Crumpled"/>
-                        </UniformGrid>
-
-                        <TextBlock Text="Background Colour" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                        <UniformGrid Columns="4" Rows="2">
-                            <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
-                            <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
-                            <RadioButton x:Name="ColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#EEEEEE" ToolTip="Light grey" Click="ColorSwatch_Click" Tag="#EEEEEE"/>
-                            <RadioButton x:Name="ColorSage" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE9D5" ToolTip="Sage" Click="ColorSwatch_Click" Tag="#DCE9D5"/>
-                            <RadioButton x:Name="ColorSky" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE4F2" ToolTip="Sky" Click="ColorSwatch_Click" Tag="#DCE4F2"/>
-                            <RadioButton x:Name="ColorNavy" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#2C3E5C" ToolTip="Navy" Click="ColorSwatch_Click" Tag="#2C3E5C"/>
-                            <RadioButton x:Name="ColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1E4D3A" ToolTip="Dark green" Click="ColorSwatch_Click" Tag="#1E4D3A"/>
-                            <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
-                        </UniformGrid>
-
-                        <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                        <UniformGrid Columns="4">
-                            <RadioButton x:Name="TemplateBlank" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewBlank}" ToolTip="Blank" Click="TemplateButton_Click" Tag="Blank"/>
-                            <RadioButton x:Name="TemplateRuled" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewRuled}" ToolTip="Ruled" Click="TemplateButton_Click" Tag="Ruled"/>
-                            <RadioButton x:Name="TemplateGrid" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewGrid}" ToolTip="Grid" Click="TemplateButton_Click" Tag="Grid"/>
-                            <RadioButton x:Name="TemplateDot" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewDot}" ToolTip="Dot grid" Click="TemplateButton_Click" Tag="Dot"/>
-                        </UniformGrid>
-
-                        <TextBlock Text="Spacing" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                        <DockPanel>
-                            <TextBlock x:Name="SpacingText" DockPanel.Dock="Right" Text="40" Width="32" TextAlignment="Right"
-                                       VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
-                            <Slider x:Name="SpacingSlider" Minimum="1" Maximum="60" Value="40"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    VerticalAlignment="Center" ValueChanged="SpacingSlider_ValueChanged"/>
-                        </DockPanel>
-
-                        <TextBlock Text="Cursor over page" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,22,0,6"/>
-                        <ComboBox x:Name="CursorCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="CursorCombo_SelectionChanged">
-                            <ComboBoxItem Content="Arrow"/>
-                            <ComboBoxItem Content="Crosshair"/>
-                            <ComboBoxItem Content="Hollow ring + dot"/>
-                            <ComboBoxItem Content="Hidden (use pen tip)"/>
-                        </ComboBox>
-
-                        <TextBlock Text="Pointer size" FontWeight="SemiBold" FontSize="13" Foreground="#333333" Margin="0,18,0,6"/>
-                        <DockPanel>
-                            <TextBlock x:Name="PointerSizeText" DockPanel.Dock="Right" Text="12" Width="32"
-                                       TextAlignment="Right" VerticalAlignment="Center" FontSize="12" Foreground="#555555"/>
-                            <Slider x:Name="PointerSizeSlider" Minimum="6" Maximum="32" Value="12"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    VerticalAlignment="Center" ValueChanged="PointerSizeSlider_ValueChanged"/>
-                        </DockPanel>
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
-
-            <Border x:Name="FloatingZoom" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                    Margin="0,0,28,28" Background="#FAFFFFFF" BorderBrush="#B0B0B0" BorderThickness="1"
-                    CornerRadius="10" Padding="4,3">
-                <Border.Effect>
-                    <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="3" Opacity="0.22" Direction="270"/>
-                </Border.Effect>
-                <Border.RenderTransform>
-                    <TranslateTransform x:Name="FloatingZoomTransform" X="0" Y="0"/>
-                </Border.RenderTransform>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Border x:Name="FloatingZoomGrip" Padding="8,4" Background="Transparent" Cursor="SizeAll" ToolTip="Drag"
-                            MouseLeftButtonDown="FloatingZoomGrip_MouseDown"
-                            MouseMove="FloatingZoomGrip_MouseMove"
-                            MouseLeftButtonUp="FloatingZoomGrip_MouseUp">
-                        <TextBlock Text="&#xE784;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#999999" VerticalAlignment="Center"/>
-                    </Border>
-                    <Rectangle Width="1" Margin="2,2" Fill="#DDDDDD"/>
-                    <Button x:Name="ZoomOutButton" Style="{StaticResource SmallIconButton}" Content="&#xE71F;" ToolTip="Zoom out" Click="ZoomOutButton_Click"/>
-                    <Border Background="#FFFFFF" BorderBrush="#CCCCCC" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="4,0" MinWidth="60">
-                        <TextBox x:Name="ZoomText" Text="100%" Width="46" BorderThickness="0" Background="Transparent"
-                                 Padding="0" FontSize="12" Foreground="#333333"
-                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                 KeyDown="ZoomText_KeyDown" LostFocus="ZoomText_LostFocus"/>
-                    </Border>
-                    <Button x:Name="ZoomInButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A3;" ToolTip="Zoom in" Click="ZoomInButton_Click"/>
-                    <Button x:Name="ZoomResetButton" Style="{StaticResource SmallIconButton}" Content="&#xE8A1;" ToolTip="Reset" Click="ZoomResetButton_Click"/>
-                </StackPanel>
-            </Border>
-
             <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                    Margin="0,0,0,90" Background="#DD222222" CornerRadius="8" Padding="14,8"
+                    Margin="0,0,0,60" Background="#DD222222" CornerRadius="8" Padding="14,8"
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
             </Border>
 
-            <!-- Hamburger flyout menu -->
             <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
                     Margin="8,42,0,0" Width="220" Background="White"
                     BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="8"
@@ -619,10 +502,9 @@
                 </StackPanel>
             </Border>
 
-            <!-- Settings modal overlay -->
             <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Panel.ZIndex="500"
                   Background="#AA000000" MouseDown="SettingsOverlay_MouseDown">
-                <Border Background="White" Width="620" MaxHeight="720"
+                <Border Background="White" Width="640" MaxHeight="760"
                         BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="12"
                         HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Border.Effect>
@@ -649,7 +531,45 @@
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="24,20">
                             <StackPanel>
                                 <!-- Appearance -->
-                                <TextBlock Text="Appearance" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+                                <TextBlock Text="Paper" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
+                                <UniformGrid Columns="4" Margin="0,0,0,16">
+                                    <RadioButton x:Name="PaperWhite" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperWhite}" ToolTip="Plain white" Click="PaperThumb_Click" Tag="White"/>
+                                    <RadioButton x:Name="PaperCrumpled" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperCrumpled}" ToolTip="Crumpled" Click="PaperThumb_Click" Tag="Crumpled"/>
+                                </UniformGrid>
+
+                                <TextBlock Text="Background colour" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
+                                <UniformGrid Columns="8" Margin="0,0,0,16">
+                                    <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
+                                    <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
+                                    <RadioButton x:Name="ColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#EEEEEE" ToolTip="Light grey" Click="ColorSwatch_Click" Tag="#EEEEEE"/>
+                                    <RadioButton x:Name="ColorSage" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE9D5" ToolTip="Sage" Click="ColorSwatch_Click" Tag="#DCE9D5"/>
+                                    <RadioButton x:Name="ColorSky" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE4F2" ToolTip="Sky" Click="ColorSwatch_Click" Tag="#DCE4F2"/>
+                                    <RadioButton x:Name="ColorNavy" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#2C3E5C" ToolTip="Navy" Click="ColorSwatch_Click" Tag="#2C3E5C"/>
+                                    <RadioButton x:Name="ColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1E4D3A" ToolTip="Dark green" Click="ColorSwatch_Click" Tag="#1E4D3A"/>
+                                    <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
+                                </UniformGrid>
+
+                                <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
+                                <UniformGrid Columns="4" Margin="0,0,0,16">
+                                    <RadioButton x:Name="TemplateBlank" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewBlank}" ToolTip="Blank" Click="TemplateButton_Click" Tag="Blank"/>
+                                    <RadioButton x:Name="TemplateRuled" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewRuled}" ToolTip="Ruled" Click="TemplateButton_Click" Tag="Ruled"/>
+                                    <RadioButton x:Name="TemplateGrid" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewGrid}" ToolTip="Grid" Click="TemplateButton_Click" Tag="Grid"/>
+                                    <RadioButton x:Name="TemplateDot" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewDot}" ToolTip="Dot grid" Click="TemplateButton_Click" Tag="Dot"/>
+                                </UniformGrid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Spacing" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="SpacingSlider" Minimum="1" Maximum="60" Value="40"
+                                            TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                            ValueChanged="SpacingSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="SpacingText" Text="40" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
+                                </Grid>
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -693,16 +613,55 @@
                                                VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
                                 </Grid>
 
-                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,12,0,20"/>
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
 
                                 <!-- Cursor -->
                                 <TextBlock Text="Cursor" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
 
-                                <CheckBox x:Name="ShowCursorDotCheck" Content="Show dot in cursor centre" Margin="0,0,0,12"
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Cursor style" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <ComboBox Grid.Column="1" x:Name="CursorCombo" Width="220" HorizontalAlignment="Left" SelectedIndex="2" SelectionChanged="CursorCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Arrow"/>
+                                        <ComboBoxItem Content="Crosshair"/>
+                                        <ComboBoxItem Content="Hollow ring + dot"/>
+                                        <ComboBoxItem Content="Hidden (use pen tip)"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Pointer size" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="PointerSizeSlider" Minimum="6" Maximum="32" Value="12"
+                                            TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                            ValueChanged="PointerSizeSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="PointerSizeText" Text="12" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
+                                </Grid>
+
+                                <CheckBox x:Name="ShowCursorDotCheck" Content="Show dot in cursor centre" Margin="0,4,0,12"
                                           Foreground="#555555" FontSize="13"
                                           Checked="ShowCursorDotCheck_Changed" Unchecked="ShowCursorDotCheck_Changed"/>
 
-                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,12,0,20"/>
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
+
+                                <!-- View -->
+                                <TextBlock Text="Zoom" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+                                <DockPanel Margin="0,0,0,16">
+                                    <Button x:Name="ZoomOutButton" Height="30" Width="60" Content="−" FontSize="16" Margin="0,0,6,0" Click="ZoomOutButton_Click"/>
+                                    <Button x:Name="ZoomResetButton" Height="30" Width="80" Content="Reset" Margin="0,0,6,0" Click="ZoomResetButton_Click"/>
+                                    <Button x:Name="ZoomInButton" Height="30" Width="60" Content="+" FontSize="16" Click="ZoomInButton_Click"/>
+                                    <TextBlock x:Name="ZoomText" Text="100%" Margin="14,0,0,0" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                </DockPanel>
+
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
 
                                 <!-- PDF export -->
                                 <TextBlock Text="PDF export" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
@@ -713,7 +672,7 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Page size" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
-                                    <ComboBox Grid.Column="1" x:Name="PdfPageSizeCombo" Width="200" HorizontalAlignment="Left" SelectedIndex="0">
+                                    <ComboBox Grid.Column="1" x:Name="PdfPageSizeCombo" Width="220" HorizontalAlignment="Left" SelectedIndex="0">
                                         <ComboBoxItem Content="A4"/>
                                         <ComboBoxItem Content="Letter"/>
                                         <ComboBoxItem Content="Legal"/>
@@ -728,13 +687,13 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Orientation" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
-                                    <ComboBox Grid.Column="1" x:Name="PdfOrientationCombo" Width="200" HorizontalAlignment="Left" SelectedIndex="0">
+                                    <ComboBox Grid.Column="1" x:Name="PdfOrientationCombo" Width="220" HorizontalAlignment="Left" SelectedIndex="0">
                                         <ComboBoxItem Content="Portrait"/>
                                         <ComboBoxItem Content="Landscape"/>
                                     </ComboBox>
                                 </Grid>
 
-                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,12,0,20"/>
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
 
                                 <!-- Shortcuts -->
                                 <TextBlock Text="Keyboard shortcuts" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,6"/>
