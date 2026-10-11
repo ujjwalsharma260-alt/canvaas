@@ -257,6 +257,36 @@ public partial class MainWindow : Window
     private int _pdfPageSizeIndex = 0;
     private int _pdfOrientationIndex = 0;
 
+    // Library / Tab mode
+    private readonly ObservableCollection<NoteCardItem> _libraryItems = new();
+    private bool _tabMode = false;
+    private Rect _preFullscreenBounds = Rect.Empty;
+    private readonly DispatcherTimer _topHoverTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
+
+    public sealed class NoteCardItem
+    {
+        public string FilePath { get; set; } = "";
+        public string Title { get; set; } = "";
+        public int PageCount { get; set; }
+        public string TimeAgo { get; set; } = "";
+        public Brush AccentBrush { get; set; } = Brushes.Gray;
+    }
+
+    // Library / Tab mode
+    private readonly ObservableCollection<NoteCardItem> _libraryItems = new();
+    private bool _tabMode = false;
+    private Rect _preFullscreenBounds = Rect.Empty;
+    private readonly DispatcherTimer _topHoverTimer = new() { Interval = TimeSpan.FromMilliseconds(1000) };
+
+    public sealed class NoteCardItem
+    {
+        public string FilePath { get; set; } = "";
+        public string Title { get; set; } = "";
+        public int PageCount { get; set; }
+        public string TimeAgo { get; set; } = "";
+        public Brush AccentBrush { get; set; } = Brushes.Gray;
+    }
+
     private NotebookPage CurrentPage => _pages[_currentPageIndex];
 
     private static string SettingsFilePath
@@ -347,6 +377,23 @@ public partial class MainWindow : Window
         UpdateCursor();
         TitleBarText.Text = "Canvaas";
         UpdateTitle();
+
+        // Tab-mode hover timer
+        _topHoverTimer.Tick += (s, e) =>
+        {
+            _topHoverTimer.Stop();
+            if (!_tabMode) return;
+            if (TitleBarBorder != null && !TitleBarBorder.IsMouseOver)
+                TitleBarBorder.Visibility = Visibility.Collapsed;
+        };
+
+        // Start in library view
+        Loaded += (s, e) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            LibraryView.Visibility = Visibility.Visible;
+            EditorView.Visibility = Visibility.Collapsed;
+            LoadLibrary();
+        }), DispatcherPriority.Background);
     }
 
     // =====================================================================
@@ -1560,7 +1607,7 @@ public partial class MainWindow : Window
         bool textBoxFocused = Keyboard.FocusedElement is TextBox;
 
         if (MatchesShortcut("fullscreen", e.Key, modsNow)) { ToggleFullscreen(); e.Handled = true; return; }
-        if (MatchesShortcut("toggle_chrome", e.Key, modsNow)) { ChromeToggleButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
+        if (MatchesShortcut("toggle_chrome", e.Key, modsNow)) { ToggleTabMode(); e.Handled = true; return; }
 
         if (!textBoxFocused)
         {
@@ -1711,6 +1758,7 @@ public partial class MainWindow : Window
         if (_fullscreenMode)
         {
             _preFullscreenWindowState = WindowState;
+            _preFullscreenBounds = new Rect(Left, Top, Width, Height);
             _preFullscreenTopmost = Topmost;
             WindowState = WindowState.Normal;
             WindowStyle = WindowStyle.None;
@@ -1732,7 +1780,24 @@ public partial class MainWindow : Window
             Topmost = _preFullscreenTopmost;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
-            WindowState = _preFullscreenWindowState;
+
+            if (_preFullscreenWindowState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Maximized;
+            }
+            else
+            {
+                WindowState = WindowState.Normal;
+                if (!_preFullscreenBounds.IsEmpty
+                    && _preFullscreenBounds.Width > 100
+                    && _preFullscreenBounds.Height > 100)
+                {
+                    Left = _preFullscreenBounds.Left;
+                    Top = _preFullscreenBounds.Top;
+                    Width = _preFullscreenBounds.Width;
+                    Height = _preFullscreenBounds.Height;
+                }
+            }
             if (hwnd != IntPtr.Zero)
             {
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_FRAMECHANGED);
@@ -3679,5 +3744,173 @@ public partial class MainWindow : Window
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    // =====================================================================
+    // Library
+    // =====================================================================
+    private static string LibraryFolder
+        => System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+            "Canvaas");
+
+    private void ShowLibrary()
+    {
+        EditorView.Visibility = Visibility.Collapsed;
+        LibraryView.Visibility = Visibility.Visible;
+        TitleBarText.Text = "Canvaas";
+        LoadLibrary();
+    }
+
+    private void ShowEditor()
+    {
+        LibraryView.Visibility = Visibility.Collapsed;
+        EditorView.Visibility = Visibility.Visible;
+        UpdateTitle();
+    }
+
+    private void LoadLibrary()
+    {
+        _libraryItems.Clear();
+        try
+        {
+            Directory.CreateDirectory(LibraryFolder);
+            foreach (var f in Directory.GetFiles(LibraryFolder, "*.canvaas"))
+            {
+                var info = new FileInfo(f);
+                int pageCount = 1;
+                try
+                {
+                    using var fs = new FileStream(f, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
+                    var me = zip.GetEntry(ManifestEntryName);
+                    if (me != null)
+                    {
+                        using var es = me.Open();
+                        var mf = JsonSerializer.Deserialize<Manifest>(es, JsonOptions);
+                        if (mf?.Pages is { Count: > 0 }) pageCount = mf.Pages.Count;
+                    }
+                }
+                catch { }
+
+                _libraryItems.Add(new NoteCardItem
+                {
+                    FilePath = f,
+                    Title = System.IO.Path.GetFileNameWithoutExtension(f),
+                    PageCount = pageCount,
+                    TimeAgo = FormatTimeAgo(info.LastWriteTimeUtc),
+                    AccentBrush = PickAccent(f)
+                });
+            }
+        }
+        catch { }
+
+        if (LibraryItemsControl != null)
+            LibraryItemsControl.ItemsSource = _libraryItems;
+    }
+
+    private static string FormatTimeAgo(DateTime utc)
+    {
+        var d = DateTime.UtcNow - utc;
+        if (d.TotalMinutes < 1) return "just now";
+        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes} min ago";
+        if (d.TotalDays < 1) return $"{(int)d.TotalHours} h ago";
+        if (d.TotalDays < 30) return $"{(int)d.TotalDays} d ago";
+        return utc.ToLocalTime().ToString("d MMM yyyy");
+    }
+
+    private static Brush PickAccent(string path)
+    {
+        var palette = new[]
+        {
+            Color.FromRgb(0xE5, 0x39, 0x35),
+            Color.FromRgb(0x26, 0xC6, 0xDA),
+            Color.FromRgb(0xCD, 0xDC, 0x39),
+            Color.FromRgb(0xFF, 0xB3, 0x00),
+            Color.FromRgb(0x43, 0xA0, 0x47),
+            Color.FromRgb(0x8E, 0x24, 0xAA),
+            Color.FromRgb(0xFF, 0x70, 0x43),
+            Color.FromRgb(0xD4, 0xE1, 0x57),
+        };
+        int hash = path.GetHashCode();
+        return new SolidColorBrush(palette[Math.Abs(hash) % palette.Length]);
+    }
+
+    private void LibraryCard_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        if (fe.Tag is not string path) return;
+        if (!ConfirmDiscardChanges()) return;
+        OpenFromFile(path);
+        ShowEditor();
+    }
+
+    private void LibraryBack_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmDiscardChanges()) return;
+        ShowLibrary();
+    }
+
+    private void CreateEmptyBook_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmDiscardChanges()) return;
+        _pages.Clear();
+        _pages.Add(new NotebookPage());
+        _currentPageIndex = 0;
+        LoadCurrentPageIntoCanvas();
+        _currentPath = null;
+        _dirty = false;
+        ShowEditor();
+        StatusText.Text = "New book. Draw and save.";
+    }
+
+    private void LibraryOpenFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (!ConfirmDiscardChanges()) return;
+        var dlg = new OpenFileDialog { Filter = FileFilter, DefaultExt = FileExtension, Title = "Open a Canvaas note" };
+        if (dlg.ShowDialog(this) == true)
+        {
+            OpenFromFile(dlg.FileName);
+            ShowEditor();
+        }
+    }
+
+    // =====================================================================
+    // Tab mode + hover reveal
+    // =====================================================================
+    private void ToggleTabMode()
+    {
+        _tabMode = !_tabMode;
+
+        if (_tabMode)
+        {
+            TitleBarBorder.Visibility = Visibility.Collapsed;
+            TopToolbarBorder.Visibility = Visibility.Collapsed;
+            StatusText.Text = "Tab mode. Move mouse to top edge to show header.";
+        }
+        else
+        {
+            TitleBarBorder.Visibility = Visibility.Visible;
+            TopToolbarBorder.Visibility = Visibility.Visible;
+            StatusText.Text = "Exited tab mode.";
+        }
+    }
+
+    private void Window_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_tabMode) return;
+        var pos = e.GetPosition(this);
+
+        if (pos.Y < 6)
+        {
+            if (TitleBarBorder != null) TitleBarBorder.Visibility = Visibility.Visible;
+            _topHoverTimer.Stop();
+        }
+        else if (pos.Y > 44 && TitleBarBorder != null
+                 && TitleBarBorder.Visibility == Visibility.Visible
+                 && !TitleBarBorder.IsMouseOver)
+        {
+            if (!_topHoverTimer.IsEnabled) _topHoverTimer.Start();
+        }
     }
 }
