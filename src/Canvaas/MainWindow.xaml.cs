@@ -8,10 +8,11 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
@@ -37,8 +38,6 @@ public partial class MainWindow : Window
     private const double MinZoom = 0.01;
     private const double MaxZoom = 40.0;
     private const double ExportMaxDim = 3000;
-    private const double SwipeMinDist = 250;
-    private const double SwipeMaxDurationMs = 700;
     private const double ZoomStepFactor = 1.25;
 
     private const double EdgeBtnSize = 30;
@@ -57,23 +56,22 @@ public partial class MainWindow : Window
     private enum ExpandDirection { Right, Left, Up, Down }
     private enum ResizeHandle { NW, N, NE, E, SE, S, SW, W }
 
-    // Actions that users can rebind
     private static readonly (string Id, string Name, string Default)[] ShortcutActions =
     {
-        ("fullscreen",   "Toggle fullscreen",  "F11"),
+        ("fullscreen",   "Toggle fullscreen",   "F11"),
         ("toggle_chrome","Show / hide toolbars","Tab"),
-        ("pen",          "Pen tool",           "1"),
-        ("highlighter",  "Highlighter tool",   "2"),
-        ("eraser",       "Eraser tool",        "3"),
-        ("lasso",        "Lasso tool",         "4"),
-        ("hand",         "Hand (pan)",         "5"),
-        ("undo",         "Undo",               "Ctrl+Z"),
-        ("redo",         "Redo",               "Ctrl+Y"),
-        ("delete",       "Delete selection",   "Del"),
-        ("copy",         "Copy selection",     "Ctrl+C"),
-        ("cut",          "Cut selection",      "Ctrl+X"),
-        ("paste",        "Paste",              "Ctrl+V"),
-        ("selectall",    "Select all",         "Ctrl+A"),
+        ("pen",          "Pen tool",            "1"),
+        ("highlighter",  "Highlighter tool",    "2"),
+        ("eraser",       "Eraser tool",         "3"),
+        ("lasso",        "Lasso tool",          "4"),
+        ("hand",         "Hand (pan)",          "5"),
+        ("undo",         "Undo",                "Ctrl+Z"),
+        ("redo",         "Redo",                "Ctrl+Y"),
+        ("delete",       "Delete selection",    "Del"),
+        ("copy",         "Copy selection",      "Ctrl+C"),
+        ("cut",          "Cut selection",       "Ctrl+X"),
+        ("paste",        "Paste",               "Ctrl+V"),
+        ("selectall",    "Select all",          "Ctrl+A"),
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -196,7 +194,6 @@ public partial class MainWindow : Window
     private bool _panning;
     private Point _panStart;
     private double _panStartPanX, _panStartPanY;
-    private DateTime _panStartTime;
 
     private double _viewZoom = 1.0;
     private double _viewPanX = 0;
@@ -219,24 +216,25 @@ public partial class MainWindow : Window
     private Point _dragStartWorld;
     private readonly Dictionary<UIElement, (double L, double T)> _elementStartPositions = new();
     private StrokeCollection? _dragOriginalStrokes;
-    private StrokeCollection? _dragPreviewStrokes;
     private StrokeCollection? _clipboardStrokes;
     private int _pasteCounter = 0;
 
+    // Smooth drag preview via bitmap
+    private Image? _strokeDragImage;
+    private Rect _strokeDragStartBounds;
+    private double _lastDragDx, _lastDragDy;
+
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
 
-    // Colour square drag
     private bool _draggingColorSquare;
     private Point _colorSquareDragStart;
     private double _colorSquareStartX, _colorSquareStartY;
 
-    // Keyboard shortcuts
     private Dictionary<string, string> _shortcuts = new();
     private readonly ObservableCollection<ShortcutItem> _shortcutItems = new();
     private bool _capturingShortcut;
     private string _capturingActionId = "";
 
-    // Resize handles
     private readonly List<Rectangle> _resizeHandles = new();
     private bool _resizingHandle = false;
     private ResizeHandle _activeHandle;
@@ -337,6 +335,99 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
+    // Selection action toolbar
+    // =====================================================================
+    private void SelToolDuplicate_Click(object sender, RoutedEventArgs e)
+    {
+        DuplicateSelection();
+    }
+
+    private void SelToolCopy_Click(object sender, RoutedEventArgs e)
+    {
+        CopySelection();
+    }
+
+    private void SelToolDelete_Click(object sender, RoutedEventArgs e)
+    {
+        DeleteSelection();
+    }
+
+    private void DuplicateSelection()
+    {
+        if (InkArea is null) return;
+        const double offset = 30;
+
+        var selStrokes = InkArea.GetSelectedStrokes();
+        var dupedStrokes = new StrokeCollection();
+
+        if (selStrokes.Count > 0)
+        {
+            foreach (var s in selStrokes)
+            {
+                var pts = new StylusPointCollection();
+                foreach (var p in s.StylusPoints)
+                    pts.Add(new StylusPoint((float)(p.X + offset), (float)(p.Y + offset), p.PressureFactor));
+                dupedStrokes.Add(new Stroke(pts, s.DrawingAttributes.Clone()));
+            }
+            _applyingHistory = true;
+            try { InkArea.Strokes.Add(dupedStrokes); }
+            finally { _applyingHistory = false; }
+            _undo.Push(new StrokeChange(dupedStrokes, new StrokeCollection()));
+            _redo.Clear();
+            InkArea.Select(dupedStrokes);
+        }
+
+        var newElements = new List<UIElement>();
+        foreach (var el in _selectedElements.ToList())
+        {
+            if (el is not FrameworkElement fe) continue;
+            if (fe is TextBox tb)
+            {
+                var newTb = new TextBox
+                {
+                    Text = tb.Text,
+                    FontSize = tb.FontSize,
+                    Width = tb.Width,
+                    Height = tb.Height,
+                    Foreground = tb.Foreground,
+                    AcceptsReturn = tb.AcceptsReturn,
+                    TextWrapping = tb.TextWrapping,
+                    Padding = tb.Padding,
+                    Background = tb.Background,
+                    BorderBrush = tb.BorderBrush,
+                    BorderThickness = tb.BorderThickness
+                };
+                InkCanvas.SetLeft(newTb, InkCanvas.GetLeft(fe) + offset);
+                InkCanvas.SetTop(newTb, InkCanvas.GetTop(fe) + offset);
+                InkArea.Children.Add(newTb);
+                newElements.Add(newTb);
+            }
+            else if (fe is Image img)
+            {
+                var newImg = new Image
+                {
+                    Source = img.Source,
+                    Width = img.Width,
+                    Height = img.Height,
+                    Stretch = img.Stretch
+                };
+                InkCanvas.SetLeft(newImg, InkCanvas.GetLeft(fe) + offset);
+                InkCanvas.SetTop(newImg, InkCanvas.GetTop(fe) + offset);
+                InkArea.Children.Add(newImg);
+                newElements.Add(newImg);
+            }
+        }
+
+        _selectedElements.Clear();
+        foreach (var ne in newElements) _selectedElements.Add(ne);
+
+        UpdateElementSelectionVisuals();
+        RebuildResizeHandles();
+        MarkDirty();
+        StatusText.Text = "Duplicated selection.";
+    }
+
+    // =====================================================================
     // Colour square
     // =====================================================================
     private void PositionColorSquare()
@@ -403,12 +494,8 @@ public partial class MainWindow : Window
     private void InitializeShortcuts()
     {
         _shortcuts.Clear();
-        foreach (var (id, _, def) in ShortcutActions)
-            _shortcuts[id] = def;
-
-        if (ShortcutList is not null)
-            ShortcutList.ItemsSource = _shortcutItems;
-
+        foreach (var (id, _, def) in ShortcutActions) _shortcuts[id] = def;
+        if (ShortcutList is not null) ShortcutList.ItemsSource = _shortcutItems;
         RefreshShortcutUI();
     }
 
@@ -427,17 +514,14 @@ public partial class MainWindow : Window
         if (sender is not Button b || b.Tag is not string actionId) return;
         _capturingShortcut = true;
         _capturingActionId = actionId;
-
         foreach (var item in _shortcutItems)
             if (item.ActionId == actionId) { item.KeyLabel = "Press a key…"; break; }
-
         Focus();
     }
 
     private void ResetShortcuts_Click(object sender, RoutedEventArgs e)
     {
-        foreach (var (id, _, def) in ShortcutActions)
-            _shortcuts[id] = def;
+        foreach (var (id, _, def) in ShortcutActions) _shortcuts[id] = def;
         RefreshShortcutUI();
         SaveSettings();
         StatusText.Text = "Shortcuts reset to defaults.";
@@ -449,17 +533,10 @@ public partial class MainWindow : Window
         if ((mods & ModifierKeys.Control) != 0) parts.Add("Ctrl");
         if ((mods & ModifierKeys.Shift) != 0) parts.Add("Shift");
         if ((mods & ModifierKeys.Alt) != 0) parts.Add("Alt");
-
         string k = key switch
         {
-            Key.Delete => "Del",
-            Key.Back => "Back",
-            Key.Return => "Enter",
-            Key.Escape => "Esc",
-            Key.Space => "Space",
-            Key.Tab => "Tab",
-            Key.OemPlus => "+",
-            Key.OemMinus => "-",
+            Key.Delete => "Del", Key.Back => "Back", Key.Return => "Enter",
+            Key.Escape => "Esc", Key.Space => "Space", Key.Tab => "Tab",
             _ => key.ToString()
         };
         parts.Add(k);
@@ -470,8 +547,6 @@ public partial class MainWindow : Window
     {
         if (!_shortcuts.TryGetValue(actionId, out var label)) return false;
         if (string.IsNullOrEmpty(label)) return false;
-
-        // Normalize "Ctrl+Z" style label
         var parts = label.Split('+', StringSplitOptions.RemoveEmptyEntries);
         ModifierKeys wantMods = 0;
         Key wantKey = Key.None;
@@ -497,10 +572,8 @@ public partial class MainWindow : Window
                     break;
             }
         }
-
-        // Only Ctrl/Shift matter for our purposes; Alt too
-        ModifierKeys relevantMask = ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt;
-        return wantKey == key && (mods & relevantMask) == wantMods;
+        ModifierKeys mask = ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt;
+        return wantKey == key && (mods & mask) == wantMods;
     }
 
     // =====================================================================
@@ -519,8 +592,7 @@ public partial class MainWindow : Window
     private void ApplyWorldSizeToCanvas()
     {
         if (CanvasHost is null || PageBackground is null || InkArea is null) return;
-        double w = CurrentPage.WorldWidth;
-        double h = CurrentPage.WorldHeight;
+        double w = CurrentPage.WorldWidth, h = CurrentPage.WorldHeight;
         CanvasHost.Width = w; CanvasHost.Height = h;
         PageBackground.Width = w; PageBackground.Height = h;
         Canvas.SetLeft(PageBackground, 0); Canvas.SetTop(PageBackground, 0);
@@ -547,7 +619,6 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "Sheet is at maximum size.", "Max size", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-
         double shiftX = addLeft, shiftY = addTop;
         if (shiftX > 0 || shiftY > 0) ShiftCurrentPageContent(shiftX, shiftY);
 
@@ -579,7 +650,6 @@ public partial class MainWindow : Window
     {
         if (Math.Abs(dx) < 0.0001 && Math.Abs(dy) < 0.0001) return;
         if (InkArea is null) return;
-
         var strokeMap = new Dictionary<Stroke, Stroke>();
         var shifted = new StrokeCollection();
         foreach (var s in CurrentPage.Strokes)
@@ -588,7 +658,6 @@ public partial class MainWindow : Window
             strokeMap[s] = ns;
             shifted.Add(ns);
         }
-
         _applyingHistory = true;
         try
         {
@@ -600,12 +669,10 @@ public partial class MainWindow : Window
         foreach (var child in InkArea.Children)
         {
             if (child is not FrameworkElement fe) continue;
-            double l = InkCanvas.GetLeft(fe);
-            double t = InkCanvas.GetTop(fe);
+            double l = InkCanvas.GetLeft(fe), t = InkCanvas.GetTop(fe);
             if (!double.IsNaN(l)) InkCanvas.SetLeft(fe, l + dx);
             if (!double.IsNaN(t)) InkCanvas.SetTop(fe, t + dy);
         }
-
         RemapHistoryStack(_undo, strokeMap, dx, dy);
         RemapHistoryStack(_redo, strokeMap, dx, dy);
         ClearElementSelection();
@@ -663,16 +730,14 @@ public partial class MainWindow : Window
     private void RebuildEdgeButtons()
     {
         if (CanvasHostBorder is null || EdgeButtonOverlay is null) return;
-        double vw = CanvasHostBorder.ActualWidth;
-        double vh = CanvasHostBorder.ActualHeight;
+        double vw = CanvasHostBorder.ActualWidth, vh = CanvasHostBorder.ActualHeight;
         if (vw < 40 || vh < 40) return;
 
         foreach (var c in EdgeButtonOverlay.Children)
             if (c is Button oldBtn) oldBtn.Click -= EdgeButton_Click;
         EdgeButtonOverlay.Children.Clear();
 
-        double w = CurrentPage.WorldWidth;
-        double h = CurrentPage.WorldHeight;
+        double w = CurrentPage.WorldWidth, h = CurrentPage.WorldHeight;
         int cols = Math.Max(1, (int)Math.Round(w / A4Width));
         int rows = Math.Max(1, (int)Math.Round(h / A4Height));
 
@@ -690,7 +755,6 @@ public partial class MainWindow : Window
                 if (bx >= EdgeBtnPad && bx + EdgeBtnSize <= vw - EdgeBtnPad)
                     AddEdgeButton(bx, topY, ExpandDirection.Up, "Add an A4 sheet above");
             }
-
         double botY = sheetB + EdgeBtnMargin;
         if (botY >= EdgeBtnPad && botY + EdgeBtnSize <= vh - EdgeBtnPad)
             for (int i = 0; i < cols; i++)
@@ -699,7 +763,6 @@ public partial class MainWindow : Window
                 if (bx >= EdgeBtnPad && bx + EdgeBtnSize <= vw - EdgeBtnPad)
                     AddEdgeButton(bx, botY, ExpandDirection.Down, "Add an A4 sheet below");
             }
-
         double leftX = sheetL - EdgeBtnSize - EdgeBtnMargin;
         if (leftX >= EdgeBtnPad && leftX + EdgeBtnSize <= vw - EdgeBtnPad)
             for (int j = 0; j < rows; j++)
@@ -708,7 +771,6 @@ public partial class MainWindow : Window
                 if (by >= EdgeBtnPad && by + EdgeBtnSize <= vh - EdgeBtnPad)
                     AddEdgeButton(leftX, by, ExpandDirection.Left, "Add an A4 sheet to the left");
             }
-
         double rightX = sheetR + EdgeBtnMargin;
         if (rightX >= EdgeBtnPad && rightX + EdgeBtnSize <= vw - EdgeBtnPad)
             for (int j = 0; j < rows; j++)
@@ -722,10 +784,7 @@ public partial class MainWindow : Window
     private void AddEdgeButton(double x, double y, ExpandDirection dir, string tooltip)
     {
         var btn = new Button
-        {
-            Style = (Style)FindResource("EdgeAddButton"),
-            Content = "\uE710", ToolTip = tooltip, Tag = dir
-        };
+        { Style = (Style)FindResource("EdgeAddButton"), Content = "\uE710", ToolTip = tooltip, Tag = dir };
         btn.Click += EdgeButton_Click;
         Canvas.SetLeft(btn, x); Canvas.SetTop(btn, y);
         EdgeButtonOverlay.Children.Add(btn);
@@ -738,21 +797,22 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Resize handles
+    // Resize handles + selection toolbar
     // =====================================================================
     private void RebuildResizeHandles()
     {
         if (HandleOverlay is null) return;
         foreach (var h in _resizeHandles) HandleOverlay.Children.Remove(h);
         _resizeHandles.Clear();
-        if (InkArea is null) return;
+        if (InkArea is null) { HideSelectionToolbar(); return; }
 
         var selStrokes = InkArea.GetSelectedStrokes();
         int total = selStrokes.Count + _selectedElements.Count;
-        if (total == 0) return;
+        if (total == 0) { HideSelectionToolbar(); return; }
 
         Rect boundsWorld = ComputeSelectionWorldBounds();
-        if (boundsWorld.IsEmpty || boundsWorld.Width < 1 || boundsWorld.Height < 1) return;
+        if (boundsWorld.IsEmpty || boundsWorld.Width < 1 || boundsWorld.Height < 1)
+        { HideSelectionToolbar(); return; }
         _selectionWorldBounds = boundsWorld;
 
         double sl = _viewPanX + boundsWorld.Left * _viewZoom;
@@ -780,6 +840,35 @@ public partial class MainWindow : Window
         AddResizeHandle((sl + sr) / 2, sb, ResizeHandle.S);
         AddResizeHandle(sl, sb, ResizeHandle.SW);
         AddResizeHandle(sl, (st + sb) / 2, ResizeHandle.W);
+
+        ShowSelectionToolbar(sl, sr, st);
+    }
+
+    private void ShowSelectionToolbar(double sl, double sr, double st)
+    {
+        if (SelectionToolbar is null) return;
+        double centerX = (sl + sr) / 2.0;
+        // Toolbar is ~110px wide, ~40px tall
+        double tx = centerX - 55;
+        double ty = st - 48;
+        if (ty < 4) ty = st + 4;
+        SelectionToolbar.Margin = new Thickness(tx, ty, 0, 0);
+        SelectionToolbar.Visibility = Visibility.Visible;
+    }
+
+    private void HideSelectionToolbar()
+    {
+        if (SelectionToolbar is not null) SelectionToolbar.Visibility = Visibility.Collapsed;
+    }
+
+    private void TranslateResizeHandles(double sdx, double sdy)
+    {
+        foreach (var h in _resizeHandles)
+        {
+            double l = Canvas.GetLeft(h), t = Canvas.GetTop(h);
+            if (!double.IsNaN(l)) Canvas.SetLeft(h, l + sdx);
+            if (!double.IsNaN(t)) Canvas.SetTop(h, t + sdy);
+        }
     }
 
     private void AddResizeHandle(double cx, double cy, ResizeHandle handle)
@@ -847,6 +936,7 @@ public partial class MainWindow : Window
     private void BeginResize(ResizeHandle handle)
     {
         if (InkArea is null) return;
+        HideSelectionToolbar();
         _resizingHandle = true;
         _activeHandle = handle;
         _resizeStartBounds = _selectionWorldBounds;
@@ -880,7 +970,6 @@ public partial class MainWindow : Window
             case ResizeHandle.SW: nL = mouseWorld.X; nB = mouseWorld.Y; break;
             case ResizeHandle.W:  nL = mouseWorld.X; break;
         }
-
         if (nR - nL < 10 || nB - nT < 10) return;
         double sx = (nR - nL) / Math.Max(0.0001, start.Right - start.Left);
         double sy = (nB - nT) / Math.Max(0.0001, start.Bottom - start.Top);
@@ -993,8 +1082,7 @@ public partial class MainWindow : Window
                 3 => PenCursorStyle.Hidden,
                 _ => PenCursorStyle.HollowRingDot
             };
-            if (s.Shortcuts is not null)
-                _shortcuts = new Dictionary<string, string>(s.Shortcuts);
+            if (s.Shortcuts is not null) _shortcuts = new Dictionary<string, string>(s.Shortcuts);
         }
         catch { }
     }
@@ -1242,7 +1330,6 @@ public partial class MainWindow : Window
     // =====================================================================
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // If we are capturing a shortcut, intercept the very next key
         if (_capturingShortcut)
         {
             if (e.Key == Key.Escape)
@@ -1252,17 +1339,11 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 return;
             }
-
-            // Ignore modifier-only presses
             if (e.Key is Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift
                 or Key.LeftAlt or Key.RightAlt or Key.System or Key.LWin or Key.RWin)
-            {
-                e.Handled = true;
-                return;
-            }
+            { e.Handled = true; return; }
 
-            var mods = Keyboard.Modifiers;
-            string label = KeyToLabel(e.Key, mods);
+            string label = KeyToLabel(e.Key, Keyboard.Modifiers);
             _shortcuts[_capturingActionId] = label;
             _capturingShortcut = false;
             RefreshShortcutUI();
@@ -1275,43 +1356,28 @@ public partial class MainWindow : Window
         var modsNow = Keyboard.Modifiers;
         bool textBoxFocused = Keyboard.FocusedElement is TextBox;
 
-        // Order matters: check modifier-based actions in sensible order
-        if (MatchesShortcut("fullscreen", e.Key, modsNow))
-        { ToggleFullscreen(); e.Handled = true; return; }
+        if (MatchesShortcut("fullscreen", e.Key, modsNow)) { ToggleFullscreen(); e.Handled = true; return; }
+        if (MatchesShortcut("toggle_chrome", e.Key, modsNow)) { ChromeToggleButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
 
-        if (MatchesShortcut("toggle_chrome", e.Key, modsNow))
-        { ChromeToggleButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
-
-        // Other shortcuts are suppressed while typing
         if (!textBoxFocused)
         {
             if (MatchesShortcut("delete", e.Key, modsNow) && DeleteSelection()) { e.Handled = true; return; }
             if (MatchesShortcut("copy", e.Key, modsNow) && CopySelection()) { e.Handled = true; return; }
             if (MatchesShortcut("cut", e.Key, modsNow) && CutSelection()) { e.Handled = true; return; }
             if (MatchesShortcut("paste", e.Key, modsNow) && PasteClipboard()) { e.Handled = true; return; }
-            if (MatchesShortcut("selectall", e.Key, modsNow))
-            { ApplicationCommands.SelectAll.Execute(null, this); e.Handled = true; return; }
-            if (MatchesShortcut("undo", e.Key, modsNow))
-            { ApplicationCommands.Undo.Execute(null, this); e.Handled = true; return; }
-            if (MatchesShortcut("redo", e.Key, modsNow))
-            { ApplicationCommands.Redo.Execute(null, this); e.Handled = true; return; }
-
-            if (MatchesShortcut("pen", e.Key, modsNow))
-            { PenButton.IsChecked = true; PenButton_Click(PenButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("highlighter", e.Key, modsNow))
-            { HighlighterButton.IsChecked = true; HighlighterButton_Click(HighlighterButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("eraser", e.Key, modsNow))
-            { EraserButton.IsChecked = true; EraserButton_Click(EraserButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("lasso", e.Key, modsNow))
-            { LassoButton.IsChecked = true; LassoButton_Click(LassoButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("hand", e.Key, modsNow))
-            { HandButton.IsChecked = true; HandButton_Click(HandButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("selectall", e.Key, modsNow)) { ApplicationCommands.SelectAll.Execute(null, this); e.Handled = true; return; }
+            if (MatchesShortcut("undo", e.Key, modsNow)) { ApplicationCommands.Undo.Execute(null, this); e.Handled = true; return; }
+            if (MatchesShortcut("redo", e.Key, modsNow)) { ApplicationCommands.Redo.Execute(null, this); e.Handled = true; return; }
+            if (MatchesShortcut("pen", e.Key, modsNow)) { PenButton.IsChecked = true; PenButton_Click(PenButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("highlighter", e.Key, modsNow)) { HighlighterButton.IsChecked = true; HighlighterButton_Click(HighlighterButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("eraser", e.Key, modsNow)) { EraserButton.IsChecked = true; EraserButton_Click(EraserButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("lasso", e.Key, modsNow)) { LassoButton.IsChecked = true; LassoButton_Click(LassoButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("hand", e.Key, modsNow)) { HandButton.IsChecked = true; HandButton_Click(HandButton, new RoutedEventArgs()); e.Handled = true; return; }
         }
 
         if (!textBoxFocused && e.Key == Key.Escape)
         {
-            if (_selectedElements.Count > 0 ||
-                (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0))
+            if (_selectedElements.Count > 0 || (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0))
             {
                 ClearElementSelection();
                 InkArea?.Select(new StrokeCollection());
@@ -1322,7 +1388,6 @@ public partial class MainWindow : Window
         }
 
         if (textBoxFocused) return;
-
         if (e.Key == Key.Left) { PrevPageButton_Click(PrevPageButton, new RoutedEventArgs()); e.Handled = true; }
         else if (e.Key == Key.Right) { NextPageButton_Click(NextPageButton, new RoutedEventArgs()); e.Handled = true; }
     }
@@ -1343,7 +1408,6 @@ public partial class MainWindow : Window
             AppWindowChrome.ResizeBorderThickness = _fullscreenMode ? new Thickness(0) : new Thickness(6);
         }
         ReleaseAllCaptures();
-
         IntPtr hwnd;
         try { hwnd = new WindowInteropHelper(this).Handle; } catch { hwnd = IntPtr.Zero; }
 
@@ -1358,8 +1422,7 @@ public partial class MainWindow : Window
             double sh = SystemParameters.PrimaryScreenHeight;
             Left = 0; Top = 0; Width = sw; Height = sh;
             Topmost = true;
-            if (hwnd != IntPtr.Zero)
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW);
+            if (hwnd != IntPtr.Zero) SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW);
             StatusText.Text = "Fullscreen. Press ESC or F11 to exit.";
         }
         else
@@ -1368,11 +1431,9 @@ public partial class MainWindow : Window
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
             WindowState = _preFullscreenWindowState;
-            if (hwnd != IntPtr.Zero)
-                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE);
+            if (hwnd != IntPtr.Zero) SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE);
             StatusText.Text = "Exited fullscreen.";
         }
-
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
     }
 
@@ -1704,6 +1765,100 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
+    // PDF export
+    // =====================================================================
+    private void ExportAsPdf_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var printDialog = new PrintDialog();
+            if (printDialog.ShowDialog() != true) return;
+
+            double pw = printDialog.PrintableAreaWidth;
+            double ph = printDialog.PrintableAreaHeight;
+
+            var document = new FixedDocument();
+            foreach (var page in _pages)
+            {
+                var fixedPage = new FixedPage
+                {
+                    Width = pw,
+                    Height = ph,
+                    Background = Brushes.White
+                };
+
+                var img = new Image
+                {
+                    Source = RenderPageForPrint(page, (int)pw, (int)ph),
+                    Width = pw,
+                    Height = ph,
+                    Stretch = Stretch.Uniform
+                };
+                FixedPage.SetLeft(img, 0);
+                FixedPage.SetTop(img, 0);
+                fixedPage.Children.Add(img);
+
+                var pc = new PageContent();
+                ((IAddChild)pc).AddChild(fixedPage);
+                document.Pages.Add(pc);
+            }
+
+            printDialog.PrintDocument(document.DocumentPaginator, "Canvaas note");
+            StatusText.Text = "Printed. Choose 'Microsoft Print to PDF' to save as PDF.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "PDF export failed.\n\n" + ex.Message,
+                "Export as PDF", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static BitmapSource RenderPageForPrint(NotebookPage page, int targetWidth, int targetHeight)
+    {
+        Rect world;
+        if (page.Strokes.Count > 0) world = page.Strokes.GetBounds();
+        else world = new Rect(0, 0, A4Width, A4Height);
+        world.Inflate(40, 40);
+
+        double scale = Math.Min(targetWidth / world.Width, targetHeight / world.Height);
+        int pxW = (int)Math.Round(world.Width * scale);
+        int pxH = (int)Math.Round(world.Height * scale);
+
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, targetWidth, targetHeight));
+
+            double ox = (targetWidth - pxW) / 2.0;
+            double oy = (targetHeight - pxH) / 2.0;
+            dc.PushTransform(new TranslateTransform(ox, oy));
+            dc.PushTransform(new ScaleTransform(scale, scale));
+            dc.PushTransform(new TranslateTransform(-world.X, -world.Y));
+            dc.DrawRectangle(new SolidColorBrush(page.BackgroundColor), null, world);
+            foreach (var s in page.Strokes) s.Draw(dc);
+            dc.Pop(); dc.Pop(); dc.Pop();
+        }
+
+        var rtb = new RenderTargetBitmap(targetWidth, targetHeight, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+        return rtb;
+    }
+
+    private void ImportPdf_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog { Filter = "PDF files (*.pdf)|*.pdf", Title = "Insert PDF" };
+        if (dlg.ShowDialog(this) != true) return;
+
+        MessageBox.Show(this,
+            "PDF import requires an external library that isn't included in this build.\n\n" +
+            "Workaround: open the PDF in any viewer, take a screenshot of each page, " +
+            "then use Paste Image from Clipboard (or Insert Image).\n\n" +
+            "If you want native PDF import, tell the developer to add the PdfPig NuGet package.",
+            "PDF import", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    // =====================================================================
     // Panning + lasso
     // =====================================================================
     private Point ScreenToWorld(Point p) => new Point((p.X - _viewPanX) / _viewZoom, (p.Y - _viewPanY) / _viewZoom);
@@ -1729,8 +1884,18 @@ public partial class MainWindow : Window
             _panStart = screenPt;
             _panStartPanX = _viewPanX;
             _panStartPanY = _viewPanY;
-            _panStartTime = DateTime.UtcNow;
             CanvasHostBorder.CaptureMouse();
+
+            // Hide cursor during pan so pen tip is visible
+            CanvasHostBorder.Cursor = Cursors.None;
+            if (InkArea is not null) InkArea.Cursor = Cursors.None;
+
+            // Bitmap cache for smooth panning
+            if (CanvasHost is not null)
+            {
+                try { CanvasHost.CacheMode = new BitmapCache(); } catch { }
+            }
+
             e.Handled = true;
             return;
         }
@@ -1764,7 +1929,7 @@ public partial class MainWindow : Window
             _viewPanY = _panStartPanY + (screenPt.Y - _panStart.Y);
             if (ViewTransform is not null)
                 ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-            ScheduleRebuildEdgeButtons();
+            // NO rebuild during pan — only update transform
             e.Handled = true;
             return;
         }
@@ -1810,23 +1975,9 @@ public partial class MainWindow : Window
             if (CanvasHostBorder.IsMouseCaptured) CanvasHostBorder.ReleaseMouseCapture();
             if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
         }
-        double dx = _viewPanX - _panStartPanX;
-        double dy = _viewPanY - _panStartPanY;
-        double elapsed = (DateTime.UtcNow - _panStartTime).TotalMilliseconds;
-        if (_tool == ToolMode.Hand && Math.Abs(dx) >= SwipeMinDist
-            && Math.Abs(dx) > 2.5 * Math.Abs(dy) && elapsed <= SwipeMaxDurationMs)
-        {
-            _viewPanX = _panStartPanX;
-            _viewPanY = _panStartPanY;
-            if (ViewTransform is not null)
-                ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
-            if (dx < 0) NextPageButton_Click(this, new RoutedEventArgs());
-            else PrevPageButton_Click(this, new RoutedEventArgs());
-            UpdateCursor();
-            ScheduleRebuildEdgeButtons();
-            return;
-        }
-        ApplyView();
+        SaveCurrentViewToPage();
+        ScheduleRebuildEdgeButtons();
+        RebuildResizeHandles();
         UpdateCursor();
     }
 
@@ -1942,26 +2093,91 @@ public partial class MainWindow : Window
         return bounds.Contains(worldPt);
     }
 
+    // =====================================================================
+    // Selection drag — smooth bitmap preview
+    // =====================================================================
     private void StartSelectionDrag(Point worldPt)
     {
         _draggingSelection = true;
         _dragStartWorld = worldPt;
+        _lastDragDx = 0;
+        _lastDragDy = 0;
+
+        HideSelectionToolbar();
+
         _elementStartPositions.Clear();
         foreach (var el in _selectedElements)
             _elementStartPositions[el] = (InkCanvas.GetLeft(el), InkCanvas.GetTop(el));
+
         var sel = InkArea?.GetSelectedStrokes();
-        if (sel is not null && sel.Count > 0)
+        if (sel is not null && sel.Count > 0 && CanvasHost is not null)
         {
             _dragOriginalStrokes = new StrokeCollection();
             foreach (var s in sel) _dragOriginalStrokes.Add(s);
-            _dragPreviewStrokes = _dragOriginalStrokes;
+
+            var bounds = _dragOriginalStrokes.GetBounds();
+            _strokeDragStartBounds = bounds;
+
+            // Render strokes once to a bitmap for smooth preview
+            var bmp = RenderStrokesToBitmap(_dragOriginalStrokes, bounds);
+            _strokeDragImage = new Image
+            {
+                Source = bmp,
+                Width = bounds.Width * _viewZoom,
+                Height = bounds.Height * _viewZoom,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false
+            };
+            double sl = _viewPanX + bounds.Left * _viewZoom;
+            double st = _viewPanY + bounds.Top * _viewZoom;
+            Canvas.SetLeft(_strokeDragImage, sl);
+            Canvas.SetTop(_strokeDragImage, st);
+            CanvasHost.Children.Add(_strokeDragImage);
+
+            // Remove originals from InkArea
+            _applyingHistory = true;
+            try
+            {
+                var toRemove = new StrokeCollection();
+                foreach (var s in sel) toRemove.Add(s);
+                InkArea.Strokes.Remove(toRemove);
+            }
+            finally { _applyingHistory = false; }
         }
-        else { _dragOriginalStrokes = null; _dragPreviewStrokes = null; }
+        else
+        {
+            _dragOriginalStrokes = null;
+            _strokeDragImage = null;
+        }
+    }
+
+    private static RenderTargetBitmap RenderStrokesToBitmap(StrokeCollection strokes, Rect bounds)
+    {
+        double dpi = 96.0 * 2.0;
+        int pxW = Math.Max(1, (int)Math.Ceiling(bounds.Width * 2));
+        int pxH = Math.Max(1, (int)Math.Ceiling(bounds.Height * 2));
+        if (pxW > 4000) pxW = 4000;
+        if (pxH > 4000) pxH = 4000;
+
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.PushTransform(new TranslateTransform(-bounds.X, -bounds.Y));
+            dc.PushTransform(new ScaleTransform(2, 2));
+            dc.DrawRectangle(Brushes.Transparent, null, bounds);
+            foreach (var s in strokes) s.Draw(dc);
+            dc.Pop();
+            dc.Pop();
+        }
+        var rtb = new RenderTargetBitmap(pxW, pxH, dpi, dpi, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+        return rtb;
     }
 
     private void UpdateSelectionDrag(double dx, double dy)
     {
-        if (CanvasHost is null) return;
+        // Move live elements (fast)
         foreach (var el in _selectedElements)
             if (_elementStartPositions.TryGetValue(el, out var s))
             {
@@ -1969,29 +2185,30 @@ public partial class MainWindow : Window
                 InkCanvas.SetTop(el, s.T + dy);
             }
 
-        if (InkArea is not null && _dragOriginalStrokes is not null && _dragOriginalStrokes.Count > 0)
+        // Move bitmap preview (fast)
+        if (_strokeDragImage is not null)
         {
-            var rebuilt = new StrokeCollection();
-            foreach (var orig in _dragOriginalStrokes)
-            {
-                var pts = new StylusPointCollection();
-                foreach (var p in orig.StylusPoints)
-                    pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
-                rebuilt.Add(new Stroke(pts, orig.DrawingAttributes.Clone()));
-            }
-            _applyingHistory = true;
-            try
-            {
-                if (_dragPreviewStrokes is not null && _dragPreviewStrokes.Count > 0)
-                    InkArea.Strokes.Remove(_dragPreviewStrokes);
-                InkArea.Strokes.Add(rebuilt);
-                InkArea.Select(rebuilt);
-            }
-            finally { _applyingHistory = false; }
-            _dragPreviewStrokes = rebuilt;
+            double sl = _viewPanX + (_strokeDragStartBounds.Left + dx) * _viewZoom;
+            double st = _viewPanY + (_strokeDragStartBounds.Top + dy) * _viewZoom;
+            Canvas.SetLeft(_strokeDragImage, sl);
+            Canvas.SetTop(_strokeDragImage, st);
         }
+
+        // Translate resize handles by the delta only
+        double sdx = (dx - _lastDragDx) * _viewZoom;
+        double sdy = (dy - _lastDragDy) * _viewZoom;
+        TranslateResizeHandles(sdx, sdy);
+
+        _selectionWorldBounds = new Rect(
+            _selectionWorldBounds.Left + (dx - _lastDragDx),
+            _selectionWorldBounds.Top + (dy - _lastDragDy),
+            _selectionWorldBounds.Width,
+            _selectionWorldBounds.Height);
+
+        _lastDragDx = dx;
+        _lastDragDy = dy;
+
         UpdateElementSelectionVisuals();
-        RebuildResizeHandles();
     }
 
     private void EndSelectionDrag()
@@ -2001,12 +2218,37 @@ public partial class MainWindow : Window
         if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
             CanvasHostBorder.ReleaseMouseCapture();
 
-        if (InkArea is not null && _dragOriginalStrokes is not null && _dragPreviewStrokes is not null
-            && !ReferenceEquals(_dragPreviewStrokes, _dragOriginalStrokes) && _dragOriginalStrokes.Count > 0)
+        // Remove bitmap preview
+        if (_strokeDragImage is not null && CanvasHost is not null)
         {
-            _undo.Push(new StrokeChange(_dragPreviewStrokes, _dragOriginalStrokes));
+            CanvasHost.Children.Remove(_strokeDragImage);
+            _strokeDragImage = null;
+        }
+
+        // Apply stroke shift
+        if (InkArea is not null && _dragOriginalStrokes is not null && _dragOriginalStrokes.Count > 0)
+        {
+            var shifted = new StrokeCollection();
+            foreach (var orig in _dragOriginalStrokes)
+            {
+                var pts = new StylusPointCollection();
+                foreach (var p in orig.StylusPoints)
+                    pts.Add(new StylusPoint((float)(p.X + _lastDragDx), (float)(p.Y + _lastDragDy), p.PressureFactor));
+                shifted.Add(new Stroke(pts, orig.DrawingAttributes.Clone()));
+            }
+            _applyingHistory = true;
+            try
+            {
+                InkArea.Strokes.Add(shifted);
+                InkArea.Select(shifted);
+            }
+            finally { _applyingHistory = false; }
+
+            _undo.Push(new StrokeChange(shifted, _dragOriginalStrokes));
             _redo.Clear();
         }
+
+        // Element undo entries
         foreach (var el in _selectedElements)
             if (_elementStartPositions.TryGetValue(el, out var start))
             {
@@ -2017,9 +2259,13 @@ public partial class MainWindow : Window
                     _redo.Clear();
                 }
             }
+
         _elementStartPositions.Clear();
         _dragOriginalStrokes = null;
-        _dragPreviewStrokes = null;
+        _lastDragDx = 0;
+        _lastDragDy = 0;
+
+        RebuildResizeHandles();
         MarkDirty();
     }
 
@@ -2141,7 +2387,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Title bar / state
+    // Title bar
     // =====================================================================
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
@@ -2504,7 +2750,6 @@ public partial class MainWindow : Window
     private void PenButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Pen;
-        EndPan();
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
@@ -2516,7 +2761,6 @@ public partial class MainWindow : Window
     private void HighlighterButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Highlighter;
-        EndPan();
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
@@ -2528,7 +2772,6 @@ public partial class MainWindow : Window
     private void EraserButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Eraser;
-        EndPan();
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke; }
         UpdateCursor();
@@ -2539,7 +2782,6 @@ public partial class MainWindow : Window
     private void LassoButton_Click(object sender, RoutedEventArgs e)
     {
         _tool = ToolMode.Lasso;
-        EndPan();
         if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.None; }
         UpdateCursor();
@@ -2581,7 +2823,7 @@ public partial class MainWindow : Window
         ClearElementSelection();
         if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
-        StatusText.Text = "Hand tool: drag to pan.";
+        StatusText.Text = "Hand: drag to pan.";
         if (ToolOptionsPopup is not null) ToolOptionsPopup.IsOpen = false;
     }
 
@@ -2601,31 +2843,42 @@ public partial class MainWindow : Window
         if (!e.Stroke.DrawingAttributes.IsHighlighter) SmoothCompletedStroke(e.Stroke);
     }
 
+    // =====================================================================
+    // Stroke smoothing — endpoints preserved so strokes don't shrink
+    // =====================================================================
     private void SmoothCompletedStroke(Stroke original)
     {
         if (InkArea is null) return;
         var pts = original.StylusPoints;
         int n = pts.Count;
         if (n < 3) return;
+
         var rawX = new double[n]; var rawY = new double[n]; var rawP = new float[n];
         for (int i = 0; i < n; i++) { rawX[i] = pts[i].X; rawY[i] = pts[i].Y; rawP[i] = pts[i].PressureFactor; }
+
         var sx = new double[n]; var sy = new double[n]; var sp = new float[n];
-        const int half = 2;
-        for (int i = 0; i < n; i++)
+
+        // Preserve the exact start and end points so strokes don't shrink
+        sx[0] = rawX[0]; sy[0] = rawY[0]; sp[0] = rawP[0];
+        sx[n - 1] = rawX[n - 1]; sy[n - 1] = rawY[n - 1]; sp[n - 1] = rawP[n - 1];
+
+        // Light 3-tap average only on interior points
+        for (int i = 1; i < n - 1; i++)
         {
-            double sumX = 0, sumY = 0; float sumP = 0; int cnt = 0;
-            for (int j = -half; j <= half; j++)
-            {
-                int k = i + j;
-                if (k < 0 || k >= n) continue;
-                sumX += rawX[k]; sumY += rawY[k]; sumP += rawP[k]; cnt++;
-            }
-            sx[i] = sumX / cnt; sy[i] = sumY / cnt; sp[i] = sumP / cnt;
+            int lo = i - 1; int hi = i + 1;
+            double sumX = rawX[lo] + rawX[i] + rawX[hi];
+            double sumY = rawY[lo] + rawY[i] + rawY[hi];
+            float sumP = rawP[lo] + rawP[i] + rawP[hi];
+            sx[i] = sumX / 3.0;
+            sy[i] = sumY / 3.0;
+            sp[i] = sumP / 3f;
         }
+
         const double step = 1.2;
         const int maxOut = 6000;
         var outPts = new StylusPointCollection();
         outPts.Add(new StylusPoint((float)sx[0], (float)sy[0], Clamp01(sp[0])));
+
         for (int i = 0; i < n - 1; i++)
         {
             double p1x = sx[i], p1y = sy[i];
@@ -2649,6 +2902,7 @@ public partial class MainWindow : Window
             }
             if (outPts.Count >= maxOut) break;
         }
+
         var da = original.DrawingAttributes.Clone();
         da.FitToCurve = false;
         var smoothed = new Stroke(outPts, da);

@@ -112,6 +112,25 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SelActionButton" TargetType="Button">
+            <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="1,0"/><Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="FontSize" Value="15"/><Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="5">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#F0F0F0"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#E0E0E0"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="ColorSwatch" TargetType="RadioButton">
             <Setter Property="Width" Value="46"/><Setter Property="Height" Value="46"/>
             <Setter Property="Margin" Value="4"/>
@@ -320,6 +339,7 @@
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Insert Image…" Click="InsertImage_Click"/>
+                                <MenuItem Header="Insert PDF…" Click="ImportPdf_Click"/>
                                 <MenuItem Header="Insert Text…" Click="InsertText_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Paste Image from Clipboard" Click="PasteClipboardImage_Click"/>
@@ -336,8 +356,9 @@
                                 <MenuItem Header="Save" Command="ApplicationCommands.Save"/>
                                 <MenuItem Header="Save As..." Command="ApplicationCommands.SaveAs"/>
                                 <Separator/>
-                                <MenuItem Header="Export current page as PNG..." Click="ExportCurrentPagePng_Click"/>
-                                <MenuItem Header="Export all pages as PNG..." Click="ExportAllPagesPng_Click"/>
+                                <MenuItem Header="Export current page as PNG…" Click="ExportCurrentPagePng_Click"/>
+                                <MenuItem Header="Export all pages as PNG…" Click="ExportAllPagesPng_Click"/>
+                                <MenuItem Header="Export as PDF…" Click="ExportAsPdf_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Delete current page" Click="DeletePageButton_Click"/>
                             </ContextMenu>
@@ -383,6 +404,25 @@
 
             <Canvas x:Name="EdgeButtonOverlay" ClipToBounds="True"/>
             <Canvas x:Name="HandleOverlay" ClipToBounds="True"/>
+            <Canvas x:Name="SelectionActionHost" ClipToBounds="False"/>
+
+            <!-- Floating selection action toolbar -->
+            <Border x:Name="SelectionToolbar" Background="White" BorderBrush="#CCCCCC" BorderThickness="1"
+                    CornerRadius="8" Padding="2" Visibility="Collapsed"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Panel.ZIndex="100">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.25" Color="Black"/>
+                </Border.Effect>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="SelToolDuplicate" Style="{StaticResource SelActionButton}"
+                            Content="&#xE8C8;" ToolTip="Duplicate" Click="SelToolDuplicate_Click"/>
+                    <Button x:Name="SelToolCopy" Style="{StaticResource SelActionButton}"
+                            Content="&#xE8C8;" ToolTip="Copy" Click="SelToolCopy_Click"/>
+                    <Button x:Name="SelToolDelete" Style="{StaticResource SelActionButton}"
+                            Content="&#xE74D;" ToolTip="Delete" Click="SelToolDelete_Click"/>
+                </StackPanel>
+            </Border>
 
             <!-- Draggable quick-color square -->
             <Canvas x:Name="ColorSquareHost" ClipToBounds="False" Background="{x:Null}">
