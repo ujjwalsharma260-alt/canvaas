@@ -1919,7 +1919,8 @@ public partial class MainWindow : Window
         {
             var oldPage = _pages[_currentPageIndex];
             oldPage.Elements.Clear();
-            foreach (var c in InkArea.Children) oldPage.Elements.Add(c);
+                        foreach (var c in InkArea.Children)
+                if (c is UIElement uie) oldPage.Elements.Add(uie);
         }
 
         InkArea.Strokes.StrokesChanged -= Strokes_Changed;
@@ -3333,8 +3334,14 @@ public partial class MainWindow : Window
         {
             InkArea.Strokes.Clear();
             // Also remove elements
-            var toRemove = new List<UIElement>(InkArea.Children);
-            foreach (var el in toRemove) { InkArea.Children.Remove(el); CurrentPage.Elements.Remove(el); }
+            var toRemove = new List<UIElement>();
+            foreach (var c in InkArea.Children)
+                if (c is UIElement uie) toRemove.Add(uie);
+            foreach (var el in toRemove)
+            {
+                InkArea.Children.Remove(el);
+                CurrentPage.Elements.Remove(el);
+            }
             ClearElementSelection();
             StatusText.Text = "Page cleared.";
         }
@@ -3560,8 +3567,8 @@ public partial class MainWindow : Window
         {
             var oldPage = _pages[_currentPageIndex];
             oldPage.Elements.Clear();
-            foreach (var c in InkArea.Children) oldPage.Elements.Add(c);
-        }
+            foreach (var c in InkArea.Children)
+                if (c is UIElement uie) oldPage.Elements.Add(uie);        }
 
         string tempPath = path + ".tmp";
         try
