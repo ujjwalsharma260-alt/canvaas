@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private const double A4Width = 794;
     private const double A4Height = 1123;
     private const double MaxCanvasDimension = 25_000;
+    private const double InfiniteSize = 30_000;
 
     private const double MinZoom = 0.01;
     private const double MaxZoom = 40.0;
@@ -160,8 +161,8 @@ public partial class MainWindow : Window
         public double PatternOpacity { get; set; } = 50;
         public double PatternThickness { get; set; } = 1.0;
         public double PatternDotSize { get; set; } = 1.2;
-        public double WorldWidth { get; set; } = A4Width;
-        public double WorldHeight { get; set; } = A4Height;
+        public double WorldWidth { get; set; } = InfiniteSize;
+        public double WorldHeight { get; set; } = InfiniteSize;
         public double ViewZoom { get; set; } = 1.0;
         public double ViewPanX { get; set; } = double.NaN;
         public double ViewPanY { get; set; } = double.NaN;
@@ -606,8 +607,8 @@ public partial class MainWindow : Window
         double vh = CanvasHostBorder.ActualHeight;
         if (vh < 100) vh = 700;
 
-        Canvas.SetLeft(ColorSquareRoot, 24);
-        Canvas.SetTop(ColorSquareRoot, Math.Max(24, vh - 150));
+        Canvas.SetLeft(ColorSquareRoot, Math.Max(24, (CanvasHostBorder.ActualWidth > 200 ? CanvasHostBorder.ActualWidth : 1200) - 110));
+        Canvas.SetTop(ColorSquareRoot, 24);
     }
 
     private void ColorSquareDragHandle_MouseDown(object sender, MouseButtonEventArgs e)
@@ -887,6 +888,11 @@ public partial class MainWindow : Window
     }
 
     private void RebuildEdgeButtons()
+    {
+        return;
+    }
+
+    private void RebuildEdgeButtonsOld()
     {
         if (CanvasHostBorder is null || EdgeButtonOverlay is null) return;
         double vw = CanvasHostBorder.ActualWidth, vh = CanvasHostBorder.ActualHeight;
@@ -1483,7 +1489,7 @@ public partial class MainWindow : Window
 
     private void HighlightToolbarColor()
     {
-        foreach (var b in new[] { ToolbarColor1, ToolbarColor2, ToolbarColor3, ToolbarColor4 })
+        foreach (var b in new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 })
         {
             if (b is null) continue;
             bool active = b.Tag is string hex && ParseHexColor(hex, Colors.Black) == _penColor;
@@ -1611,7 +1617,7 @@ public partial class MainWindow : Window
 
         if (textBoxFocused) return;
         if (e.Key == Key.Left) { PrevPageButton_Click(PrevPageButton, new RoutedEventArgs()); e.Handled = true; }
-        else if (e.Key == Key.Right) { NextPageButton_Click(NextPageButton, new RoutedEventArgs()); e.Handled = true; }
+        else if (e.Key == Key.Right && _currentPageIndex < _pages.Count - 1) { GoToNextExistingPage(); e.Handled = true; }
     }
 
     // =====================================================================
@@ -1812,7 +1818,7 @@ public partial class MainWindow : Window
         if (vw < 10 || vh < 10) { vw = 1200; vh = 700; }
         double fitX = (vw - 80) / CurrentPage.WorldWidth;
         double fitY = (vh - 80) / CurrentPage.WorldHeight;
-        _viewZoom = Math.Clamp(Math.Min(fitX, fitY), MinZoom, 1.0);
+        _viewZoom = (CurrentPage.WorldWidth > 5000 || CurrentPage.WorldHeight > 5000) ? 1.0 : Math.Clamp(Math.Min(fitX, fitY), MinZoom, 1.0);
         _viewPanX = (vw - CurrentPage.WorldWidth * _viewZoom) / 2.0;
         _viewPanY = (vh - CurrentPage.WorldHeight * _viewZoom) / 2.0;
         if (ViewTransform is not null)
@@ -1933,7 +1939,7 @@ public partial class MainWindow : Window
         PageCounterBox.Text = $"{_currentPageIndex + 1} / {_pages.Count}";
         _suppressCounterChange = false;
         if (PrevPageButton is not null) PrevPageButton.IsEnabled = _currentPageIndex > 0;
-        if (NextPageButton is not null) NextPageButton.IsEnabled = _currentPageIndex < _pages.Count - 1;
+        if (NextPageButton is not null) NextPageButton.IsEnabled = true;
     }
 
     private void PageCounterBox_KeyDown(object sender, KeyEventArgs e)
@@ -1977,6 +1983,12 @@ public partial class MainWindow : Window
     }
 
     private void NextPageButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentPageIndex >= _pages.Count - 1) { NewNotebookPage_Click(sender, e); return; }
+        GoToNextExistingPage();
+    }
+
+    private void GoToNextExistingPage()
     {
         if (_currentPageIndex < _pages.Count - 1)
         {
@@ -2389,7 +2401,7 @@ public partial class MainWindow : Window
             CanvasHostBorder.CaptureMouse();
             CanvasHostBorder.Cursor = Cursors.None;
             if (InkArea is not null) InkArea.Cursor = Cursors.None;
-            if (CanvasHost is not null) { try { CanvasHost.CacheMode = new BitmapCache(); } catch { } }
+            // no bitmap cache on the infinite canvas
             e.Handled = true;
             return;
         }

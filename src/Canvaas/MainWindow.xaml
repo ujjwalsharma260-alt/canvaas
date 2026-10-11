@@ -338,6 +338,18 @@
             </Setter>
         </Style>
 
+        <Style x:Key="QuickColorSquare" TargetType="Button">
+            <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
+            <Setter Property="Margin" Value="2"/><Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#BBBBBB"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"/>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
             <DrawingBrush.Drawing><GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,60,78"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing>
         </DrawingBrush>
@@ -451,15 +463,9 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
-                    <Button x:Name="PaletteButton" Style="{StaticResource TopIconButton}" Content="&#xE80A;" ToolTip="Page style (Settings)" Click="PaletteButton_Click"/>
-                    <Button x:Name="AddPageButton" Style="{StaticResource TopIconButton}" Content="&#xE7C3;" ToolTip="Extend sheet or pages" Click="AddPageButton_Click">
+                    <Button x:Name="AddPageButton" Style="{StaticResource TopIconButton}" Content="&#xE7C3;" ToolTip="Add / delete page" Click="AddPageButton_Click">
                         <Button.ContextMenu>
                             <ContextMenu>
-                                <MenuItem Header="Extend sheet  →  Right (add A4)" Click="ExtendRight_Click"/>
-                                <MenuItem Header="Extend sheet  ←  Left (add A4)" Click="ExtendLeft_Click"/>
-                                <MenuItem Header="Extend sheet  ↑  Up (add A4)" Click="ExtendUp_Click"/>
-                                <MenuItem Header="Extend sheet  ↓  Down (add A4)" Click="ExtendDown_Click"/>
-                                <Separator/>
                                 <MenuItem Header="Add a new notebook page" Click="NewNotebookPage_Click"/>
                                 <MenuItem Header="Delete this notebook page" Click="DeletePageButton_Click"/>
                             </ContextMenu>
@@ -486,11 +492,6 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="ToolbarColor1" Style="{StaticResource ToolbarColorDot}" Background="#111111" Tag="#111111" ToolTip="Black" Click="QuickColor_Click"/>
-                    <Button x:Name="ToolbarColor2" Style="{StaticResource ToolbarColorDot}" Background="#E53935" Tag="#E53935" ToolTip="Red" Click="QuickColor_Click"/>
-                    <Button x:Name="ToolbarColor3" Style="{StaticResource ToolbarColorDot}" Background="#1E88E5" Tag="#1E88E5" ToolTip="Blue" Click="QuickColor_Click"/>
-                    <Button x:Name="ToolbarColor4" Style="{StaticResource ToolbarColorDot}" Background="#43A047" Tag="#43A047" ToolTip="Green" Click="QuickColor_Click"/>
-                    <Rectangle Width="1" Height="24" Margin="12,0" Fill="#9A9A9A"/>
                     <Button x:Name="UndoButton" Style="{StaticResource TopIconButton}" Content="&#xE7A7;" ToolTip="Undo (Ctrl+Z)" Command="ApplicationCommands.Undo"/>
                     <Button x:Name="RedoButton" Style="{StaticResource TopIconButton}" Content="&#xE7A6;" ToolTip="Redo (Ctrl+Y)" Command="ApplicationCommands.Redo"/>
                 </StackPanel>
@@ -507,8 +508,7 @@
                     <Canvas.RenderTransform>
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Canvas.RenderTransform>
-                    <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White"
-                               Stroke="#C8C8C8" StrokeThickness="1" IsHitTestVisible="False"/>
+                    <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White" IsHitTestVisible="False"/>
                     <InkCanvas x:Name="InkArea" Canvas.Left="0" Canvas.Top="0" Background="Transparent"
                                ForceCursor="True" Stylus.IsPressAndHoldEnabled="False" Stylus.IsFlicksEnabled="False"
                                StylusOutOfRange="InkArea_StylusOutOfRange"
@@ -534,27 +534,26 @@
                 </StackPanel>
             </Border>
 
-            <!-- Old floating colour box: hidden, colours are now in the toolbar -->
-            <Canvas x:Name="ColorSquareHost" Visibility="Collapsed" ClipToBounds="False" Background="{x:Null}">
-                <Border x:Name="ColorSquareRoot" Background="White"
-                        BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="12" Padding="0">
+            <!-- Floating colour square (drag the thin top strip to move it anywhere) -->
+            <Canvas x:Name="ColorSquareHost" ClipToBounds="False" Background="{x:Null}">
+                <Border x:Name="ColorSquareRoot" Background="#111111" BorderBrush="#000000" BorderThickness="1"
+                        CornerRadius="4" Padding="3">
                     <Border.Effect>
-                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.3" Color="Black"/>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" Color="Black"/>
                     </Border.Effect>
                     <StackPanel>
-                        <Border x:Name="ColorSquareDragHandle" Height="22" Background="#FAFAFA"
-                                CornerRadius="12,12,0,0" Cursor="SizeAll"
+                        <Border x:Name="ColorSquareDragHandle" Height="14" Background="#111111" Cursor="SizeAll"
                                 MouseLeftButtonDown="ColorSquareDragHandle_MouseDown"
                                 MouseMove="ColorSquareDragHandle_MouseMove"
                                 MouseLeftButtonUp="ColorSquareDragHandle_MouseUp">
-                            <TextBlock Text="⣿" Foreground="#BBBBBB" FontSize="14"
+                            <TextBlock Text="&#x2022;&#x2022;&#x2022;" Foreground="#888888" FontSize="10"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <UniformGrid Columns="2" Margin="6,6,6,8">
-                            <Button x:Name="QuickColor1" Style="{StaticResource QuickColorButton}" Background="#111111" Tag="#111111" Click="QuickColor_Click" ToolTip="Black"/>
-                            <Button x:Name="QuickColor2" Style="{StaticResource QuickColorButton}" Background="#E53935" Tag="#E53935" Click="QuickColor_Click" ToolTip="Red"/>
-                            <Button x:Name="QuickColor3" Style="{StaticResource QuickColorButton}" Background="#1E88E5" Tag="#1E88E5" Click="QuickColor_Click" ToolTip="Blue"/>
-                            <Button x:Name="QuickColor4" Style="{StaticResource QuickColorButton}" Background="#43A047" Tag="#43A047" Click="QuickColor_Click" ToolTip="Green"/>
+                        <UniformGrid Columns="2">
+                            <Button x:Name="QuickColor2" Style="{StaticResource QuickColorSquare}" Background="#E53935" Tag="#E53935" Click="QuickColor_Click" ToolTip="Red"/>
+                            <Button x:Name="QuickColor1" Style="{StaticResource QuickColorSquare}" Background="#000000" Tag="#000000" Click="QuickColor_Click" ToolTip="Black"/>
+                            <Button x:Name="QuickColor3" Style="{StaticResource QuickColorSquare}" Background="#1E88E5" Tag="#1E88E5" Click="QuickColor_Click" ToolTip="Blue"/>
+                            <Button x:Name="QuickColor4" Style="{StaticResource QuickColorSquare}" Background="#43A047" Tag="#43A047" Click="QuickColor_Click" ToolTip="Green"/>
                         </UniformGrid>
                     </StackPanel>
                 </Border>
