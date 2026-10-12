@@ -357,6 +357,7 @@ public partial class MainWindow : Window
         ApplyPenAttributes();
         UpdateCursor();
         TitleBarText.Text = "Canvaas";
+        InitBars();
         UpdateTitle();
     }
 
@@ -754,7 +755,9 @@ public partial class MainWindow : Window
     // =====================================================================
     private void ChromeToggleButton_Click(object sender, RoutedEventArgs e)
     {
-        bool show = TopToolbarBorder.Visibility != Visibility.Visible;
+        _barsPinned = !_barsPinned; _barsLeftAt = DateTime.UtcNow; ApplyBars(true);
+        StatusText.Text = _barsPinned ? "Toolbars pinned. Press Tab to auto-hide." : "Toolbars auto-hide. Move the mouse to the top edge to show them.";
+        bool show = true;
         TopToolbarBorder.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -896,7 +899,7 @@ public partial class MainWindow : Window
     {
         if (_rebuildEdgeScheduled) return;
         _rebuildEdgeScheduled = true;
-        Dispatcher.BeginInvoke(new Action(() => { _rebuildEdgeScheduled = false; RebuildEdgeButtons(); }), DispatcherPriority.Background);
+        Dispatcher.BeginInvoke(new Action(() => { _rebuildEdgeScheduled = false; RebuildEdgeButtons(); FitNavBarAboveTaskbar(); }), DispatcherPriority.Background);
     }
 
     private void RebuildEdgeButtons()
@@ -1694,7 +1697,7 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
         var tokens = new List<string>();
-        foreach (var raw in text.Split(new[] { '\r', '\n', '\t', ' ', ',', ';', '|', '/' }, StringSplitOptions.RemoveEmptyEntries))
+        foreach (var raw in SplitKeywords(text))
         {
             var trimmed = raw.Trim();
             if (trimmed.Length > 0) tokens.Add(trimmed);
@@ -1718,21 +1721,23 @@ public partial class MainWindow : Window
 
         double visLeft = -_viewPanX / _viewZoom;
         double visTop = -_viewPanY / _viewZoom;
+        double rowX = 0; int row = 0;
+        double wrapW = Math.Max(400, ((CanvasHostBorder?.ActualWidth ?? 1200) - 160) / Math.Max(_viewZoom, 0.05));
         for (int i = 0; i < tokens.Count; i++)
         {
             var tb = new TextBox
             {
                 Text = tokens[i], AcceptsReturn = false, TextWrapping = TextWrapping.NoWrap,
-                FontSize = 24, Width = boxW, MinHeight = 36,
+                FontSize = 24, Width = MeasureKeywordWidth(tokens[i], fontName, 24), MinHeight = 36,
                 Padding = new Thickness(8, 4, 8, 4),
                 Background = Brushes.Transparent, FontFamily = new FontFamily(fontName), Foreground = new SolidColorBrush(_penColor),
                 BorderBrush = Brushes.Transparent,
                 BorderThickness = new Thickness(1),
                 VerticalContentAlignment = VerticalAlignment.Center
             };
-            int row = i / perRow;
-            int col = i % perRow;
-            InkCanvas.SetLeft(tb, visLeft + margin + col * (boxW + gap));
+            if (rowX > 0 && rowX + tb.Width > wrapW) { rowX = 0; row++; }
+            double colX = rowX; rowX += tb.Width + gap;
+            InkCanvas.SetLeft(tb, visLeft + margin + colX);
             InkCanvas.SetTop(tb, visTop + margin + row * (boxH + gap));
             InkArea.Children.Add(tb);
             CurrentPage.Elements.Add(tb);
@@ -1755,7 +1760,7 @@ public partial class MainWindow : Window
 
         _fullscreenMode = !_fullscreenMode;
         if (TitleBarBorder is not null)
-            TitleBarBorder.Visibility = _fullscreenMode ? Visibility.Collapsed : Visibility.Visible;
+            ApplyBars(_barsShown);
         if (AppWindowChrome is not null)
         {
             AppWindowChrome.CaptionHeight = _fullscreenMode ? 0 : 36;
@@ -2479,6 +2484,7 @@ public partial class MainWindow : Window
         if (lassoDrag)
         {
             var worldPt = ScreenToWorld(screenPt);
+            if (!IsPointOnSelectedElement(worldPt) && !IsPointOnSelectedStroke(worldPt)) SelectItemUnder(worldPt);
             if (IsPointOnSelectedElement(worldPt) || IsPointOnSelectedStroke(worldPt))
             {
                 StartSelectionDrag(worldPt);
@@ -3430,6 +3436,7 @@ public partial class MainWindow : Window
     {
         var points = e.Stroke.StylusPoints;
         if (points.Count == 0) return;
+        if (_shapeAssist && _tool == ToolMode.Pen && TrySnapShape(e.Stroke)) return;
         if (!e.Stroke.DrawingAttributes.IsHighlighter) SmoothCompletedStroke(e.Stroke);
     }
 
@@ -3912,6 +3919,14 @@ public partial class MainWindow : Window
         foreach (var b in new[] { PrevPageButton, NextPageButton, ZoomInButton, ZoomOutButton, ZoomResetButton })
             if (b is not null) b.Foreground = fg;
         if (PageCounterBox is not null) PageCounterBox.Foreground = fg;
+        Color sqBg = dark ? Blend(bg, Colors.White, 0.10) : Blend(bg, Colors.White, 0.6);
+        Color sqBorder = dark ? Blend(bg, Colors.White, 0.25) : Blend(bg, Colors.Black, 0.2);
+        if (ColorSquareRoot is not null) { ColorSquareRoot.Background = new SolidColorBrush(sqBg); ColorSquareRoot.BorderBrush = new SolidColorBrush(sqBorder); }
+        if (ColorSquareDragHandle is not null)
+        {
+            ColorSquareDragHandle.Background = new SolidColorBrush(sqBg);
+            if (ColorSquareDragHandle.Child is TextBlock grip) grip.Foreground = new SolidColorBrush(dark ? Color.FromRgb(0x99, 0x99, 0x99) : Color.FromRgb(0x77, 0x77, 0x77));
+        }
         if (ZoomText is not null) ZoomText.Foreground = fg;
         if (PrevPageButton is not null) PrevPageButton.Opacity = PrevPageButton.IsEnabled ? 1.0 : 0.4;
         ApplyPenAttributes();
@@ -3993,6 +4008,350 @@ public partial class MainWindow : Window
         win.ShowDialog();
         if (chosen is not null) _pasteFont = chosen;
         return chosen;
+    }
+
+    // ---------- keyword splitting ----------
+    private static List<string> SplitKeywords(string text)
+    {
+        var result = new List<string>();
+        var parts = new List<string>(text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
+        if (parts.Count == 1)
+        {
+            string one = parts[0];
+            if (System.Text.RegularExpressions.Regex.Matches(one, @"(^|\s)\d{1,3}[\.\)]\s").Count >= 2)
+                parts = new List<string>(System.Text.RegularExpressions.Regex.Split(one, @"\s+(?=\d{1,3}[\.\)]\s)"));
+            else
+                parts = new List<string>(one.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+        foreach (var part in parts)
+        {
+            string s = part.Trim();
+            s = System.Text.RegularExpressions.Regex.Replace(s, @"^(?:[\(\[]?\d{1,3}[\.\)\]:]+|[-*\u2022\u00B7\u25AA\u25CF\u2013\u2014]+)\s+", "").Trim();
+            if (System.Text.RegularExpressions.Regex.IsMatch(s, @"^[\(\[]?\d{1,3}[\.\)\]:]$")) continue;
+            if (s.Length > 0) result.Add(s);
+        }
+        return result;
+    }
+
+    private static double MeasureKeywordWidth(string text, string fontName, double size)
+    {
+        try
+        {
+            var ft = new FormattedText(text, System.Globalization.CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+                new Typeface(new FontFamily(fontName), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+                size, Brushes.Black, 1.0);
+            return Math.Ceiling(ft.WidthIncludingTrailingWhitespace) + 28;
+        }
+        catch { return 220; }
+    }
+
+    // ---------- auto-hide bars ----------
+    [StructLayout(LayoutKind.Sequential)] private struct NativePoint { public int X; public int Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct NativeRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativePoint pt);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool SystemParametersInfo(uint action, uint param, ref NativeRect rect, uint winIni);
+
+    private readonly DispatcherTimer _barsTimer = new() { Interval = TimeSpan.FromMilliseconds(120) };
+    private bool _barsPinned;
+    private bool _barsShown;
+    private DateTime _barsLeftAt = DateTime.MinValue;
+
+    private void InitBars()
+    {
+        _barsTimer.Tick += (s, e) => BarsTick();
+        _barsTimer.Start();
+        ApplyBars(false);
+    }
+
+    private void ApplyBars(bool show)
+    {
+        _barsShown = show;
+        bool visible = _barsPinned || show;
+        if (TopToolbarBorder is not null) TopToolbarBorder.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (TitleBarBorder is not null) TitleBarBorder.Visibility = (visible && !_fullscreenMode) ? Visibility.Visible : Visibility.Collapsed;
+        if (AppWindowChrome is not null) AppWindowChrome.CaptionHeight = (visible && !_fullscreenMode) ? 36 : 0;
+        if (CanvasArea is not null)
+        {
+            Grid.SetRow(CanvasArea, _barsPinned ? 2 : 0);
+            Grid.SetRowSpan(CanvasArea, _barsPinned ? 1 : 3);
+        }
+    }
+
+    private bool AnyBarPopupOpen()
+    {
+        if (ToolOptionsPopup is not null && ToolOptionsPopup.IsOpen) return true;
+        foreach (var b in new[] { AddMenuButton, AddPageButton, SaveMenuButton })
+            if (b?.ContextMenu is { IsOpen: true }) return true;
+        if (MainMenuFlyout is not null && MainMenuFlyout.Visibility == Visibility.Visible) return true;
+        if (SettingsOverlay is not null && SettingsOverlay.Visibility == Visibility.Visible) return true;
+        return false;
+    }
+
+    private void BarsTick()
+    {
+        if (!IsLoaded || WindowState == WindowState.Minimized) return;
+        bool want;
+        if (_barsPinned) want = true;
+        else
+        {
+            bool inZone = false;
+            try
+            {
+                if (GetCursorPos(out var np) && CanvasArea is not null)
+                {
+                    var p = CanvasArea.PointFromScreen(new Point(np.X, np.Y));
+                    double barsH = (TopToolbarBorder.Visibility == Visibility.Visible ? TopToolbarBorder.ActualHeight : 0)
+                                 + (TitleBarBorder.Visibility == Visibility.Visible ? TitleBarBorder.ActualHeight : 0);
+                    double limit = _barsShown ? barsH + 10 : 4;
+                    inZone = p.X >= 0 && p.X <= CanvasArea.ActualWidth && p.Y >= -15 && p.Y <= limit;
+                    if (inZone && !_barsShown && Mouse.LeftButton == MouseButtonState.Pressed) inZone = false;
+                }
+            }
+            catch { }
+            if (inZone || AnyBarPopupOpen()) { _barsLeftAt = DateTime.UtcNow; want = true; }
+            else want = _barsShown && (DateTime.UtcNow - _barsLeftAt).TotalMilliseconds < 600;
+        }
+        ApplyBars(want);
+    }
+
+    private void FitNavBarAboveTaskbar()
+    {
+        try
+        {
+            if (CanvasArea is null || NavBar is null || !IsLoaded) return;
+            double extra = 0;
+            if (!_fullscreenMode)
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                var wa = new NativeRect();
+                if (SystemParametersInfo(0x0030, 0, ref wa, 0))
+                {
+                    double bottomPx = CanvasArea.PointToScreen(new Point(0, CanvasArea.ActualHeight)).Y;
+                    extra = Math.Max(0, (bottomPx - wa.Bottom) / dpi.DpiScaleY);
+                    if (extra > 150) extra = 0;
+                }
+            }
+            NavBar.Margin = new Thickness(0, 0, 6, 6 + extra);
+        }
+        catch { }
+    }
+
+    // ---------- click to select (lasso) ----------
+    private bool SelectItemUnder(Point worldPt)
+    {
+        if (InkArea is null) return false;
+        FrameworkElement? hit = null;
+        foreach (var child in InkArea.Children)
+        {
+            if (child is not FrameworkElement fe) continue;
+            double l = InkCanvas.GetLeft(fe), t = InkCanvas.GetTop(fe);
+            if (double.IsNaN(l) || double.IsNaN(t)) continue;
+            double w = fe.ActualWidth > 0 ? fe.ActualWidth : 100;
+            double h = fe.ActualHeight > 0 ? fe.ActualHeight : 30;
+            if (new Rect(l, t, w, h).Contains(worldPt)) hit = fe;
+        }
+        StrokeCollection? hitStrokes = null;
+        if (hit is null)
+        {
+            var hs = InkArea.Strokes.HitTest(new[] { worldPt }, 8);
+            if (hs.Count > 0) hitStrokes = hs;
+        }
+        if (hit is null && hitStrokes is null) return false;
+        ClearElementSelection();
+        InkArea.Select(new StrokeCollection());
+        if (hit is not null) _selectedElements.Add(hit);
+        else InkArea.Select(hitStrokes);
+        UpdateElementSelectionVisuals();
+        RebuildResizeHandles();
+        return true;
+    }
+
+    // ---------- auto shapes ----------
+    private bool _shapeAssist;
+
+    private void ShapeAssistButton_Click(object sender, RoutedEventArgs e)
+    {
+        _shapeAssist = !_shapeAssist;
+        ShapeAssistButton.Background = _shapeAssist ? new SolidColorBrush(Color.FromArgb(70, 26, 115, 232)) : Brushes.Transparent;
+        StatusText.Text = _shapeAssist
+            ? "Auto shapes ON: draw a circle, square, triangle or straight line and lift the pen."
+            : "Auto shapes OFF.";
+    }
+
+    private bool TrySnapShape(Stroke original)
+    {
+        if (InkArea is null) return false;
+        var raw = original.StylusPoints;
+        if (raw.Count < 8) return false;
+        var pts = new List<Point>(raw.Count);
+        for (int i = 0; i < raw.Count; i++) pts.Add(new Point(raw[i].X, raw[i].Y));
+
+        double len = 0;
+        for (int i = 1; i < pts.Count; i++) len += (pts[i] - pts[i - 1]).Length;
+        double minX = pts.Min(q => q.X), maxX = pts.Max(q => q.X);
+        double minY = pts.Min(q => q.Y), maxY = pts.Max(q => q.Y);
+        double w = maxX - minX, h = maxY - minY, maxDim = Math.Max(w, h);
+        if (len < 60 || maxDim < 25) return false;
+
+        var first = pts[0];
+        var last = pts[pts.Count - 1];
+        double gap = (last - first).Length;
+
+        // open stroke: only straight lines
+        if (gap >= 0.2 * len)
+        {
+            double dx = last.X - first.X, dy = last.Y - first.Y;
+            double chord = Math.Sqrt(dx * dx + dy * dy);
+            if (chord < 40 || len > 1.25 * chord) return false;
+            double maxDev = 0;
+            foreach (var pt in pts)
+            {
+                double dev = Math.Abs((pt.X - first.X) * dy - (pt.Y - first.Y) * dx) / chord;
+                if (dev > maxDev) maxDev = dev;
+            }
+            if (maxDev > 0.07 * chord) return false;
+            if (Math.Abs(dy) < 0.08 * Math.Abs(dx)) last = new Point(last.X, first.Y);
+            else if (Math.Abs(dx) < 0.08 * Math.Abs(dy)) last = new Point(first.X, last.Y);
+            return ReplaceWithShape(original, new List<Point> { first, last });
+        }
+
+        // closed stroke: triangle, rectangle/square, or circle/ellipse
+        var verts = PolygonCorners(pts, 0.08 * maxDim);
+        if (verts.Count == 3)
+        {
+            double area = Math.Abs((verts[1].X - verts[0].X) * (verts[2].Y - verts[0].Y)
+                                 - (verts[2].X - verts[0].X) * (verts[1].Y - verts[0].Y)) / 2.0;
+            if (area < 0.03 * maxDim * maxDim) return false;
+            var tri = new List<Point>(verts) { verts[0] };
+            return ReplaceWithShape(original, tri);
+        }
+        if (verts.Count == 4)
+        {
+            bool rectLike = true;
+            for (int i = 0; i < 4; i++)
+            {
+                var v1 = verts[i] - verts[(i + 3) % 4];
+                var v2 = verts[(i + 1) % 4] - verts[i];
+                double ang = Math.Abs(Vector.AngleBetween(v1, v2));
+                if (ang < 62 || ang > 118) rectLike = false;
+            }
+            var quad = new List<Point>(verts);
+            if (rectLike)
+            {
+                bool axis = true;
+                for (int i = 0; i < 4; i++)
+                {
+                    var edge = verts[(i + 1) % 4] - verts[i];
+                    double a = (Math.Abs(Math.Atan2(edge.Y, edge.X)) * 180.0 / Math.PI) % 90.0;
+                    if (a > 18 && a < 72) axis = false;
+                }
+                if (axis)
+                {
+                    double cx0 = (minX + maxX) / 2.0, cy0 = (minY + maxY) / 2.0;
+                    double rw = w, rh = h;
+                    if (Math.Abs(w - h) < 0.14 * maxDim) { rw = (w + h) / 2.0; rh = rw; }
+                    quad = new List<Point>
+                    {
+                        new Point(cx0 - rw / 2, cy0 - rh / 2), new Point(cx0 + rw / 2, cy0 - rh / 2),
+                        new Point(cx0 + rw / 2, cy0 + rh / 2), new Point(cx0 - rw / 2, cy0 + rh / 2)
+                    };
+                }
+            }
+            quad.Add(quad[0]);
+            return ReplaceWithShape(original, quad);
+        }
+
+        double ex = (minX + maxX) / 2.0, ey = (minY + maxY) / 2.0, ra = w / 2.0, rb = h / 2.0;
+        if (ra < 8 || rb < 8) return false;
+        double sum = 0;
+        foreach (var pt in pts)
+        {
+            double qd = Math.Sqrt(Math.Pow((pt.X - ex) / ra, 2) + Math.Pow((pt.Y - ey) / rb, 2));
+            sum += Math.Abs(qd - 1.0);
+        }
+        if (sum / pts.Count > 0.14) return false;
+        if (Math.Abs(ra - rb) < 0.15 * Math.Max(ra, rb)) { double rr = (ra + rb) / 2.0; ra = rr; rb = rr; }
+        var ring = new List<Point>();
+        for (int i = 0; i <= 72; i++)
+        {
+            double t = 2.0 * Math.PI * i / 72.0;
+            ring.Add(new Point(ex + ra * Math.Cos(t), ey + rb * Math.Sin(t)));
+        }
+        return ReplaceWithShape(original, ring);
+    }
+
+    private static List<Point> PolygonCorners(List<Point> pts, double eps)
+    {
+        int n = pts.Count;
+        int f = 0; double best = 0;
+        for (int i = 1; i < n; i++)
+        {
+            double d = (pts[i] - pts[0]).Length;
+            if (d > best) { best = d; f = i; }
+        }
+        var a = Rdp(pts, 0, f, eps);
+        var b = Rdp(pts, f, n - 1, eps);
+        var verts = new List<Point>(a);
+        for (int i = 1; i < b.Count; i++) verts.Add(b[i]);
+        if (verts.Count > 2 && (verts[verts.Count - 1] - verts[0]).Length < 0.35 * Math.Max(1.0, best))
+            verts.RemoveAt(verts.Count - 1);
+        bool changed = true;
+        while (changed && verts.Count > 3)
+        {
+            changed = false;
+            for (int i = 0; i < verts.Count; i++)
+            {
+                var p0 = verts[(i + verts.Count - 1) % verts.Count];
+                var p1 = verts[i];
+                var p2 = verts[(i + 1) % verts.Count];
+                var v1 = p1 - p0; var v2 = p2 - p1;
+                if (v1.Length < 1e-6 || v2.Length < 1e-6) { verts.RemoveAt(i); changed = true; break; }
+                if (Math.Abs(Vector.AngleBetween(v1, v2)) < 25) { verts.RemoveAt(i); changed = true; break; }
+            }
+        }
+        return verts;
+    }
+
+    private static List<Point> Rdp(List<Point> pts, int s, int e, double eps)
+    {
+        var result = new List<Point>();
+        if (e <= s) { result.Add(pts[s]); return result; }
+        var a = pts[s]; var b = pts[e];
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        double maxD = 0; int idx = -1;
+        for (int i = s + 1; i < e; i++)
+        {
+            double d = len < 1e-6 ? (pts[i] - a).Length
+                                  : Math.Abs((pts[i].X - a.X) * dy - (pts[i].Y - a.Y) * dx) / len;
+            if (d > maxD) { maxD = d; idx = i; }
+        }
+        if (idx >= 0 && maxD > eps)
+        {
+            var left = Rdp(pts, s, idx, eps);
+            var right = Rdp(pts, idx, e, eps);
+            result.AddRange(left);
+            for (int i = 1; i < right.Count; i++) result.Add(right[i]);
+        }
+        else { result.Add(a); result.Add(b); }
+        return result;
+    }
+
+    private bool ReplaceWithShape(Stroke original, List<Point> shape)
+    {
+        if (InkArea is null || shape.Count < 2) return false;
+        var spc = new StylusPointCollection();
+        foreach (var p in shape) spc.Add(new StylusPoint(p.X, p.Y, 0.5f));
+        var da = original.DrawingAttributes.Clone();
+        da.FitToCurve = false; da.IgnorePressure = true;
+        var ns = new Stroke(spc, da);
+        int idx = InkArea.Strokes.IndexOf(original);
+        if (idx < 0) return false;
+        _applyingHistory = true;
+        try { InkArea.Strokes.RemoveAt(idx); InkArea.Strokes.Insert(idx, ns); }
+        finally { _applyingHistory = false; }
+        ReplaceStrokeInUndoStack(original, ns);
+        return true;
     }
 
     private static void TryDelete(string path)

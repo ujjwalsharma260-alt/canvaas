@@ -413,7 +413,7 @@
         </Grid.RowDefinitions>
 
         <!-- ===== Title bar (light) ===== -->
-        <Border x:Name="TitleBarBorder" Grid.Row="0" Background="#E6E6E6" Height="36">
+        <Border x:Name="TitleBarBorder" Panel.ZIndex="300" Grid.Row="0" Background="#E6E6E6" Height="36">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button x:Name="MinimizeButton" Style="{StaticResource LightTitleButton}" Content="&#xE921;" ToolTip="Minimize" Click="MinimizeButton_Click"/>
@@ -421,14 +421,14 @@
                     <Button x:Name="CloseButton" Style="{StaticResource LightTitleCloseButton}" Content="&#xE8BB;" ToolTip="Close" Click="CloseButton_Click"/>
                 </StackPanel>
                 <Button x:Name="ChromeToggleButton" DockPanel.Dock="Left" Style="{StaticResource LightTitleButton}"
-                        Content="&#xE70E;" ToolTip="Show / hide toolbar (Tab)" Click="ChromeToggleButton_Click"/>
+                        Content="&#xE70E;" ToolTip="Pin / unpin toolbars (Tab)" Click="ChromeToggleButton_Click"/>
                 <TextBlock x:Name="TitleBarText" Foreground="#333333" FontSize="12"
                            VerticalAlignment="Center" Margin="8,0,0,0"/>
             </DockPanel>
         </Border>
 
         <!-- ===== Top toolbar (light) ===== -->
-        <Border x:Name="TopToolbarBorder" Grid.Row="1" Background="#E6E6E6"
+        <Border x:Name="TopToolbarBorder" Panel.ZIndex="300" Grid.Row="1" Background="#E6E6E6"
                 BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Height="48">
             <Grid Margin="8,0">
                 <Grid.ColumnDefinitions>
@@ -448,6 +448,7 @@
                     <RadioButton x:Name="CalligraphyButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="✒" FontFamily="Segoe UI Symbol" FontSize="17" ToolTip="Calligraphy pen" Click="CalligraphyButton_Click"/>
                     <RadioButton x:Name="EraserButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser (3)" Click="EraserButton_Click"/>
                     <RadioButton x:Name="LassoButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso (4)" Click="LassoButton_Click"/>
+                    <Button x:Name="ShapeAssistButton" Style="{StaticResource TopIconButton}" Content="&#x25B3;" FontFamily="Segoe UI Symbol" FontSize="20" ToolTip="Auto shapes: draw a circle, square, triangle or line and lift the pen" Click="ShapeAssistButton_Click"/>
                     <RadioButton x:Name="HandButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (5)" Click="HandButton_Click"/>
 
                     <Rectangle Width="1" Height="24" Margin="12,0" Fill="#9A9A9A"/>
@@ -499,7 +500,7 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="2">
+        <Grid x:Name="CanvasArea" Grid.Row="0" Grid.RowSpan="3">
             <Border x:Name="CanvasHostBorder" Background="#E6E6E6" ClipToBounds="True"
                     PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
                     PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
