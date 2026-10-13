@@ -477,14 +477,14 @@
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="New" Command="ApplicationCommands.New"/>
-                                <MenuItem Header="Open..." Command="ApplicationCommands.Open"/>
+                                <MenuItem Header="Open Notebook..." Command="ApplicationCommands.Open"/>
                                 <Separator/>
-                                <MenuItem Header="Save" Command="ApplicationCommands.Save"/>
-                                <MenuItem Header="Save As..." Command="ApplicationCommands.SaveAs"/>
+                                <MenuItem Header="Save Notebook" Command="ApplicationCommands.Save"/>
+                                <MenuItem Header="Save as New Notebook" Command="ApplicationCommands.SaveAs"/>
                                 <Separator/>
-                                <MenuItem Header="Export current page as PNG…" Click="ExportCurrentPagePng_Click"/>
-                                <MenuItem Header="Export all pages as PNG…" Click="ExportAllPagesPng_Click"/>
-                                <MenuItem Header="Export as PDF…" Click="ExportAsPdf_Click"/>
+                                <MenuItem Header="Save Current Page as Image" Click="ExportCurrentPagePng_Click"/>
+                                <MenuItem Header="Save as Images" Click="ExportAllPagesPng_Click"/>
+                                <MenuItem Header="Save as PDF" Click="ExportAsPdf_Click"/>
                                 <Separator/>
                                 <MenuItem Header="Delete current page" Click="DeletePageButton_Click"/>
                             </ContextMenu>
@@ -607,6 +607,12 @@
                         </StackPanel>
                     </Button>
                     <Rectangle Height="1" Fill="#EEEEEE"/>
+                    <Button Style="{StaticResource MenuFlyoutButton}" Click="OpenHabitTracker_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#xE787;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                            <TextBlock Text="Habit Tracker" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Style="{StaticResource MenuFlyoutButton}" Click="RateThisApp_Click">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE735;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="#555555" VerticalAlignment="Center" Margin="0,0,14,0"/>

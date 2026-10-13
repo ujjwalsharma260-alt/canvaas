@@ -94,6 +94,11 @@ public partial class MainWindow : Window
         public double? PatternOpacity { get; set; }
         public double? PatternThickness { get; set; }
         public double? PatternDotSize { get; set; }
+        public List<ElementManifest>? Elements { get; set; }
+        public List<ElementManifest>? Elements { get; set; }
+        public List<ElementManifest>? Elements { get; set; }
+        public List<ElementManifest>? Elements { get; set; }
+        public List<ElementManifest>? Elements { get; set; }
     }
 
     private sealed class Manifest
@@ -442,6 +447,17 @@ public partial class MainWindow : Window
             });
         }
         catch { }
+    }
+
+    private HabitTrackerWindow? _habitWin;
+
+    private void OpenHabitTracker_Click(object sender, RoutedEventArgs e)
+    {
+        MainMenuFlyout.Visibility = Visibility.Collapsed;
+        if (_habitWin is { IsLoaded: true }) { _habitWin.Activate(); return; }
+        _habitWin = new HabitTrackerWindow(this);
+        _habitWin.Closed += (s, a) => _habitWin = null;
+        _habitWin.Show();
     }
 
     private void MoreApps_Click(object sender, RoutedEventArgs e)
@@ -2115,7 +2131,7 @@ public partial class MainWindow : Window
         catch (Exception ex) { MessageBox.Show(this, "Could not export.\n\n" + ex.Message, "Export failed", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
 
-    private void ExportPageToPng(NotebookPage page, string path)
+    private void ExportPageToPngOld(NotebookPage page, string path)
     {
         Rect world = page.Strokes.Count > 0 ? page.Strokes.GetBounds() : new Rect(0, 0, 800, 1120);
         world.Inflate(40, 40);
@@ -2144,7 +2160,7 @@ public partial class MainWindow : Window
     // =====================================================================
     // PDF export
     // =====================================================================
-    private void ExportAsPdf_Click(object sender, RoutedEventArgs e)
+    private void ExportAsPdfOld_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -3654,6 +3670,7 @@ public partial class MainWindow : Window
         }
 
         string tempPath = path + ".tmp";
+        var imageBlobs = new Dictionary<string, byte[]>();
         try
         {
             using (var fileStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write))
@@ -3680,8 +3697,17 @@ public partial class MainWindow : Window
                         WorldHeight = page.WorldHeight,
                         PatternOpacity = page.PatternOpacity,
                         PatternThickness = page.PatternThickness,
-                        PatternDotSize = page.PatternDotSize
+                        PatternDotSize = page.PatternDotSize,
+                        Elements = BuildElementManifests(page, _pages.IndexOf(page), imageBlobs),
+                        Elements = BuildElementManifests(page, _pages.IndexOf(page), imageBlobs),
+                        Elements = BuildElementManifests(page, _pages.IndexOf(page), imageBlobs)
                     });
+                }
+                foreach (var blob in imageBlobs)
+                {
+                    var imageEntry = zip.CreateEntry(blob.Key);
+                    using var imageStream = imageEntry.Open();
+                    imageStream.Write(blob.Value, 0, blob.Value.Length);
                 }
                 var manifestEntry = zip.CreateEntry(ManifestEntryName);
                 using (var entryStream = manifestEntry.Open())
@@ -3746,6 +3772,7 @@ public partial class MainWindow : Window
                     if (pm.WorldWidth is double ww && ww >= 100) page.WorldWidth = ww;
                     if (pm.WorldHeight is double wh && wh >= 100) page.WorldHeight = wh;
 
+                    LoadElementsInto(page, pm, zip);
                     var inkEntry = zip.GetEntry(string.Format(PageEntryFormat, i));
                     if (inkEntry is not null)
                     {
