@@ -95,10 +95,6 @@ public partial class MainWindow : Window
         public double? PatternThickness { get; set; }
         public double? PatternDotSize { get; set; }
         public List<ElementManifest>? Elements { get; set; }
-        public List<ElementManifest>? Elements { get; set; }
-        public List<ElementManifest>? Elements { get; set; }
-        public List<ElementManifest>? Elements { get; set; }
-        public List<ElementManifest>? Elements { get; set; }
     }
 
     private sealed class Manifest
@@ -3698,8 +3694,6 @@ public partial class MainWindow : Window
                         PatternOpacity = page.PatternOpacity,
                         PatternThickness = page.PatternThickness,
                         PatternDotSize = page.PatternDotSize,
-                        Elements = BuildElementManifests(page, _pages.IndexOf(page), imageBlobs),
-                        Elements = BuildElementManifests(page, _pages.IndexOf(page), imageBlobs),
                         Elements = BuildElementManifests(page, _pages.IndexOf(page), imageBlobs)
                     });
                 }
