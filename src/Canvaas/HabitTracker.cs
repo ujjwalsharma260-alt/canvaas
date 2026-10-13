@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 
 namespace Canvaas;
@@ -67,8 +68,7 @@ public sealed class HabitTrackerWindow : Window
     {
         Owner = owner;
         Title = "Habit Tracker";
-        Width = 1340;
-        Height = 900;
+        WindowState = WindowState.Maximized;
         MinWidth = 700;
         MinHeight = 500;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
@@ -89,6 +89,24 @@ public sealed class HabitTrackerWindow : Window
         }));
         bar.Children.Add(MakeButton("Month", (s, e) => { _yearView = false; Refresh(); }));
         bar.Children.Add(MakeButton("Year", (s, e) => { _yearView = true; Refresh(); }));
+        bar.Children.Add(MakeButton("\u2190 Back to Canvas", (s, e) =>
+        {
+            if (Owner is Window owner)
+            {
+                owner.Opacity = 0;
+                owner.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(240))
+                {
+                    BeginTime = TimeSpan.FromMilliseconds(130),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                });
+            }
+            var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            };
+            fade.Completed += (_, _) => Close();
+            BeginAnimation(OpacityProperty, fade);
+        }));
         root.Children.Add(bar);
         root.Children.Add(_scroll);
         Content = root;
@@ -423,12 +441,12 @@ public sealed class HabitTrackerWindow : Window
                 StrokeThickness = 0.6
             });
         }
-        var pl = new Polyline { Stroke = _cyan, StrokeThickness = 2.5, StrokeLineJoin = PenLineJoin.Round };
+        var pts = new List<Point>();
         for (int d = 1; d <= dim; d++)
         {
             double x = (d - 0.5) * DayW;
             double y = 24 + (ch - 44) * (1 - perDay[d] / (double)maxY);
-            pl.Points.Add(new Point(x, y));
+            pts.Add(new Point(x, y));
             var lab = Txt(perDay[d].ToString(), 10, false, _white);
             lab.Width = DayW;
             lab.TextAlignment = TextAlignment.Center;
@@ -436,7 +454,39 @@ public sealed class HabitTrackerWindow : Window
             Canvas.SetTop(lab, y - 18);
             chart.Children.Add(lab);
         }
-        chart.Children.Add(pl);
+        var lineGeo = new PathGeometry();
+        if (pts.Count > 0)
+        {
+            var fig = new PathFigure { StartPoint = pts[0], IsClosed = false, IsFilled = false };
+            for (int i = 0; i < pts.Count - 1; i++)
+            {
+                var p0 = i == 0 ? pts[0] : pts[i - 1];
+                var p1 = pts[i];
+                var p2 = pts[i + 1];
+                var p3 = i + 2 < pts.Count ? pts[i + 2] : pts[i + 1];
+                var c1 = new Point(p1.X + (p2.X - p0.X) / 6.0, p1.Y + (p2.Y - p0.Y) / 6.0);
+                var c2 = new Point(p2.X - (p3.X - p1.X) / 6.0, p2.Y - (p3.Y - p1.Y) / 6.0);
+                fig.Segments.Add(new BezierSegment(c1, c2, p2, true));
+            }
+            lineGeo.Figures.Add(fig);
+        }
+        var smoothLine = new System.Windows.Shapes.Path
+        {
+            Stroke = _cyan,
+            StrokeThickness = 2.5,
+            StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Data = lineGeo,
+            StrokeDashArray = new DoubleCollection { 4000 },
+            StrokeDashOffset = 4000
+        };
+        chart.Children.Add(smoothLine);
+        var drawAnim = new DoubleAnimation(4000, 0, TimeSpan.FromMilliseconds(1100))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        smoothLine.BeginAnimation(System.Windows.Shapes.Path.StrokeDashOffsetProperty, drawAnim);
         Place(g, chart, 0, 2, 1, 31);
 
         // ---- success rate
@@ -646,12 +696,20 @@ public sealed class HabitTrackerWindow : Window
             var rect = new Rectangle
             {
                 Width = 14,
-                Height = Math.Max(0, bh),
-                Fill = new SolidColorBrush(Color.FromRgb(0x3D, 0xE8, 0xB0))
+                Height = Math.Max(0.1, bh),
+                Fill = new SolidColorBrush(Color.FromRgb(0x3D, 0xE8, 0xB0)),
+                RenderTransformOrigin = new Point(0.5, 1.0),
+                RenderTransform = new ScaleTransform(1, 0)
             };
             Canvas.SetLeft(rect, (d - 0.5) * DayW - 7);
             Canvas.SetTop(rect, 70 - bh);
             bars.Children.Add(rect);
+            var st = (ScaleTransform)rect.RenderTransform;
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(450))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(d * 22),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            });
             var lab = Txt(perDay[d].ToString(), 10, false, _white);
             lab.Width = DayW;
             lab.TextAlignment = TextAlignment.Center;
