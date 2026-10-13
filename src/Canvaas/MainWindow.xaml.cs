@@ -44,7 +44,7 @@ public partial class MainWindow : Window
     private const double EdgeBtnSize = 30;
     private const double EdgeBtnMargin = 8;
     private const double EdgeBtnPad = 4;
-    private const double ResizeHandleSize = 12;
+    private const double ResizeHandleSize = 16;
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
@@ -1272,13 +1272,30 @@ public partial class MainWindow : Window
     private bool TryStartResize(Point screenPt)
     {
         if (_resizeHandles.Count == 0) return false;
+
+        const double grabRadius = 22.0;
+        ResizeHandle bestHandle = default;
+        double bestDist = double.MaxValue;
+        bool found = false;
+
         foreach (var h in _resizeHandles)
         {
             if (h.Tag is not ResizeHandle handle) continue;
             double l = Canvas.GetLeft(h), t = Canvas.GetTop(h);
-            var rect = new Rect(l - 4, t - 4, ResizeHandleSize + 8, ResizeHandleSize + 8);
-            if (rect.Contains(screenPt)) { BeginResize(handle); return true; }
+            double cx = l + ResizeHandleSize / 2.0;
+            double cy = t + ResizeHandleSize / 2.0;
+            double dx = screenPt.X - cx;
+            double dy = screenPt.Y - cy;
+            double d = Math.Sqrt(dx * dx + dy * dy);
+            if (d <= grabRadius && d < bestDist)
+            {
+                bestDist = d;
+                bestHandle = handle;
+                found = true;
+            }
         }
+
+        if (found) { BeginResize(bestHandle); return true; }
         return false;
     }
 
