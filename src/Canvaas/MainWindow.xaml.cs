@@ -1929,13 +1929,12 @@ public partial class MainWindow : Window
         _lastFullscreenToggle = now;
 
         _fullscreenMode = !_fullscreenMode;
-        if (TitleBarBorder is not null)
-            ApplyBars(_barsShown);
         if (AppWindowChrome is not null)
         {
             AppWindowChrome.CaptionHeight = _fullscreenMode ? 0 : 36;
             AppWindowChrome.ResizeBorderThickness = _fullscreenMode ? new Thickness(0) : new Thickness(6);
         }
+        ApplyBars(_barsShown);
         ReleaseAllCaptures();
 
         IntPtr hwnd;
@@ -1945,19 +1944,25 @@ public partial class MainWindow : Window
         {
             _preFullscreenWindowState = WindowState;
             _preFullscreenTopmost = Topmost;
-            WindowState = WindowState.Normal;
+
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.NoResize;
+
             double sw = SystemParameters.PrimaryScreenWidth;
             double sh = SystemParameters.PrimaryScreenHeight;
-            Left = 0; Top = 0; Width = sw; Height = sh;
+
+            // Set the new restore bounds FIRST (while still maximized). WPF stores
+            // these as the "restore" size, so flipping to Normal below goes straight
+            // to fullscreen — Windows never paints the old small size.
+            Left = 0; Top = 0;
+            Width = sw; Height = sh;
+            WindowState = WindowState.Normal;
+
             Topmost = true;
+
             if (hwnd != IntPtr.Zero)
-            {
                 SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
-                // Call again to force Windows to fully re-evaluate the frame
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
-            }
+
             StatusText.Text = "Fullscreen. Press ESC or F11 to exit.";
         }
         else
@@ -1965,19 +1970,19 @@ public partial class MainWindow : Window
             Topmost = _preFullscreenTopmost;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
-            WindowState = WindowState.Normal;
-            Left = 0; Top = 0;
-            Width = SystemParameters.WorkArea.Width;
-            Height = SystemParameters.WorkArea.Height;
+
             if (hwnd != IntPtr.Zero)
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+            // Jump straight to the saved state (usually Maximized). No Normal in
+            // between → no visible shrink.
             var targetState = _preFullscreenWindowState;
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                WindowState = targetState;
-            }), DispatcherPriority.Background);
+            if (targetState == WindowState.Minimized) targetState = WindowState.Maximized;
+            WindowState = targetState;
+
             StatusText.Text = "Exited fullscreen.";
         }
+
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
     }
 
@@ -3520,7 +3525,9 @@ public partial class MainWindow : Window
     // =====================================================================
     private void PenButton_Click(object sender, RoutedEventArgs e)
     {
-        bool showPopup = !_suppressToolPopup && !_lastInputFromStylus;
+        var lastDevice = InputManager.Current.MostRecentInputDevice;
+        bool fromPointer = lastDevice is MouseDevice or StylusDevice;
+        bool showPopup = fromPointer && !_suppressToolPopup;
         _suppressToolPopup = false;
         _lastInputFromStylus = false;
         _tool = ToolMode.Pen;
@@ -3534,7 +3541,9 @@ public partial class MainWindow : Window
 
     private void CalligraphyButton_Click(object sender, RoutedEventArgs e)
     {
-        bool showPopup = !_suppressToolPopup && !_lastInputFromStylus;
+        var lastDevice = InputManager.Current.MostRecentInputDevice;
+        bool fromPointer = lastDevice is MouseDevice or StylusDevice;
+        bool showPopup = fromPointer && !_suppressToolPopup;
         _suppressToolPopup = false;
         _lastInputFromStylus = false;
         _tool = ToolMode.Calligraphy;
@@ -3548,7 +3557,9 @@ public partial class MainWindow : Window
 
     private void HighlighterButton_Click(object sender, RoutedEventArgs e)
     {
-        bool showPopup = !_suppressToolPopup && !_lastInputFromStylus;
+        var lastDevice = InputManager.Current.MostRecentInputDevice;
+        bool fromPointer = lastDevice is MouseDevice or StylusDevice;
+        bool showPopup = fromPointer && !_suppressToolPopup;
         _suppressToolPopup = false;
         _lastInputFromStylus = false;
         _tool = ToolMode.Highlighter;
