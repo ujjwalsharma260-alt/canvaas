@@ -248,6 +248,18 @@ public partial class MainWindow : Window
 
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
 
+    private bool _suppressToolPopup;
+    private bool _lastInputFromStylus;
+    private readonly List<CollapsedGroup> _collapsedGroups = new();
+
+    private sealed class CollapsedGroup
+    {
+        public StrokeCollection Strokes { get; } = new();
+        public List<UIElement> Elements { get; } = new();
+        public Rect Bounds;
+        public Border Visual = null!;
+    }
+
     private bool _draggingColorSquare;
     private Point _colorSquareDragStart;
     private double _colorSquareStartX, _colorSquareStartY;
@@ -348,6 +360,9 @@ public partial class MainWindow : Window
         PopulateToolColorGrid();
         WireQuickColorRightClick();
         LoadCurrentPageIntoCanvas();
+
+        foreach (var tb in new[] { PenButton, HighlighterButton, CalligraphyButton })
+            if (tb != null) tb.PreviewMouseLeftButtonDown += (s, ev) => _lastInputFromStylus = ev.StylusDevice != null;
 
         PenButton.IsChecked = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
@@ -552,8 +567,151 @@ public partial class MainWindow : Window
     // Selection action toolbar
     // =====================================================================
     private void SelToolDuplicate_Click(object sender, RoutedEventArgs e) => DuplicateSelection();
-    private void SelToolCopy_Click(object sender, RoutedEventArgs e) => CopySelection();
+    private void SelToolColor_Click(object sender, RoutedEventArgs e) => ShowSelectionColourPicker();
+    private void SelToolCollapse_Click(object sender, RoutedEventArgs e) => CollapseSelection();
     private void SelToolDelete_Click(object sender, RoutedEventArgs e) => DeleteSelection();
+
+    private void ShowSelectionColourPicker()
+    {
+        var target = (SelectionToolbar is not null && SelectionToolbar.Visibility == Visibility.Visible)
+            ? (UIElement)SelectionToolbar : this;
+        ShowToolPopup(target, "Change selection colour");
+    }
+
+    private void CollapseSelection()
+    {
+        if (InkArea is null) return;
+        var selStrokes = InkArea.GetSelectedStrokes();
+        if (selStrokes.Count == 0 && _selectedElements.Count == 0) return;
+
+        Rect bounds = ComputeSelectionWorldBounds();
+        if (bounds.IsEmpty || bounds.Width < 5 || bounds.Height < 5) return;
+
+        var group = new CollapsedGroup { Bounds = bounds };
+        foreach (var s in selStrokes) group.Strokes.Add(s);
+        group.Elements.AddRange(_selectedElements);
+
+        BitmapSource? thumb = null;
+        if (group.Strokes.Count > 0)
+        {
+            try { thumb = RenderStrokesToBitmap(group.Strokes, bounds); }
+            catch { thumb = null; }
+        }
+
+        const double chipW = 96;
+        double chipH = Math.Max(56, chipW * bounds.Height / Math.Max(1, bounds.Width));
+        if (chipH > 160) chipH = 160;
+
+        var grid = new Grid { IsHitTestVisible = false };
+        if (thumb is not null)
+        {
+            grid.Children.Add(new Image
+            {
+                Source = thumb,
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(4, 4, 4, 18),
+                IsHitTestVisible = false
+            });
+        }
+        grid.Children.Add(new TextBlock
+        {
+            Text = (group.Strokes.Count + group.Elements.Count) + " items",
+            FontSize = 10,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x73, 0xE8)),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(2, 0, 2, 3),
+            IsHitTestVisible = false
+        });
+
+        var border = new Border
+        {
+            Width = chipW,
+            Height = chipH,
+            Background = new SolidColorBrush(Color.FromArgb(30, 26, 115, 232)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(26, 115, 232)),
+            BorderThickness = new Thickness(1.5),
+            CornerRadius = new CornerRadius(6),
+            Cursor = Cursors.SizeAll,
+            ToolTip = "Collapsed group. Double-click to expand. Drag to move.",
+            Child = grid,
+            Tag = group
+        };
+
+        InkCanvas.SetLeft(border, bounds.Left);
+        InkCanvas.SetTop(border, bounds.Top);
+        InkArea.Children.Add(border);
+
+        _applyingHistory = true;
+        try
+        {
+            var toRemove = new StrokeCollection();
+            foreach (var s in selStrokes) toRemove.Add(s);
+            InkArea.Strokes.Remove(toRemove);
+            foreach (var el in _selectedElements.ToList())
+            {
+                InkArea.Children.Remove(el);
+                CurrentPage.Elements.Remove(el);
+            }
+        }
+        finally { _applyingHistory = false; }
+
+        group.Visual = border;
+        _collapsedGroups.Add(group);
+        CurrentPage.Elements.Add(border);
+
+        ClearElementSelection();
+        InkArea.Select(new StrokeCollection());
+        RebuildResizeHandles();
+        MarkDirty();
+        StatusText.Text = "Selection collapsed. Double-click the chip to expand.";
+    }
+
+    private void ExpandGroup(CollapsedGroup group)
+    {
+        if (InkArea is null) return;
+        if (!_collapsedGroups.Contains(group)) return;
+
+        double chipL = InkCanvas.GetLeft(group.Visual);
+        double chipT = InkCanvas.GetTop(group.Visual);
+        if (double.IsNaN(chipL)) chipL = group.Bounds.Left;
+        if (double.IsNaN(chipT)) chipT = group.Bounds.Top;
+        double dx = chipL - group.Bounds.Left;
+        double dy = chipT - group.Bounds.Top;
+
+        var restored = new StrokeCollection();
+        foreach (var orig in group.Strokes)
+        {
+            var pts = new StylusPointCollection();
+            foreach (var p in orig.StylusPoints)
+                pts.Add(new StylusPoint((float)(p.X + dx), (float)(p.Y + dy), p.PressureFactor));
+            restored.Add(new Stroke(pts, orig.DrawingAttributes.Clone()));
+        }
+
+        _applyingHistory = true;
+        try
+        {
+            if (restored.Count > 0) InkArea.Strokes.Add(restored);
+            foreach (var el in group.Elements)
+            {
+                double elL = InkCanvas.GetLeft(el), elT = InkCanvas.GetTop(el);
+                if (!double.IsNaN(elL)) InkCanvas.SetLeft(el, elL + dx);
+                if (!double.IsNaN(elT)) InkCanvas.SetTop(el, elT + dy);
+                InkArea.Children.Add(el);
+                CurrentPage.Elements.Add(el);
+            }
+            InkArea.Children.Remove(group.Visual);
+            CurrentPage.Elements.Remove(group.Visual);
+        }
+        finally { _applyingHistory = false; }
+
+        _collapsedGroups.Remove(group);
+        ClearElementSelection();
+        InkArea.Select(restored);
+        RebuildResizeHandles();
+        MarkDirty();
+        StatusText.Text = "Group expanded.";
+    }
 
     private void DuplicateSelection()
     {
@@ -1040,7 +1198,7 @@ public partial class MainWindow : Window
     {
         if (SelectionToolbar is null) return;
         double centerX = (sl + sr) / 2.0;
-        double tx = centerX - 62;
+        double tx = centerX - 78;
         double ty = st - 48;
         if (ty < 4) ty = st + 4;
         SelectionToolbar.Margin = new Thickness(tx, ty, 0, 0);
@@ -1642,8 +1800,8 @@ public partial class MainWindow : Window
             if (MatchesShortcut("selectall", e.Key, modsNow)) { ApplicationCommands.SelectAll.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("undo", e.Key, modsNow)) { ApplicationCommands.Undo.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("redo", e.Key, modsNow)) { ApplicationCommands.Redo.Execute(null, this); e.Handled = true; return; }
-            if (MatchesShortcut("pen", e.Key, modsNow)) { PenButton.IsChecked = true; PenButton_Click(PenButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("highlighter", e.Key, modsNow)) { HighlighterButton.IsChecked = true; HighlighterButton_Click(HighlighterButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("pen", e.Key, modsNow)) { PenButton.IsChecked = true; _suppressToolPopup = true; PenButton_Click(PenButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("highlighter", e.Key, modsNow)) { HighlighterButton.IsChecked = true; _suppressToolPopup = true; HighlighterButton_Click(HighlighterButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("eraser", e.Key, modsNow)) { EraserButton.IsChecked = true; EraserButton_Click(EraserButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("lasso", e.Key, modsNow)) { LassoButton.IsChecked = true; LassoButton_Click(LassoButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("hand", e.Key, modsNow)) { HandButton.IsChecked = true; HandButton_Click(HandButton, new RoutedEventArgs()); e.Handled = true; return; }
@@ -1807,11 +1965,17 @@ public partial class MainWindow : Window
             Topmost = _preFullscreenTopmost;
             WindowStyle = WindowStyle.None;
             ResizeMode = ResizeMode.CanResize;
-            WindowState = _preFullscreenWindowState;
+            WindowState = WindowState.Normal;
+            Left = 0; Top = 0;
+            Width = SystemParameters.WorkArea.Width;
+            Height = SystemParameters.WorkArea.Height;
             if (hwnd != IntPtr.Zero)
-            {
                 SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_FRAMECHANGED);
-            }
+            var targetState = _preFullscreenWindowState;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                WindowState = targetState;
+            }), DispatcherPriority.Background);
             StatusText.Text = "Exited fullscreen.";
         }
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
@@ -2468,6 +2632,10 @@ public partial class MainWindow : Window
             MainMenuFlyout.Visibility = Visibility.Collapsed;
 
         var screenPt = e.GetPosition(CanvasHostBorder);
+        if (e.OriginalSource is Border srcBorder && srcBorder.Tag is CollapsedGroup srcGroup)
+        {
+            if (e.ClickCount == 2) { ExpandGroup(srcGroup); e.Handled = true; return; }
+        }
         bool middleDrag = e.MiddleButton == MouseButtonState.Pressed;
         bool handDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Hand;
         bool lassoDrag = e.LeftButton == MouseButtonState.Pressed && _tool == ToolMode.Lasso;
@@ -2670,7 +2838,17 @@ public partial class MainWindow : Window
             double l = InkCanvas.GetLeft(fe), t = InkCanvas.GetTop(fe);
             double w = fe.ActualWidth > 0 ? fe.ActualWidth : 200;
             double h = fe.ActualHeight > 0 ? fe.ActualHeight : 30;
-            if (new Rect(l, t, w, h).Contains(worldPt)) return true;
+            var r = new Rect(l, t, w, h);
+            const double minSize = 80;
+            if (r.Width < minSize || r.Height < minSize)
+            {
+                double cx = r.Left + r.Width / 2.0;
+                double cy = r.Top + r.Height / 2.0;
+                double ww = Math.Max(r.Width, minSize);
+                double hh = Math.Max(r.Height, minSize);
+                r = new Rect(cx - ww / 2.0, cy - hh / 2.0, ww, hh);
+            }
+            if (r.Contains(worldPt)) return true;
         }
         return false;
     }
@@ -2679,9 +2857,18 @@ public partial class MainWindow : Window
     {
         var selected = InkArea?.GetSelectedStrokes();
         if (selected is null || selected.Count == 0) return false;
-        var hits = selected.HitTest(new[] { worldPt }, 6);
+        var hits = selected.HitTest(new[] { worldPt }, 14);
         if (hits.Count > 0) return true;
         var bounds = selected.GetBounds();
+        const double minSize = 80;
+        if (bounds.Width < minSize || bounds.Height < minSize)
+        {
+            double cx = bounds.Left + bounds.Width / 2.0;
+            double cy = bounds.Top + bounds.Height / 2.0;
+            double w = Math.Max(bounds.Width, minSize);
+            double h = Math.Max(bounds.Height, minSize);
+            bounds = new Rect(cx - w / 2.0, cy - h / 2.0, w, h);
+        }
         bounds.Inflate(12, 12);
         return bounds.Contains(worldPt);
     }
@@ -3333,35 +3520,44 @@ public partial class MainWindow : Window
     // =====================================================================
     private void PenButton_Click(object sender, RoutedEventArgs e)
     {
+        bool showPopup = !_suppressToolPopup && !_lastInputFromStylus;
+        _suppressToolPopup = false;
+        _lastInputFromStylus = false;
         _tool = ToolMode.Pen;
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
         UpdateCursor();
         StatusText.Text = "Pen selected.";
-        ShowToolPopup(PenButton, "Pen");
+        if (showPopup) ShowToolPopup(PenButton, "Pen");
     }
 
     private void CalligraphyButton_Click(object sender, RoutedEventArgs e)
     {
+        bool showPopup = !_suppressToolPopup && !_lastInputFromStylus;
+        _suppressToolPopup = false;
+        _lastInputFromStylus = false;
         _tool = ToolMode.Calligraphy;
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
         UpdateCursor();
         StatusText.Text = "Calligraphy pen selected.";
-        ShowToolPopup(CalligraphyButton, "Calligraphy pen");
+        if (showPopup) ShowToolPopup(CalligraphyButton, "Calligraphy pen");
     }
 
     private void HighlighterButton_Click(object sender, RoutedEventArgs e)
     {
+        bool showPopup = !_suppressToolPopup && !_lastInputFromStylus;
+        _suppressToolPopup = false;
+        _lastInputFromStylus = false;
         _tool = ToolMode.Highlighter;
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
         UpdateCursor();
         StatusText.Text = "Highlighter selected.";
-        ShowToolPopup(HighlighterButton, "Highlighter");
+        if (showPopup) ShowToolPopup(HighlighterButton, "Highlighter");
     }
 
     private void EraserButton_Click(object sender, RoutedEventArgs e)
@@ -3657,6 +3853,8 @@ public partial class MainWindow : Window
 
     private bool SaveToFile(string path)
     {
+        foreach (var g in _collapsedGroups.ToList()) ExpandGroup(g);
+
         if (_pages.Count > 0 && InkArea is not null)
         {
             var oldPage = _pages[_currentPageIndex];

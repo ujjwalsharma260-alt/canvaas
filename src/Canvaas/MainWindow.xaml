@@ -529,8 +529,10 @@
                 <StackPanel Orientation="Horizontal">
                     <Button x:Name="SelToolDuplicate" Style="{StaticResource SelActionButton}"
                             Content="&#xE8C8;" ToolTip="Duplicate" Click="SelToolDuplicate_Click"/>
-                    <Button x:Name="SelToolCopy" Style="{StaticResource SelActionButton}"
-                            Content="&#xE8C8;" ToolTip="Copy" Click="SelToolCopy_Click"/>
+                    <Button x:Name="SelToolColor" Style="{StaticResource SelActionButton}"
+                            Content="&#xE790;" ToolTip="Change colour" Click="SelToolColor_Click"/>
+                    <Button x:Name="SelToolCollapse" Style="{StaticResource SelActionButton}"
+                            Content="&#xE70D;" ToolTip="Collapse group (minimize)" Click="SelToolCollapse_Click"/>
                     <Button x:Name="SelToolDelete" Style="{StaticResource SelActionButton}"
                             Content="&#xE74D;" ToolTip="Delete" Click="SelToolDelete_Click"/>
                 </StackPanel>
