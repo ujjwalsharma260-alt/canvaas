@@ -1750,7 +1750,7 @@ public partial class MainWindow : Window
     private void UpdateCursor()
     {
         Cursor c;
-        if (_tool == ToolMode.Hand) c = Cursors.SizeAll;
+        if (_tool == ToolMode.Hand) c = Cursors.Arrow;
         else if (_tool == ToolMode.Lasso) c = Cursors.Cross;
         else
         {
@@ -2814,6 +2814,67 @@ public partial class MainWindow : Window
         else if (_panning) EndPan();
         else if (_lassoActive) EndLasso();
         else if (_draggingSelection) EndSelectionDrag();
+    }
+
+    private int _panTouchId = -1;
+
+    private void BeginPanAt(Point screenPt)
+    {
+        if (CanvasHostBorder is null || _panning) return;
+        _panning = true;
+        _panStart = screenPt;
+        _panStartPanX = _viewPanX;
+        _panStartPanY = _viewPanY;
+        CanvasHostBorder.Cursor = Cursors.None;
+        if (InkArea is not null) InkArea.Cursor = Cursors.None;
+        try { Mouse.UpdateCursor(); } catch { }
+    }
+
+    private void PanTo(Point screenPt)
+    {
+        _viewPanX = _panStartPanX + (screenPt.X - _panStart.X);
+        _viewPanY = _panStartPanY + (screenPt.Y - _panStart.Y);
+        if (ViewTransform is not null)
+            ViewTransform.Matrix = new Matrix(_viewZoom, 0, 0, _viewZoom, _viewPanX, _viewPanY);
+    }
+
+    private void CanvasHostBorder_PreviewStylusDown(object sender, StylusDownEventArgs e)
+    {
+        if (_tool == ToolMode.Hand && CanvasHostBorder is not null)
+            BeginPanAt(e.GetPosition(CanvasHostBorder));
+    }
+
+    private void CanvasHostBorder_PreviewStylusMove(object sender, StylusEventArgs e)
+    {
+        if (_panning && _tool == ToolMode.Hand && CanvasHostBorder is not null)
+            PanTo(e.GetPosition(CanvasHostBorder));
+    }
+
+    private void CanvasHostBorder_PreviewStylusUp(object sender, StylusEventArgs e)
+    {
+        if (_panning && _tool == ToolMode.Hand) EndPan();
+    }
+
+    private void CanvasHostBorder_PreviewTouchDown(object sender, TouchEventArgs e)
+    {
+        if (_tool != ToolMode.Hand || CanvasHostBorder is null || _panning) return;
+        _panTouchId = e.TouchDevice.Id;
+        BeginPanAt(e.GetTouchPoint(CanvasHostBorder).Position);
+    }
+
+    private void CanvasHostBorder_PreviewTouchMove(object sender, TouchEventArgs e)
+    {
+        if (_panning && _panTouchId == e.TouchDevice.Id && CanvasHostBorder is not null)
+            PanTo(e.GetTouchPoint(CanvasHostBorder).Position);
+    }
+
+    private void CanvasHostBorder_PreviewTouchUp(object sender, TouchEventArgs e)
+    {
+        if (_panTouchId == e.TouchDevice.Id)
+        {
+            _panTouchId = -1;
+            EndPan();
+        }
     }
 
     private void EndPan()

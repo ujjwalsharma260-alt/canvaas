@@ -10,7 +10,9 @@
         TextOptions.TextRenderingMode="ClearType"
         Closing="Window_Closing"
         PreviewMouseUp="Window_PreviewMouseUp"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Stylus.IsPressAndHoldEnabled="False" Stylus.IsFlicksEnabled="False"
+        Stylus.IsTapFeedbackEnabled="False" Stylus.IsTouchFeedbackEnabled="False">
 
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome x:Name="AppWindowChrome" CaptionHeight="36" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False"/>
@@ -505,7 +507,13 @@
                     PreviewMouseDown="CanvasHostBorder_PreviewMouseDown"
                     PreviewMouseMove="CanvasHostBorder_PreviewMouseMove"
                     PreviewMouseUp="CanvasHostBorder_PreviewMouseUp"
-                    PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel">
+                    PreviewMouseWheel="CanvasHostBorder_PreviewMouseWheel"
+                    PreviewStylusDown="CanvasHostBorder_PreviewStylusDown"
+                    PreviewStylusMove="CanvasHostBorder_PreviewStylusMove"
+                    PreviewStylusUp="CanvasHostBorder_PreviewStylusUp"
+                    PreviewTouchDown="CanvasHostBorder_PreviewTouchDown"
+                    PreviewTouchMove="CanvasHostBorder_PreviewTouchMove"
+                    PreviewTouchUp="CanvasHostBorder_PreviewTouchUp">
                 <Canvas x:Name="CanvasHost" HorizontalAlignment="Left" VerticalAlignment="Top" RenderTransformOrigin="0,0">
                     <Canvas.RenderTransform>
                         <MatrixTransform x:Name="ViewTransform"/>
