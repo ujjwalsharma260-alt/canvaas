@@ -112,6 +112,8 @@ public partial class MainWindow : Window
         public double PointerSize { get; set; } = 12.0;
         public int CursorStyleIndex { get; set; } = 2;
         public bool ShowCursorDot { get; set; } = true;
+        public bool ShowQuickColorSquare { get; set; } = true;
+        public double QuickColorSquareSize { get; set; } = 24.0;
         public Dictionary<string, string>? Shortcuts { get; set; }
         public int PdfPageSizeIndex { get; set; } = 0;
         public int PdfOrientationIndex { get; set; } = 0;
@@ -263,6 +265,9 @@ public partial class MainWindow : Window
     private bool _draggingColorSquare;
     private Point _colorSquareDragStart;
     private double _colorSquareStartX, _colorSquareStartY;
+    private bool _colorSquareUserMoved;
+    private bool _showQuickColorSquare = true;
+    private double _quickColorSquareSize = 24.0;
 
     private Dictionary<string, string> _shortcuts = new();
     private readonly ObservableCollection<ShortcutItem> _shortcutItems = new();
@@ -344,6 +349,7 @@ public partial class MainWindow : Window
                 {
                     if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
                     ScheduleRebuildEdgeButtons();
+                    ApplyQuickColorsSettings();
                     PositionColorSquare();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
@@ -352,7 +358,11 @@ public partial class MainWindow : Window
         StateChanged += MainWindow_StateChanged;
 
         if (CanvasHostBorder is not null)
-            CanvasHostBorder.SizeChanged += (s, e) => ScheduleRebuildEdgeButtons();
+            CanvasHostBorder.SizeChanged += (s, e) =>
+            {
+                ScheduleRebuildEdgeButtons();
+                if (!_colorSquareUserMoved) PositionColorSquare();
+            };
 
         _pages.Add(NewStyledPage());
         _currentPageIndex = 0;
@@ -505,6 +515,14 @@ public partial class MainWindow : Window
         }
         if (ShowCursorDotCheck is not null) ShowCursorDotCheck.IsChecked = _showCursorDot;
 
+        if (ShowQuickColorsCheck is not null) ShowQuickColorsCheck.IsChecked = _showQuickColorSquare;
+        if (QuickColorsSizeSlider is not null)
+        {
+            double v = Math.Clamp(_quickColorSquareSize, 18, 56);
+            QuickColorsSizeSlider.Value = v;
+            if (QuickColorsSizeText is not null) QuickColorsSizeText.Text = ((int)Math.Round(v)).ToString();
+        }
+
         if (PdfPageSizeCombo is not null) PdfPageSizeCombo.SelectedIndex = Math.Clamp(_pdfPageSizeIndex, 0, 4);
         if (PdfOrientationCombo is not null) PdfOrientationCombo.SelectedIndex = Math.Clamp(_pdfOrientationIndex, 0, 1);
     }
@@ -543,6 +561,44 @@ public partial class MainWindow : Window
         RebuildHollowRingCursor();
         UpdateCursor();
         SaveSettings();
+    }
+
+    private void ShowQuickColorsCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_uiReady) return;
+        _showQuickColorSquare = ShowQuickColorsCheck.IsChecked == true;
+        ApplyQuickColorsSettings();
+        SaveSettings();
+    }
+
+    private void QuickColorsSizeSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady) return;
+        _quickColorSquareSize = e.NewValue;
+        if (QuickColorsSizeText is not null) QuickColorsSizeText.Text = ((int)Math.Round(e.NewValue)).ToString();
+        ApplyQuickColorsSettings();
+        SaveSettings();
+    }
+
+    private void ApplyQuickColorsSettings()
+    {
+        if (ColorSquareHost is null || ColorSquareRoot is null) return;
+        ColorSquareHost.Visibility = _showQuickColorSquare ? Visibility.Visible : Visibility.Collapsed;
+
+        double s = _quickColorSquareSize;
+        var btns = new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 };
+        foreach (var b in btns)
+        {
+            if (b is null) continue;
+            b.Width = s;
+            b.Height = s;
+            b.Margin = new Thickness(Math.Max(2, s * 0.12));
+        }
+        ColorSquareRoot.Padding = new Thickness(Math.Max(2, (int)(s * 0.10)));
+        if (ColorSquareDragHandle is not null)
+            ColorSquareDragHandle.Height = Math.Max(10, s * 0.42);
+
+        if (!_colorSquareUserMoved) PositionColorSquare();
     }
 
     private void ResetAllSettings_Click(object sender, RoutedEventArgs e)
@@ -783,12 +839,18 @@ public partial class MainWindow : Window
     private void PositionColorSquare()
     {
         if (ColorSquareHost is null || ColorSquareRoot is null || CanvasHostBorder is null) return;
-        if (!double.IsNaN(Canvas.GetLeft(ColorSquareRoot))) return;
 
+        double vw = CanvasHostBorder.ActualWidth;
         double vh = CanvasHostBorder.ActualHeight;
-        if (vh < 100) vh = 700;
+        if (vw < 200) vw = 1200;
+        if (vh < 200) vh = 700;
 
-        Canvas.SetLeft(ColorSquareRoot, Math.Max(24, (CanvasHostBorder.ActualWidth > 200 ? CanvasHostBorder.ActualWidth : 1200) - 110));
+        double w = ColorSquareRoot.ActualWidth;
+        double h = ColorSquareRoot.ActualHeight;
+        if (w < 20) w = 90;
+        if (h < 20) h = 90;
+
+        Canvas.SetLeft(ColorSquareRoot, Math.Max(24, vw - w - 24));
         Canvas.SetTop(ColorSquareRoot, 24);
     }
 
@@ -796,6 +858,7 @@ public partial class MainWindow : Window
     {
         if (ColorSquareRoot is null) return;
         _draggingColorSquare = true;
+        _colorSquareUserMoved = true;
         _colorSquareDragStart = e.GetPosition(ColorSquareHost);
         _colorSquareStartX = Canvas.GetLeft(ColorSquareRoot);
         _colorSquareStartY = Canvas.GetTop(ColorSquareRoot);
@@ -1449,6 +1512,8 @@ public partial class MainWindow : Window
                 _ => PenCursorStyle.HollowRingDot
             };
             _showCursorDot = s.ShowCursorDot;
+            _showQuickColorSquare = s.ShowQuickColorSquare;
+            _quickColorSquareSize = Math.Clamp(s.QuickColorSquareSize, 18.0, 56.0);
             _pdfPageSizeIndex = Math.Clamp(s.PdfPageSizeIndex, 0, 4);
             _pdfOrientationIndex = Math.Clamp(s.PdfOrientationIndex, 0, 1);
             if (s.Shortcuts is not null) _shortcuts = new Dictionary<string, string>(s.Shortcuts);
@@ -1477,6 +1542,8 @@ public partial class MainWindow : Window
                 PointerSize = _pointerSize,
                 CursorStyleIndex = (int)_cursorStyle,
                 ShowCursorDot = _showCursorDot,
+                ShowQuickColorSquare = _showQuickColorSquare,
+                QuickColorSquareSize = _quickColorSquareSize,
                 Shortcuts = _shortcuts,
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
                 PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex
@@ -3194,7 +3261,11 @@ public partial class MainWindow : Window
             MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
             MaximizeButton.ToolTip = WindowState == WindowState.Maximized ? "Restore" : "Maximize";
         }
-        Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ScheduleRebuildEdgeButtons();
+            if (!_colorSquareUserMoved) PositionColorSquare();
+        }), DispatcherPriority.Loaded);
     }
 
     // =====================================================================
