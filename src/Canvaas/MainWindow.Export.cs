@@ -1,9 +1,10 @@
 using System.Globalization;
-using System.IO;
 using System.IO.Compression;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Ink;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
@@ -49,6 +50,7 @@ public partial class MainWindow
 
     private static byte[] EncodePng(BitmapSource bs)
     {
+        if (PngCache.TryGetValue(bs, out var cached)) return cached;
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(bs));
         using var ms = new MemoryStream();
@@ -145,6 +147,7 @@ public partial class MainWindow
                 bmp.StreamSource = ms;
                 bmp.EndInit();
                 bmp.Freeze();
+                PngCache.AddOrUpdate(bmp, ms.ToArray());
                 var img = new Image
                 {
                     Source = bmp,
@@ -186,6 +189,8 @@ public partial class MainWindow
 
     private Rect ContentBounds(NotebookPage page)
     {
+        if (page.WorldWidth <= 5000 && page.WorldHeight <= 5000)
+            return new Rect(0, 0, page.WorldWidth, page.WorldHeight);
         Rect? r = null;
         if (page.Strokes.Count > 0)
         {
@@ -587,5 +592,293 @@ public partial class MainWindow
         doc.SetObject(pagesNum, "<< /Type /Pages /Kids [" + kids + "] /Count " + pageNums.Count + " >>");
         int catalog = doc.AddObject("<< /Type /Catalog /Pages " + pagesNum + " 0 R >>");
         File.WriteAllBytes(filePath, doc.Finish(catalog));
+    }
+
+    // =====================================================================
+    // Page currently shown on the canvas (fixes pictures / text vanishing)
+    // =====================================================================
+    private NotebookPage? _displayedPage;
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<BitmapSource, byte[]> PngCache = new();
+
+    // =====================================================================
+    // Insert PDF: textbook page on the left, empty notes space on the right
+    // =====================================================================
+    private sealed class SpreadOptions
+    {
+        public double NotesFactor = 1.3;
+        public int GridMode;        // 0 plain, 1 dots, 2 lines, 3 squares
+        public bool Divider = true;
+        public int Sharpness = 2;   // 1..4
+    }
+
+    private SpreadOptions? AskSpreadOptions()
+    {
+        var result = new SpreadOptions();
+        bool ok = false;
+        var win = new Window
+        {
+            Title = "Insert PDF: textbook page + notes space",
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            Background = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xF5))
+        };
+        var panel = new StackPanel { Margin = new Thickness(20), MinWidth = 440 };
+
+        TextBlock Section(string t) => new TextBlock
+        {
+            Text = t,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 10, 0, 4)
+        };
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Each PDF page goes on the left. The space on its right is yours for notes.",
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 440,
+            Margin = new Thickness(0, 0, 0, 6)
+        });
+
+        var widthLabel = new TextBlock { FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 10, 0, 0) };
+        var slider = new Slider
+        {
+            Minimum = 0.5,
+            Maximum = 3.0,
+            Value = 1.3,
+            TickFrequency = 0.1,
+            IsSnapToTickEnabled = true,
+            Margin = new Thickness(0, 4, 0, 6)
+        };
+        slider.ValueChanged += (s, e) =>
+            widthLabel.Text = "Notes area width: " + slider.Value.ToString("0.0") + "x the textbook page";
+        widthLabel.Text = "Notes area width: " + slider.Value.ToString("0.0") + "x the textbook page";
+        panel.Children.Add(widthLabel);
+        panel.Children.Add(slider);
+
+        var presets = new StackPanel { Orientation = Orientation.Horizontal };
+        void AddPreset(string text, double v)
+        {
+            var b = new Button { Content = text, Padding = new Thickness(10, 3, 10, 3), Margin = new Thickness(0, 0, 6, 0) };
+            b.Click += (s, e) => slider.Value = v;
+            presets.Children.Add(b);
+        }
+        AddPreset("Equal halves", 1.0);
+        AddPreset("Fit a laptop screen", 1.3);
+        AddPreset("Big", 1.8);
+        AddPreset("Huge", 2.6);
+        panel.Children.Add(presets);
+
+        panel.Children.Add(Section("Writing grid on the notes side"));
+        var gridRow = new StackPanel { Orientation = Orientation.Horizontal };
+        string[] gridNames = { "Plain", "Dots", "Lines", "Squares" };
+        var gridBtns = new List<RadioButton>();
+        for (int i = 0; i < gridNames.Length; i++)
+        {
+            var rb = new RadioButton
+            {
+                Content = gridNames[i],
+                GroupName = "spreadGrid",
+                Margin = new Thickness(0, 0, 14, 0),
+                IsChecked = i == 0
+            };
+            gridBtns.Add(rb);
+            gridRow.Children.Add(rb);
+        }
+        panel.Children.Add(gridRow);
+
+        panel.Children.Add(Section("Page sharpness (when you zoom in)"));
+        var sharpRow = new StackPanel { Orientation = Orientation.Horizontal };
+        string[] sharpNames = { "Standard", "2x sharper", "3x sharper", "4x sharper" };
+        var sharpBtns = new List<RadioButton>();
+        for (int i = 0; i < sharpNames.Length; i++)
+        {
+            var rb = new RadioButton
+            {
+                Content = sharpNames[i],
+                GroupName = "spreadSharp",
+                Margin = new Thickness(0, 0, 14, 0),
+                IsChecked = i == 1
+            };
+            sharpBtns.Add(rb);
+            sharpRow.Children.Add(rb);
+        }
+        panel.Children.Add(sharpRow);
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Sharper pages use more memory. Long PDFs are limited automatically.",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 440,
+            Margin = new Thickness(0, 4, 0, 0)
+        });
+
+        var divider = new CheckBox
+        {
+            Content = "Thin line between textbook and notes",
+            IsChecked = true,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        panel.Children.Add(divider);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        var okBtn = new Button { Content = "Insert", MinWidth = 90, Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+        var cancelBtn = new Button { Content = "Cancel", MinWidth = 90, Padding = new Thickness(10, 4, 10, 4), IsCancel = true };
+        okBtn.Click += (s, e) =>
+        {
+            result.NotesFactor = slider.Value;
+            result.GridMode = Math.Max(0, gridBtns.FindIndex(r => r.IsChecked == true));
+            result.Sharpness = Math.Max(0, sharpBtns.FindIndex(r => r.IsChecked == true)) + 1;
+            result.Divider = divider.IsChecked == true;
+            ok = true;
+            win.Close();
+        };
+        cancelBtn.Click += (s, e) => win.Close();
+        buttons.Children.Add(okBtn);
+        buttons.Children.Add(cancelBtn);
+        panel.Children.Add(buttons);
+
+        win.Content = panel;
+        win.ShowDialog();
+        return ok ? result : null;
+    }
+
+    private static async System.Threading.Tasks.Task<(List<BitmapSource> Pages, int UsedWidth)> RenderPdfWideAsync(string path, int width)
+    {
+        var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
+        var doc = await global::Windows.Data.Pdf.PdfDocument.LoadFromFileAsync(file);
+        double budget = 1.6e9;
+        int cap = (int)Math.Sqrt(budget / (Math.Max(1u, doc.PageCount) * 1.45 * 4.0));
+        int used = Math.Max(1000, Math.Min(width, cap));
+        var result = new List<BitmapSource>();
+        for (uint i = 0; i < doc.PageCount; i++)
+        {
+            using var page = doc.GetPage(i);
+            using var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+            var options = new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = (uint)used };
+            await page.RenderToStreamAsync(stream, options);
+            using var input = stream.GetInputStreamAt(0);
+            using var reader = new global::Windows.Storage.Streams.DataReader(input);
+            await reader.LoadAsync((uint)stream.Size);
+            var bytes = new byte[stream.Size];
+            reader.ReadBytes(bytes);
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.EndInit();
+            bmp.Freeze();
+            PngCache.AddOrUpdate(bmp, bytes);
+            result.Add(bmp);
+        }
+        return (result, used);
+    }
+
+    private void ImportPdf_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog { Filter = "PDF files (*.pdf)|*.pdf", Title = "Insert PDF" };
+        if (dlg.ShowDialog(this) != true) return;
+        var opt = AskSpreadOptions();
+        if (opt is null) return;
+        int[] widths = { 1600, 2800, 4000, 5200 };
+        int wanted = widths[Math.Clamp(opt.Sharpness - 1, 0, 3)];
+
+        try
+        {
+            Mouse.OverrideCursor = Cursors.Wait;
+            StatusText.Text = "Reading the PDF... this can take a moment.";
+            List<BitmapSource> pages;
+            int used;
+            try
+            {
+                string pdfPath = dlg.FileName;
+                (pages, used) = System.Threading.Tasks.Task.Run(() => RenderPdfWideAsync(pdfPath, wanted)).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                pages = new List<BitmapSource>();
+                used = 0;
+            }
+            if (pages.Count == 0)
+            {
+                MessageBox.Show(this,
+                    "Could not read this PDF.\n\nYou need Windows 10 or later. If the PDF is protected with a password, remove the password first.",
+                    "Insert PDF", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var cur = CurrentPage;
+            int originalIndex = _currentPageIndex;
+            PageTemplate tpl = opt.GridMode switch
+            {
+                1 => PageTemplate.Dot,
+                2 => PageTemplate.Ruled,
+                3 => PageTemplate.Grid,
+                _ => PageTemplate.Blank
+            };
+            for (int i = 0; i < pages.Count; i++)
+            {
+                var bmp = pages[i];
+                double aspect = bmp.PixelWidth / (double)bmp.PixelHeight;
+                double tw = Math.Clamp(A4Height * aspect, 600, 1500);
+                double th = tw / aspect;
+                var np = new NotebookPage
+                {
+                    BackgroundColor = cur.BackgroundColor,
+                    Template = tpl,
+                    Paper = cur.Paper,
+                    Spacing = cur.Spacing,
+                    PatternOpacity = cur.PatternOpacity,
+                    PatternThickness = cur.PatternThickness,
+                    PatternDotSize = cur.PatternDotSize,
+                    WorldWidth = tw * (1.0 + opt.NotesFactor),
+                    WorldHeight = th
+                };
+                var img = new Image { Source = bmp, Width = tw, Height = th, Stretch = Stretch.Uniform };
+                InkCanvas.SetLeft(img, 0);
+                InkCanvas.SetTop(img, 0);
+                np.Elements.Add(img);
+                if (opt.Divider)
+                {
+                    bool dark = IsDarkColor(cur.BackgroundColor);
+                    var da = new DrawingAttributes
+                    {
+                        Color = dark ? Color.FromRgb(0x77, 0x77, 0x77) : Color.FromRgb(0xB0, 0xB0, 0xB0),
+                        Width = 1.5,
+                        Height = 1.5,
+                        FitToCurve = false,
+                        IgnorePressure = true
+                    };
+                    var pts = new StylusPointCollection();
+                    pts.Add(new StylusPoint(tw, 0));
+                    pts.Add(new StylusPoint(tw, th));
+                    np.Strokes.Add(new Stroke(pts, da));
+                }
+                _pages.Insert(originalIndex + 1 + i, np);
+            }
+
+            _currentPageIndex = originalIndex + 1;
+            LoadCurrentPageIntoCanvas();
+            MarkDirty();
+            StatusText.Text = "Inserted " + pages.Count + " PDF page(s) with notes space. Use the arrows to move between pages.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "PDF import failed.\n\n" + ex.Message, "Insert PDF",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            Mouse.OverrideCursor = null;
+        }
     }
 }

@@ -2202,7 +2202,13 @@ public partial class MainWindow : Window
     {
         if (InkArea is null) return;
 
-        if (_pages.Count > 0 && _currentPageIndex >= 0 && _currentPageIndex < _pages.Count)
+        if (_displayedPage is not null)
+        {
+            _displayedPage.Elements.Clear();
+            foreach (var c0 in InkArea.Children)
+                if (c0 is UIElement u0) _displayedPage.Elements.Add(u0);
+        }
+        if (false)
         {
             var oldPage = _pages[_currentPageIndex];
             oldPage.Elements.Clear();
@@ -2215,7 +2221,8 @@ public partial class MainWindow : Window
         InkArea.Strokes.StrokesChanged += Strokes_Changed;
 
         InkArea.Children.Clear();
-        foreach (var el in CurrentPage.Elements) InkArea.Children.Add(el);
+        foreach (var el2 in CurrentPage.Elements) InkArea.Children.Add(el2);
+        _displayedPage = CurrentPage;
 
         ApplyWorldSizeToCanvas();
         _undo.Clear();
