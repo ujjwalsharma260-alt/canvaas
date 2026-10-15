@@ -50,12 +50,14 @@ public partial class MainWindow
 
     private static byte[] EncodePng(BitmapSource bs)
     {
-        if (PngCache.TryGetValue(bs, out var cached)) return cached;
+        if (PngCache.TryGetValue(bs, out var cached) && cached is { Length: > 0 }) return cached;
         var enc = new PngBitmapEncoder();
         enc.Frames.Add(BitmapFrame.Create(bs));
         using var ms = new MemoryStream();
         enc.Save(ms);
-        return ms.ToArray();
+        var bytes = ms.ToArray();
+        PngCache.AddOrUpdate(bs, bytes);
+        return bytes;
     }
 
     private List<ElementManifest> BuildElementManifests(NotebookPage page, int pageIndex, Dictionary<string, byte[]> blobs)
@@ -68,12 +70,16 @@ public partial class MainWindow
             double l = InkCanvas.GetLeft(fe), t = InkCanvas.GetTop(fe);
             if (double.IsNaN(l)) l = 0;
             if (double.IsNaN(t)) t = 0;
+            double mw = !double.IsNaN(fe.Width) && fe.Width > 0 ? fe.Width
+                      : (fe.ActualWidth > 0 ? fe.ActualWidth : 0);
+            double mh = !double.IsNaN(fe.Height) && fe.Height > 0 ? fe.Height
+                      : (fe.ActualHeight > 0 ? fe.ActualHeight : 0);
             var m = new ElementManifest
             {
                 Left = l,
                 Top = t,
-                Width = double.IsNaN(fe.Width) ? 0 : fe.Width,
-                Height = double.IsNaN(fe.Height) ? 0 : fe.Height
+                Width = mw,
+                Height = mh
             };
             if (fe is TextBox tb)
             {
@@ -752,14 +758,14 @@ public partial class MainWindow
         return ok ? result : null;
     }
 
-    private static async System.Threading.Tasks.Task<(List<BitmapSource> Pages, int UsedWidth)> RenderPdfWideAsync(string path, int width)
+    private static async System.Threading.Tasks.Task<(List<byte[]> Pages, int UsedWidth)> RenderPdfBytesAsync(string path, int width)
     {
         var file = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(path);
         var doc = await global::Windows.Data.Pdf.PdfDocument.LoadFromFileAsync(file);
         double budget = 1.6e9;
         int cap = (int)Math.Sqrt(budget / (Math.Max(1u, doc.PageCount) * 1.45 * 4.0));
         int used = Math.Max(1000, Math.Min(width, cap));
-        var result = new List<BitmapSource>();
+        var result = new List<byte[]>();
         for (uint i = 0; i < doc.PageCount; i++)
         {
             using var page = doc.GetPage(i);
@@ -772,19 +778,12 @@ public partial class MainWindow
             await reader.LoadAsync((uint)stream.Size);
             var bytes = new byte[stream.Size];
             reader.ReadBytes(bytes);
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.StreamSource = new MemoryStream(bytes);
-            bmp.EndInit();
-            bmp.Freeze();
-            PngCache.AddOrUpdate(bmp, bytes);
-            result.Add(bmp);
+            result.Add(bytes);
         }
         return (result, used);
     }
 
-    private void ImportPdf_Click(object sender, RoutedEventArgs e)
+    private async void ImportPdf_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = "PDF files (*.pdf)|*.pdf", Title = "Insert PDF" };
         if (dlg.ShowDialog(this) != true) return;
@@ -797,24 +796,43 @@ public partial class MainWindow
         {
             Mouse.OverrideCursor = Cursors.Wait;
             StatusText.Text = "Reading the PDF... this can take a moment.";
-            List<BitmapSource> pages;
+            string pdfPath = dlg.FileName;
+
+            // Step 1: WinRT PDF rendering on a background thread.
+            // Do NOT create WPF objects (BitmapImage) on that thread.
+            List<byte[]> rawBytes;
             int used;
             try
             {
-                string pdfPath = dlg.FileName;
-                (pages, used) = System.Threading.Tasks.Task.Run(() => RenderPdfWideAsync(pdfPath, wanted)).GetAwaiter().GetResult();
+                (rawBytes, used) = await System.Threading.Tasks.Task.Run(
+                    () => RenderPdfBytesAsync(pdfPath, wanted));
             }
             catch
             {
-                pages = new List<BitmapSource>();
+                rawBytes = new List<byte[]>();
                 used = 0;
             }
-            if (pages.Count == 0)
+
+            if (rawBytes.Count == 0)
             {
                 MessageBox.Show(this,
                     "Could not read this PDF.\n\nYou need Windows 10 or later. If the PDF is protected with a password, remove the password first.",
                     "Insert PDF", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
+            }
+
+            // Step 2: back on the UI thread — build BitmapImages from the raw bytes.
+            var pages = new List<BitmapSource>();
+            foreach (var bytes in rawBytes)
+            {
+                var bmp = new BitmapImage();
+                bmp.BeginInit();
+                bmp.CacheOption = BitmapCacheOption.OnLoad;
+                bmp.StreamSource = new MemoryStream(bytes);
+                bmp.EndInit();
+                bmp.Freeze();
+                PngCache.AddOrUpdate(bmp, bytes);
+                pages.Add(bmp);
             }
 
             var cur = CurrentPage;
