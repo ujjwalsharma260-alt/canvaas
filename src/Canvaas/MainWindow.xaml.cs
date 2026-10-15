@@ -2493,7 +2493,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var pages = RenderPdfToBitmaps(dlg.FileName);
+            var pages = RenderPdfToBitmapsOld(dlg.FileName);
             if (pages == null || pages.Count == 0)
             {
                 MessageBox.Show(this,
