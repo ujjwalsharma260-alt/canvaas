@@ -1872,7 +1872,7 @@ public partial class MainWindow : Window
         var modsNow = Keyboard.Modifiers;
         bool textBoxFocused = Keyboard.FocusedElement is TextBox;
 
-        if (MatchesShortcut("fullscreen", e.Key, modsNow)) { ToggleFullscreen(); e.Handled = true; return; }
+        if (MatchesShortcut("fullscreen", e.Key, modsNow)) { CycleFullscreen(); e.Handled = true; return; }
         if (MatchesShortcut("toggle_chrome", e.Key, modsNow)) { ChromeToggleButton_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
 
         if (!textBoxFocused)
@@ -2005,6 +2005,33 @@ public partial class MainWindow : Window
     // Fullscreen (debounced + fully chrome-free)
     // =====================================================================
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
+
+    private void CycleFullscreen()
+    {
+        if (!_fullscreenMode)
+        {
+            // 1st press: enter fullscreen with toolbars showing
+            _barsPinned = true;
+            ApplyBars(true);
+            ToggleFullscreen();
+        }
+        else if (_barsPinned || _barsShown)
+        {
+            // 2nd press: hide the toolbar while staying in fullscreen
+            _barsPinned = false;
+            _barsLeftAt = DateTime.MinValue;
+            ApplyBars(false);
+            _lastFullscreenToggle = DateTime.MinValue;   // allow the next ToggleFullscreen to fire
+            StatusText.Text = "Toolbars hidden. Press F11 again to exit fullscreen.";
+        }
+        else
+        {
+            // 3rd press: exit fullscreen
+            _barsPinned = true;
+            ApplyBars(true);
+            ToggleFullscreen();
+        }
+    }
 
     private void ToggleFullscreen()
     {
