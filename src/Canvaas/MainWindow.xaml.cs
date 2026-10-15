@@ -2486,7 +2486,7 @@ public partial class MainWindow : Window
     // =====================================================================
     // PDF import (Windows.Data.Pdf reflection)
     // =====================================================================
-    private void ImportPdf_Click(object sender, RoutedEventArgs e)
+    private void ImportPdfOld_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Filter = "PDF files (*.pdf)|*.pdf", Title = "Insert PDF" };
         if (dlg.ShowDialog(this) != true) return;
@@ -2542,7 +2542,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private static List<BitmapSource>? RenderPdfToBitmaps(string path)
+     private static List<BitmapSource>? RenderPdfToBitmapsOld2(string path)
     {
         try
         {

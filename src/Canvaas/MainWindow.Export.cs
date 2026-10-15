@@ -763,6 +763,7 @@ public partial class MainWindow
         for (uint i = 0; i < doc.PageCount; i++)
         {
             using var page = doc.GetPage(i);
+            await page.PrepareAsync();
             using var stream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
             var options = new global::Windows.Data.Pdf.PdfPageRenderOptions { DestinationWidth = (uint)used };
             await page.RenderToStreamAsync(stream, options);
