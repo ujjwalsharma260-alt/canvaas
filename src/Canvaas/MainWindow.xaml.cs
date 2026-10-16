@@ -4112,6 +4112,7 @@ public partial class MainWindow : Window
                     inkBuffer.CopyTo(entryStream);
                 }
             }
+            ForceFlushToDisk(tempPath);
             File.Move(tempPath, path, overwrite: true);
         }
         catch (Exception ex)
@@ -4128,7 +4129,7 @@ public partial class MainWindow : Window
         return true;
     }
 
-    private void OpenFromFile(string path)
+    private bool OpenFromFile(string path)
     {
         List<NotebookPage> loadedPages;
         int loadedCurrentPage = 0;
@@ -4198,7 +4199,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(this, "Could not open.\n\n" + ex.Message, "Open failed", MessageBoxButton.OK, MessageBoxImage.Error);
-            return;
+            return false;
         }
         _pages.Clear();
         _pages.AddRange(loadedPages);
@@ -4208,6 +4209,7 @@ public partial class MainWindow : Window
         _dirty = false;
         UpdateTitle();
         StatusText.Text = $"Opened: {path}";
+        return true;
     }
 
     // =====================================================================

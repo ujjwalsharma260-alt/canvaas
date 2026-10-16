@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -16,6 +17,9 @@ public partial class MainWindow
 
     private static string AutosaveFilePath
         => System.IO.Path.Combine(AutosaveDir, "autosave.canvaas");
+
+    private static string AutosaveTmpPath
+        => AutosaveFilePath + ".tmp";
 
     private static string SessionMarkerPath
         => System.IO.Path.Combine(AutosaveDir, "session.lock");
@@ -41,8 +45,6 @@ public partial class MainWindow
         _autosaveTimer.Tick += (s, e) => AutosaveTick();
         _autosaveTimer.Start();
 
-        // Mark this session as in-progress. If this file still exists at next
-        // launch, we know the previous session ended unexpectedly.
         try { File.WriteAllText(SessionMarkerPath, DateTime.UtcNow.ToString("o")); } catch { }
     }
 
@@ -51,7 +53,7 @@ public partial class MainWindow
         if (!_dirty) return;
         if (_isAutosaving) return;
         if (InkArea is null) return;
-        if (_collapsedGroups.Count > 0) return; // avoid auto-expanding user chips
+        if (_collapsedGroups.Count > 0) return;
         AutosaveNow();
     }
 
@@ -60,7 +62,6 @@ public partial class MainWindow
         _isAutosaving = true;
         try
         {
-            // Mask the app's real file state so autosave never hijacks it.
             string? oldPath = _currentPath;
             bool oldDirty = _dirty;
             string oldStatus = StatusText?.Text ?? "";
@@ -88,10 +89,7 @@ public partial class MainWindow
                 if (StatusText is not null) StatusText.Text = oldStatus;
             }
         }
-        catch
-        {
-            // A failed autosave must never block the user.
-        }
+        catch { }
         finally
         {
             _isAutosaving = false;
@@ -101,9 +99,10 @@ public partial class MainWindow
     private void CleanupAutosave()
     {
         try { _autosaveTimer?.Stop(); } catch { }
-        try { if (File.Exists(SessionMarkerPath)) File.Delete(SessionMarkerPath); } catch { }
-        try { if (File.Exists(AutosaveFilePath)) File.Delete(AutosaveFilePath); } catch { }
-        try { if (File.Exists(AutosaveMetaPath)) File.Delete(AutosaveMetaPath); } catch { }
+        TryDeleteFile(SessionMarkerPath);
+        TryDeleteFile(AutosaveFilePath);
+        TryDeleteFile(AutosaveTmpPath);
+        TryDeleteFile(AutosaveMetaPath);
     }
 
     private void CheckForCrashRecovery()
@@ -111,8 +110,18 @@ public partial class MainWindow
         try
         {
             bool previousSessionCrashed = File.Exists(SessionMarkerPath);
-            bool autosaveExists = File.Exists(AutosaveFilePath);
-            if (!previousSessionCrashed || !autosaveExists) return;
+            if (!previousSessionCrashed) return;
+
+            bool mainExists = File.Exists(AutosaveFilePath);
+            bool tmpExists = File.Exists(AutosaveTmpPath);
+            if (!mainExists && !tmpExists) return;
+
+            // Prefer the main autosave if its ZIP is intact; otherwise fall back to the .tmp.
+            string? usable = null;
+            if (mainExists && IsReadableZip(AutosaveFilePath)) usable = AutosaveFilePath;
+            else if (tmpExists && IsReadableZip(AutosaveTmpPath)) usable = AutosaveTmpPath;
+            else if (mainExists) usable = AutosaveFilePath;
+            else usable = AutosaveTmpPath;
 
             string when = "earlier";
             string? original = null;
@@ -144,19 +153,65 @@ public partial class MainWindow
                 "Recover unsaved work",
                 MessageBoxButton.YesNo, MessageBoxImage.Question);
 
-            if (ans == MessageBoxResult.Yes)
+            if (ans == MessageBoxResult.Yes && usable is not null)
             {
-                OpenFromFile(AutosaveFilePath);
-                _currentPath = original;
-                _dirty = true;
-                UpdateTitle();
-                StatusText.Text = "Recovered autosave. Press Ctrl+S to save it to a file.";
+                bool ok = OpenFromFile(usable);
+                if (ok)
+                {
+                    _currentPath = original;
+                    _dirty = true;
+                    UpdateTitle();
+                    StatusText.Text = "Recovered autosave. Press Ctrl+S to save it to a file.";
+                    // Only clean up after a successful recovery.
+                    TryDeleteFile(AutosaveFilePath);
+                    TryDeleteFile(AutosaveTmpPath);
+                    TryDeleteFile(AutosaveMetaPath);
+                }
+                else
+                {
+                    // Keep the files so the user can try to salvage them manually.
+                    StatusText.Text = "Recovery failed. Autosave files kept for manual recovery.";
+                    MessageBox.Show(this,
+                        "The autosave file could not be opened. It has been kept at:\n\n" +
+                        AutosaveDir + "\n\n" +
+                        "You can try renaming autosave.canvaas.tmp to autosave.canvaas and opening it manually.",
+                        "Recovery failed",
+                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
-
-            // Consume the crash artifacts either way so we don't ask again.
-            try { File.Delete(AutosaveFilePath); } catch { }
-            try { File.Delete(AutosaveMetaPath); } catch { }
+            else if (ans == MessageBoxResult.No)
+            {
+                TryDeleteFile(AutosaveFilePath);
+                TryDeleteFile(AutosaveTmpPath);
+                TryDeleteFile(AutosaveMetaPath);
+            }
         }
         catch { }
+    }
+
+    private static bool IsReadableZip(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
+            return zip.Entries.Count > 0;
+        }
+        catch { return false; }
+    }
+
+    internal static void ForceFlushToDisk(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            fs.Flush(true);
+        }
+        catch { }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 }
