@@ -351,6 +351,7 @@ public partial class MainWindow : Window
                     ScheduleRebuildEdgeButtons();
                     ApplyQuickColorsSettings();
                     PositionColorSquare();
+                    CheckForCrashRecovery();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
@@ -384,6 +385,7 @@ public partial class MainWindow : Window
         UpdateCursor();
         TitleBarText.Text = "Canvaas";
         InitBars();
+        InitAutosave();
         UpdateTitle();
     }
 
@@ -4115,7 +4117,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             TryDelete(tempPath);
-            MessageBox.Show(this, "Save failed.\n\n" + ex.Message, "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!_suppressSaveDialogs)
+                MessageBox.Show(this, "Save failed.\n\n" + ex.Message, "Save failed", MessageBoxButton.OK, MessageBoxImage.Error);
             return false;
         }
         _currentPath = path;
@@ -4212,7 +4215,9 @@ public partial class MainWindow : Window
     // =====================================================================
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        if (!ConfirmDiscardChanges()) e.Cancel = true; else SaveSettings();
+        if (!ConfirmDiscardChanges()) { e.Cancel = true; return; }
+        SaveSettings();
+        CleanupAutosave();
     }
 
     private bool ConfirmDiscardChanges()
