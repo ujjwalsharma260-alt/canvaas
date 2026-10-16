@@ -30,6 +30,7 @@ public partial class MainWindow
     private DispatcherTimer? _autosaveTimer;
     private bool _isAutosaving;
     private bool _suppressSaveDialogs;
+    private bool _previousSessionCrashed;
 
     private sealed class AutosaveMeta
     {
@@ -45,6 +46,8 @@ public partial class MainWindow
         _autosaveTimer.Tick += (s, e) => AutosaveTick();
         _autosaveTimer.Start();
 
+        // Capture whether a previous session crashed BEFORE we overwrite the marker.
+        _previousSessionCrashed = File.Exists(SessionMarkerPath);
         try { File.WriteAllText(SessionMarkerPath, DateTime.UtcNow.ToString("o")); } catch { }
     }
 
@@ -109,8 +112,7 @@ public partial class MainWindow
     {
         try
         {
-            bool previousSessionCrashed = File.Exists(SessionMarkerPath);
-            if (!previousSessionCrashed) return;
+            if (!_previousSessionCrashed) return;
 
             bool mainExists = File.Exists(AutosaveFilePath);
             bool tmpExists = File.Exists(AutosaveTmpPath);
