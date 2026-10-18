@@ -250,6 +250,7 @@ public partial class MainWindow
         foreach (var el in page.Elements)
         {
             if (el is not FrameworkElement fe) continue;
+            if (fe.Name == "WatermarkText" || fe.Name == "WatermarkPopupBorder") continue; // Safety: never export
             var r = ElementRect(fe);
             if (fe is Image img && img.Source is BitmapSource bs)
             {

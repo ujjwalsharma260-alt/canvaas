@@ -519,6 +519,16 @@
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Canvas.RenderTransform>
                     <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White" IsHitTestVisible="False"/>
+                    
+                    <!-- Watermark Quote -->
+                    <TextBlock x:Name="WatermarkText" 
+                               Text="If it feels easy, then you are doing it wrong." 
+                               FontSize="42" FontWeight="Bold" FontStyle="Italic"
+                               Foreground="#30808080" 
+                               Canvas.Left="97" Canvas.Top="460" Width="600" 
+                               TextWrapping="Wrap" TextAlignment="Center" 
+                               IsHitTestVisible="False" Visibility="Visible" />
+
                     <InkCanvas x:Name="InkArea" Canvas.Left="0" Canvas.Top="0" Background="Transparent"
                                ForceCursor="True" Stylus.IsPressAndHoldEnabled="False" Stylus.IsFlicksEnabled="False"
                                StylusOutOfRange="InkArea_StylusOutOfRange"
@@ -594,6 +604,22 @@
                     Margin="0,0,0,60" Background="#DD222222" CornerRadius="8" Padding="14,8"
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
+            </Border>
+
+            <!-- Timer-driven Watermark Popup -->
+            <Border x:Name="WatermarkPopupBorder" 
+                    HorizontalAlignment="Center" VerticalAlignment="Top" 
+                    Margin="0,60,0,0" Background="#F0FFFFFF" BorderBrush="#40000000" BorderThickness="1" 
+                    CornerRadius="8" Padding="24,16" 
+                    Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="250"
+                    Opacity="0">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.25" Color="Black"/>
+                </Border.Effect>
+                <TextBlock x:Name="WatermarkPopupText" 
+                           Text="If it feels easy, then you are doing it wrong." 
+                           FontSize="20" FontWeight="Bold" FontStyle="Italic" 
+                           Foreground="#333333" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
             </Border>
 
             <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -796,6 +822,28 @@
                                 <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
 
                                 <!-- Quick colour square -->
+                                <!-- Watermark Quote -->
+                                <TextBlock Text="Focus Watermark" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+                                
+                                <CheckBox x:Name="ShowWatermarkCheck" Content="Show watermark quote on canvas" Margin="0,4,0,6"
+                                          Foreground="#555555" FontSize="13"
+                                          Checked="WatermarkSettings_Changed" Unchecked="WatermarkSettings_Changed"/>
+
+                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Show quote popup every minute" Margin="0,0,0,12"
+                                          Foreground="#555555" FontSize="13"
+                                          Checked="WatermarkPopupSettings_Changed" Unchecked="WatermarkPopupSettings_Changed"/>
+
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Quote text" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox" Padding="4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                </Grid>
+
+                                <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
+
                                 <TextBlock Text="Quick colour square" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
 
                                 <CheckBox x:Name="ShowQuickColorsCheck" Content="Show the quick colour square" Margin="0,4,0,12"
