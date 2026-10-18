@@ -634,8 +634,6 @@ public partial class MainWindow : Window
         if (!_uiReady) return;
         _watermarkText = WatermarkTextBox.Text;
         ApplyWatermarkSettings();
-        if (WatermarkPopupText is not null)
-            WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
         SaveSettings();
     }
 
@@ -673,8 +671,11 @@ public partial class MainWindow : Window
         if (WatermarkText is null) return;
         
         // Cycle to next quote
-        _currentQuoteIndex = (_currentQuoteIndex + 1) % _quotes.Length;
-        _currentTypingText = _quotes[_currentQuoteIndex];
+        var allQuotes = new System.Collections.Generic.List<string> { _watermarkText };
+        allQuotes.AddRange(_quotes);
+        
+        _currentQuoteIndex = (_currentQuoteIndex + 1) % allQuotes.Count;
+        _currentTypingText = allQuotes[_currentQuoteIndex];
         _typingCharIndex = 0;
         WatermarkText.Text = "";
 
