@@ -520,14 +520,19 @@
                     </Canvas.RenderTransform>
                     <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White" IsHitTestVisible="False"/>
                     
-                    <!-- Watermark Quote -->
+                    <!-- Watermark Quote (Typing Animation) -->
                     <TextBlock x:Name="WatermarkText" 
-                               Text="If it feels easy, then you are doing it wrong." 
-                               FontSize="42" FontWeight="Bold" FontStyle="Italic"
-                               Foreground="#30808080" 
+                               Text="" 
+                               FontSize="56" FontWeight="Black" FontStyle="Italic"
+                               Foreground="#20808080" 
                                Canvas.Left="97" Canvas.Top="460" Width="600" 
                                TextWrapping="Wrap" TextAlignment="Center" 
-                               IsHitTestVisible="False" Visibility="Visible" />
+                               IsHitTestVisible="False" Visibility="Visible" 
+                               RenderTransformOrigin="0.5,0.5">
+                        <TextBlock.RenderTransform>
+                            <RotateTransform Angle="-15"/>
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
 
                     <InkCanvas x:Name="InkArea" Canvas.Left="0" Canvas.Top="0" Background="Transparent"
                                ForceCursor="True" Stylus.IsPressAndHoldEnabled="False" Stylus.IsFlicksEnabled="False"
@@ -600,27 +605,17 @@
                 </StackPanel>
             </Border>
 
-            <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+    private static void DrawElements(DrawingContext dc, NotebookPage page)
+    {
+        foreach (v            <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                     Margin="0,0,0,60" Background="#DD222222" CornerRadius="8" Padding="14,8"
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
-            </Border>
-
-            <!-- Timer-driven Watermark Popup -->
-            <Border x:Name="WatermarkPopupBorder" 
-                    HorizontalAlignment="Center" VerticalAlignment="Top" 
-                    Margin="0,60,0,0" Background="#F0FFFFFF" BorderBrush="#40000000" BorderThickness="1" 
-                    CornerRadius="8" Padding="24,16" 
-                    Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="250"
-                    Opacity="0">
-                <Border.Effect>
-                    <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.25" Color="Black"/>
-                </Border.Effect>
-                <TextBlock x:Name="WatermarkPopupText" 
-                           Text="If it feels easy, then you are doing it wrong." 
-                           FontSize="20" FontWeight="Bold" FontStyle="Italic" 
-                           Foreground="#333333" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="400"/>
-            </Border>
+            </Border>ar el in page.Elements)
+        {
+            if (el is not FrameworkElement fe) continue;
+            if (fe.Name == "WatermarkText" || fe.Name == "WatermarkPopupBorder") continue; // Safety: never export
+            var r = ElementRect(fe);
 
             <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
                     Margin="6,6,0,0" Width="220" Background="White"
@@ -829,7 +824,7 @@
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkSettings_Changed" Unchecked="WatermarkSettings_Changed"/>
 
-                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Show quote popup every minute" Margin="0,0,0,12"
+                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Animate quotes in background every minute" Margin="0,0,0,12"
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkPopupSettings_Changed" Unchecked="WatermarkPopupSettings_Changed"/>
 

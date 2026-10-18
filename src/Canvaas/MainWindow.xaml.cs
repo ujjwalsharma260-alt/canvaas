@@ -276,7 +276,19 @@ public partial class MainWindow : Window
     private string _watermarkText = "If it feels easy, then you are doing it wrong.";
 
     private readonly DispatcherTimer _watermarkTimer = new() { Interval = TimeSpan.FromMinutes(1) };
-    private readonly DispatcherTimer _watermarkHideTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private readonly DispatcherTimer _typingTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
+    
+    private readonly string[] _quotes = new string[]
+    {
+        "If it feels easy, then you are doing it wrong.",
+        "Confusion is not proof I'm bad at this. It's the edge of learning.",
+        "I don't have to master this now. I only need the next idea.",
+        "Small steps, repeated, build mastery."
+    };
+    private int _currentQuoteIndex = 0;
+    private int _typingCharIndex = 0;
+    private string _currentTypingText = "";
+    private readonly Random _random = new();
 
     private Dictionary<string, string> _shortcuts = new();
     private readonly ObservableCollection<ShortcutItem> _shortcutItems = new();
@@ -340,12 +352,7 @@ public partial class MainWindow : Window
         };
 
         _watermarkTimer.Tick += WatermarkTimer_Tick;
-        _watermarkHideTimer.Tick += WatermarkHideTimer_Tick;
-
-        if (WatermarkPopupBorder != null)
-        {
-            WatermarkPopupBorder.MouseDown += (s, e) => WatermarkHideTimer_Tick(null, EventArgs.Empty);
-        }
+        _typingTimer.Tick += TypingTimer_Tick;
 
         var dpd = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         if (StatusText is not null)
@@ -370,6 +377,8 @@ public partial class MainWindow : Window
                     ApplyWatermarkSettings();
                     ApplyWatermarkPopupSettings();
                     PositionColorSquare();
+                    _watermarkTimer.Start(); // Start the 1-minute cycle
+                    StartTypingNewQuote();   // Type the first quote immediately
                     CheckForCrashRecovery();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
@@ -644,41 +653,62 @@ public partial class MainWindow : Window
         if (_showWatermarkPopup)
         {
             _watermarkTimer.Start();
-            if (WatermarkPopupText is not null)
-                WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
+            StartTypingNewQuote();
         }
         else
         {
             _watermarkTimer.Stop();
-            _watermarkHideTimer.Stop();
-            if (WatermarkPopupBorder is not null) WatermarkPopupBorder.Visibility = Visibility.Collapsed;
+            _typingTimer.Stop();
+            if (WatermarkText is not null) WatermarkText.Text = "";
         }
     }
 
     private void WatermarkTimer_Tick(object? sender, EventArgs e)
     {
-        if (WatermarkPopupBorder is null) return;
-        
-        WatermarkPopupBorder.Visibility = Visibility.Visible;
-        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300));
-        WatermarkPopupBorder.BeginAnimation(OpacityProperty, fadeIn);
-        
-        _watermarkHideTimer.Stop();
-        _watermarkHideTimer.Start();
+        StartTypingNewQuote();
     }
 
-    private void WatermarkHideTimer_Tick(object? sender, EventArgs e)
+    private void StartTypingNewQuote()
     {
-        _watermarkHideTimer.Stop();
-        if (WatermarkPopupBorder is null) return;
+        if (WatermarkText is null) return;
+        
+        // Cycle to next quote
+        _currentQuoteIndex = (_currentQuoteIndex + 1) % _quotes.Length;
+        _currentTypingText = _quotes[_currentQuoteIndex];
+        _typingCharIndex = 0;
+        WatermarkText.Text = "";
 
-        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(500));
-        fadeOut.Completed += (s, a) =>
+        // Randomize position around the center of the A4 page
+        // A4 page is 794x1123. Center is X: 397, Y: 561.
+        // We add a random offset so it moves "here and there".
+        double randomX = _random.Next(50, 300);
+        double randomY = _random.Next(300, 700);
+        
+        Canvas.SetLeft(WatermarkText, randomX);
+        Canvas.SetTop(WatermarkText, randomY);
+
+        // Optional: Randomize rotation slightly for a messy, natural look
+        if (WatermarkText.RenderTransform is RotateTransform rot)
         {
-            if (WatermarkPopupBorder is not null)
-                WatermarkPopupBorder.Visibility = Visibility.Collapsed;
-        };
-        WatermarkPopupBorder.BeginAnimation(OpacityProperty, fadeOut);
+            rot.Angle = _random.Next(-20, 0);
+        }
+
+        _typingTimer.Start();
+    }
+
+    private void TypingTimer_Tick(object? sender, EventArgs e)
+    {
+        if (WatermarkText is null) return;
+
+        if (_typingCharIndex < _currentTypingText.Length)
+        {
+            WatermarkText.Text += _currentTypingText[_typingCharIndex];
+            _typingCharIndex++;
+        }
+        else
+        {
+            _typingTimer.Stop();
+        }
     }
 
     private void ApplyQuickColorsSettings()
