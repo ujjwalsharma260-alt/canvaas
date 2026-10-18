@@ -640,6 +640,7 @@ public partial class MainWindow : Window
     private void ApplyWatermarkSettings()
     {
         if (WatermarkText is null) return;
+        _typingTimer.Stop(); // Stops the typing animation so it doesn't mix with your custom text
         WatermarkText.Visibility = _showWatermark ? Visibility.Visible : Visibility.Collapsed;
         WatermarkText.Text = string.IsNullOrWhiteSpace(_watermarkText) 
             ? "If it feels easy, then you are doing it wrong." 
@@ -683,8 +684,8 @@ public partial class MainWindow : Window
         // Randomize position around the center of the A4 page
         // A4 page is 794x1123. Center is X: 397, Y: 561.
         // We add a random offset so it moves "here and there".
-        double randomX = _random.Next(50, 300);
-        double randomY = _random.Next(300, 700);
+        double randomX = _random.Next(50, 150);
+        double randomY = _random.Next(300, 600);
         
         Canvas.SetLeft(WatermarkText, randomX);
         Canvas.SetTop(WatermarkText, randomY);
@@ -4487,8 +4488,8 @@ public partial class MainWindow : Window
         if (WatermarkText is not null)
         {
             WatermarkText.Foreground = dark 
-                ? new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)) 
-                : new SolidColorBrush(Color.FromArgb(30, 0, 0, 0));
+                ? new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)) 
+                : new SolidColorBrush(Color.FromArgb(65, 0, 0, 0));
         }
         if (ZoomText is not null) ZoomText.Foreground = fg;
         if (PrevPageButton is not null) PrevPageButton.Opacity = PrevPageButton.IsEnabled ? 1.0 : 0.4;
