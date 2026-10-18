@@ -116,6 +116,7 @@ public partial class MainWindow : Window
         public double QuickColorSquareSize { get; set; } = 24.0;
         public bool ShowWatermark { get; set; } = true;
         public bool ShowWatermarkPopup { get; set; } = false;
+        public double WatermarkPopupDuration { get; set; } = 5.0;
         public string WatermarkText { get; set; } = "If it feels easy, then you are doing it wrong.";
         public Dictionary<string, string>? Shortcuts { get; set; }
         public int PdfPageSizeIndex { get; set; } = 0;
@@ -273,22 +274,11 @@ public partial class MainWindow : Window
     private double _quickColorSquareSize = 24.0;
     private bool _showWatermark = true;
     private bool _showWatermarkPopup = false;
+    private double _watermarkPopupDuration = 5.0;
     private string _watermarkText = "If it feels easy, then you are doing it wrong.";
 
     private readonly DispatcherTimer _watermarkTimer = new() { Interval = TimeSpan.FromMinutes(1) };
-    private readonly DispatcherTimer _typingTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
-    
-    private readonly string[] _quotes = new string[]
-    {
-        "If it feels easy, then you are doing it wrong.",
-        "Confusion is not proof I'm bad at this. It's the edge of learning.",
-        "I don't have to master this now. I only need the next idea.",
-        "Small steps, repeated, build mastery."
-    };
-    private int _currentQuoteIndex = 0;
-    private int _typingCharIndex = 0;
-    private string _currentTypingText = "";
-    private readonly Random _random = new();
+    private readonly DispatcherTimer _watermarkHideTimer = new() { Interval = TimeSpan.FromSeconds(5) };
 
     private Dictionary<string, string> _shortcuts = new();
     private readonly ObservableCollection<ShortcutItem> _shortcutItems = new();
@@ -352,7 +342,12 @@ public partial class MainWindow : Window
         };
 
         _watermarkTimer.Tick += WatermarkTimer_Tick;
-        _typingTimer.Tick += TypingTimer_Tick;
+        _watermarkHideTimer.Tick += WatermarkHideTimer_Tick;
+
+        if (WatermarkPopupBorder != null)
+        {
+            WatermarkPopupBorder.MouseDown += (s, e) => WatermarkHideTimer_Tick(null, EventArgs.Empty);
+        }
 
         var dpd = DependencyPropertyDescriptor.FromProperty(TextBlock.TextProperty, typeof(TextBlock));
         if (StatusText is not null)
@@ -377,8 +372,6 @@ public partial class MainWindow : Window
                     ApplyWatermarkSettings();
                     ApplyWatermarkPopupSettings();
                     PositionColorSquare();
-                    _watermarkTimer.Start(); // Start the 1-minute cycle
-                    StartTypingNewQuote();   // Type the first quote immediately
                     CheckForCrashRecovery();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
@@ -549,6 +542,13 @@ public partial class MainWindow : Window
         if (ShowWatermarkCheck is not null) ShowWatermarkCheck.IsChecked = _showWatermark;
         if (ShowWatermarkPopupCheck is not null) ShowWatermarkPopupCheck.IsChecked = _showWatermarkPopup;
         if (WatermarkTextBox is not null) WatermarkTextBox.Text = _watermarkText;
+        if (WatermarkPopupDurationSlider is not null)
+        {
+            _suppressCounterChange = true;
+            WatermarkPopupDurationSlider.Value = Math.Clamp(_watermarkPopupDuration, 2, 30);
+            _suppressCounterChange = false;
+            if (WatermarkPopupDurationText is not null) WatermarkPopupDurationText.Text = ((int)_watermarkPopupDuration).ToString();
+        }
         if (QuickColorsSizeSlider is not null)
         {
             double v = Math.Clamp(_quickColorSquareSize, 18, 56);
@@ -629,18 +629,28 @@ public partial class MainWindow : Window
         SaveSettings();
     }
 
+    private void WatermarkPopupDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady) return;
+        _watermarkPopupDuration = e.NewValue;
+        if (WatermarkPopupDurationText is not null) WatermarkPopupDurationText.Text = ((int)e.NewValue).ToString();
+        ApplyWatermarkPopupSettings();
+        SaveSettings();
+    }
+
     private void WatermarkText_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!_uiReady) return;
         _watermarkText = WatermarkTextBox.Text;
         ApplyWatermarkSettings();
+        if (WatermarkPopupText is not null)
+            WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
         SaveSettings();
     }
 
     private void ApplyWatermarkSettings()
     {
         if (WatermarkText is null) return;
-        _typingTimer.Stop(); // Stops the typing animation so it doesn't mix with your custom text
         WatermarkText.Visibility = _showWatermark ? Visibility.Visible : Visibility.Collapsed;
         WatermarkText.Text = string.IsNullOrWhiteSpace(_watermarkText) 
             ? "If it feels easy, then you are doing it wrong." 
@@ -652,66 +662,80 @@ public partial class MainWindow : Window
         if (_showWatermarkPopup)
         {
             _watermarkTimer.Start();
-            StartTypingNewQuote();
+            if (WatermarkPopupText is not null)
+                WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
         }
         else
         {
             _watermarkTimer.Stop();
-            _typingTimer.Stop();
-            if (WatermarkText is not null) WatermarkText.Text = "";
+            _watermarkHideTimer.Stop();
+            if (WatermarkPopupBorder is not null) WatermarkPopupBorder.Visibility = Visibility.Collapsed;
         }
     }
 
     private void WatermarkTimer_Tick(object? sender, EventArgs e)
     {
-        StartTypingNewQuote();
+        if (WatermarkPopupBorder is null) return;
+
+        // 1. Pick a random position
+        int pos = _random.Next(5);
+        switch (pos)
+        {
+            case 0:
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Left;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
+                WatermarkPopupBorder.Margin = new Thickness(80, 80, 0, 0);
+                break;
+            case 1:
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Right;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
+                WatermarkPopupBorder.Margin = new Thickness(0, 80, 80, 0);
+                break;
+            case 2:
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Left;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Bottom;
+                WatermarkPopupBorder.Margin = new Thickness(80, 0, 0, 80);
+                break;
+            case 3:
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Right;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Bottom;
+                WatermarkPopupBorder.Margin = new Thickness(0, 0, 80, 80);
+                break;
+            case 4:
+            default:
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Center;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Center;
+                WatermarkPopupBorder.Margin = new Thickness(0);
+                break;
+        }
+
+        // 2. Update the text
+        if (WatermarkPopupText is not null)
+            WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
+
+        // 3. Show and fade in
+        WatermarkPopupBorder.Visibility = Visibility.Visible;
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(800));
+        WatermarkPopupBorder.BeginAnimation(OpacityProperty, fadeIn);
+        
+        // 4. Use your custom duration from the settings
+        _watermarkHideTimer.Stop();
+        _watermarkHideTimer.Interval = TimeSpan.FromSeconds(_watermarkPopupDuration);
+        _watermarkHideTimer.Start();
     }
 
-    private void StartTypingNewQuote()
+    private void WatermarkHideTimer_Tick(object? sender, EventArgs e)
     {
-        if (WatermarkText is null) return;
-        
-        // Cycle to next quote
-        var allQuotes = new System.Collections.Generic.List<string>();
-        if (!string.IsNullOrWhiteSpace(_watermarkText)) allQuotes.Add(_watermarkText);
-        allQuotes.AddRange(_quotes);
-        
-        _currentQuoteIndex = (_currentQuoteIndex + 1) % allQuotes.Count;
-        _currentTypingText = allQuotes[_currentQuoteIndex];
-        _typingCharIndex = 0;
-        WatermarkText.Text = "";
+        _watermarkHideTimer.Stop();
+        if (WatermarkPopupBorder is null) return;
 
-        // Randomize position around the center of the A4 page
-        // A4 page is 794x1123. Center is X: 397, Y: 561.
-        // We add a random offset so it moves "here and there".
-        double randomX = _random.Next(50, 150);
-        double randomY = _random.Next(300, 600);
-        
-        Canvas.SetLeft(WatermarkText, randomX);
-        Canvas.SetTop(WatermarkText, randomY);
-
-        // Optional: Randomize rotation slightly for a messy, natural look
-        if (WatermarkText.RenderTransform is RotateTransform rot)
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(500));
+        fadeOut.Completed += (s, a) =>
         {
-            rot.Angle = _random.Next(-20, 0);
-        }
-
-        _typingTimer.Start();
-    }
-
-    private void TypingTimer_Tick(object? sender, EventArgs e)
-    {
-        if (WatermarkText is null) return;
-
-        if (_typingCharIndex < _currentTypingText.Length)
-        {
-            WatermarkText.Text += _currentTypingText[_typingCharIndex];
-            _typingCharIndex++;
-        }
-        else
-        {
-            _typingTimer.Stop();
-        }
+            if (WatermarkPopupBorder is not null)
+                WatermarkPopupBorder.Visibility = Visibility.Collapsed;
+        };
+        WatermarkPopupBorder.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     private void ApplyQuickColorsSettings()
@@ -1650,6 +1674,7 @@ public partial class MainWindow : Window
             _quickColorSquareSize = Math.Clamp(s.QuickColorSquareSize, 18.0, 56.0);
             _showWatermark = s.ShowWatermark;
             _showWatermarkPopup = s.ShowWatermarkPopup;
+            _watermarkPopupDuration = Math.Clamp(s.WatermarkPopupDuration, 2.0, 30.0);
             _watermarkText = s.WatermarkText ?? "If it feels easy, then you are doing it wrong.";
             _pdfPageSizeIndex = Math.Clamp(s.PdfPageSizeIndex, 0, 4);
             _pdfOrientationIndex = Math.Clamp(s.PdfOrientationIndex, 0, 1);
@@ -1683,6 +1708,7 @@ public partial class MainWindow : Window
                 QuickColorSquareSize = _quickColorSquareSize,
                 ShowWatermark = _showWatermark,
                 ShowWatermarkPopup = _showWatermarkPopup,
+                WatermarkPopupDuration = _watermarkPopupDuration,
                 WatermarkText = _watermarkText,
                 Shortcuts = _shortcuts,
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
@@ -4488,8 +4514,14 @@ public partial class MainWindow : Window
         if (WatermarkText is not null)
         {
             WatermarkText.Foreground = dark 
-                ? new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)) 
-                : new SolidColorBrush(Color.FromArgb(65, 0, 0, 0));
+                ? new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)) 
+                : new SolidColorBrush(Color.FromArgb(30, 0, 0, 0));
+        }
+        if (WatermarkPopupText is not null)
+        {
+            WatermarkPopupText.Foreground = dark 
+                ? new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)) 
+                : new SolidColorBrush(Color.FromArgb(50, 0, 0, 0));
         }
         if (ZoomText is not null) ZoomText.Foreground = fg;
         if (PrevPageButton is not null) PrevPageButton.Opacity = PrevPageButton.IsEnabled ? 1.0 : 0.4;

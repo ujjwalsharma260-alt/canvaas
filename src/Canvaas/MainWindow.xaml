@@ -518,22 +518,16 @@
                     <Canvas.RenderTransform>
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Canvas.RenderTransform>
-                    
                     <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White" IsHitTestVisible="False"/>
                     
-                    <!-- Watermark Quote (Typing Animation) -->
+                    <!-- Watermark Quote -->
                     <TextBlock x:Name="WatermarkText" 
-                               Text="" 
-                               FontSize="56" FontWeight="Bold" FontStyle="Italic"
-                               Foreground="#20808080" 
+                               Text="If it feels easy, then you are doing it wrong." 
+                               FontSize="42" FontWeight="Bold" FontStyle="Italic"
+                               Foreground="#30808080" 
                                Canvas.Left="97" Canvas.Top="460" Width="600" 
                                TextWrapping="Wrap" TextAlignment="Center" 
-                               IsHitTestVisible="False" Visibility="Visible" 
-                               RenderTransformOrigin="0.5,0.5">
-                        <TextBlock.RenderTransform>
-                            <RotateTransform Angle="-15"/>
-                        </TextBlock.RenderTransform>
-                    </TextBlock>
+                               IsHitTestVisible="False" Visibility="Visible" />
 
                     <InkCanvas x:Name="InkArea" Canvas.Left="0" Canvas.Top="0" Background="Transparent"
                                ForceCursor="True" Stylus.IsPressAndHoldEnabled="False" Stylus.IsFlicksEnabled="False"
@@ -610,6 +604,19 @@
                     Margin="0,0,0,60" Background="#DD222222" CornerRadius="8" Padding="14,8"
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
+            </Border>
+
+            <!-- Timer-driven Watermark Popup (Faded, no background box) -->
+            <Border x:Name="WatermarkPopupBorder" 
+                    HorizontalAlignment="Center" VerticalAlignment="Center" 
+                    Background="Transparent" BorderThickness="0" 
+                    Padding="0" 
+                    Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="250"
+                    Opacity="0">
+                <TextBlock x:Name="WatermarkPopupText" 
+                           Text="If it feels easy, then you are doing it wrong." 
+                           FontSize="48" FontWeight="Black" FontStyle="Italic" 
+                           Foreground="#40808080" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="700"/>
             </Border>
 
             <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -819,17 +826,31 @@
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkSettings_Changed" Unchecked="WatermarkSettings_Changed"/>
 
-                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Animate quotes in background every minute" Margin="0,0,0,12"
+                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Show quote popup every minute" Margin="0,0,0,12"
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkPopupSettings_Changed" Unchecked="WatermarkPopupSettings_Changed"/>
 
-                                <Grid Margin="0,0,0,16">
+                                <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="180"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Quote text" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
                                     <TextBox Grid.Column="1" x:Name="WatermarkTextBox" Padding="4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Popup duration (sec)" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="WatermarkPopupDurationSlider" Minimum="2" Maximum="30" Value="5"
+                                            TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                            ValueChanged="WatermarkPopupDurationSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="WatermarkPopupDurationText" Text="5" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
                                 </Grid>
 
                                 <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
