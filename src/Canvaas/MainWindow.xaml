@@ -518,12 +518,13 @@
                     <Canvas.RenderTransform>
                         <MatrixTransform x:Name="ViewTransform"/>
                     </Canvas.RenderTransform>
+                    
                     <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White" IsHitTestVisible="False"/>
                     
                     <!-- Watermark Quote (Typing Animation) -->
                     <TextBlock x:Name="WatermarkText" 
                                Text="" 
-                               FontSize="56" FontWeight="Black" FontStyle="Italic"
+                               FontSize="56" FontWeight="Bold" FontStyle="Italic"
                                Foreground="#20808080" 
                                Canvas.Left="97" Canvas.Top="460" Width="600" 
                                TextWrapping="Wrap" TextAlignment="Center" 
@@ -605,17 +606,11 @@
                 </StackPanel>
             </Border>
 
-    private static void DrawElements(DrawingContext dc, NotebookPage page)
-    {
-        foreach (v            <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+            <Border x:Name="ToastBorder" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                     Margin="0,0,0,60" Background="#DD222222" CornerRadius="8" Padding="14,8"
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="200">
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
-            </Border>ar el in page.Elements)
-        {
-            if (el is not FrameworkElement fe) continue;
-            if (fe.Name == "WatermarkText" || fe.Name == "WatermarkPopupBorder") continue; // Safety: never export
-            var r = ElementRect(fe);
+            </Border>
 
             <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
                     Margin="6,6,0,0" Width="220" Background="White"

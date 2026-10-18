@@ -671,7 +671,8 @@ public partial class MainWindow : Window
         if (WatermarkText is null) return;
         
         // Cycle to next quote
-        var allQuotes = new System.Collections.Generic.List<string> { _watermarkText };
+        var allQuotes = new System.Collections.Generic.List<string>();
+        if (!string.IsNullOrWhiteSpace(_watermarkText)) allQuotes.Add(_watermarkText);
         allQuotes.AddRange(_quotes);
         
         _currentQuoteIndex = (_currentQuoteIndex + 1) % allQuotes.Count;
