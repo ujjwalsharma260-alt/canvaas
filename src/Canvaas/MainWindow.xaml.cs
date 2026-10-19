@@ -117,6 +117,7 @@ public partial class MainWindow : Window
         public bool ShowWatermark { get; set; } = true;
         public bool ShowWatermarkPopup { get; set; } = false;
         public string WatermarkText { get; set; } = "If it feels easy, then you are doing it wrong.";
+        public string[]? WatermarkQuotes { get; set; }
         public int WatermarkPositionIndex { get; set; } = 0;
         public double WatermarkIntervalMinutes { get; set; } = 2.0;
         public double WatermarkDurationSeconds { get; set; } = 4.0;
@@ -276,7 +277,14 @@ public partial class MainWindow : Window
     private double _quickColorSquareSize = 24.0;
     private bool _showWatermark = true;
     private bool _showWatermarkPopup = false;
-    private string _watermarkText = "If it feels easy, then you are doing it wrong.";
+    private string[] _watermarkQuotes = new[]
+    {
+        "If it feels easy, then you are doing it wrong.",
+        "Small daily improvements lead to stunning results.",
+        "Focus on the process, not just the outcome.",
+        "Deep work produces deep understanding."
+    };
+    private int _currentQuoteIndex = 0;
     private int _watermarkPositionIndex = 0;
     private double _watermarkIntervalMinutes = 2.0;
     private double _watermarkDurationSeconds = 4.0;
@@ -546,7 +554,10 @@ public partial class MainWindow : Window
         if (ShowQuickColorsCheck is not null) ShowQuickColorsCheck.IsChecked = _showQuickColorSquare;
         if (ShowWatermarkCheck is not null) ShowWatermarkCheck.IsChecked = _showWatermark;
         if (ShowWatermarkPopupCheck is not null) ShowWatermarkPopupCheck.IsChecked = _showWatermarkPopup;
-        if (WatermarkTextBox is not null) WatermarkTextBox.Text = _watermarkText;
+        if (WatermarkTextBox1 is not null) WatermarkTextBox1.Text = _watermarkQuotes.Length > 0 ? _watermarkQuotes[0] : "";
+        if (WatermarkTextBox2 is not null) WatermarkTextBox2.Text = _watermarkQuotes.Length > 1 ? _watermarkQuotes[1] : "";
+        if (WatermarkTextBox3 is not null) WatermarkTextBox3.Text = _watermarkQuotes.Length > 2 ? _watermarkQuotes[2] : "";
+        if (WatermarkTextBox4 is not null) WatermarkTextBox4.Text = _watermarkQuotes.Length > 3 ? _watermarkQuotes[3] : "";
         if (WatermarkPositionCombo is not null) WatermarkPositionCombo.SelectedIndex = Math.Clamp(_watermarkPositionIndex, 0, 5);
         if (WatermarkIntervalSlider is not null)
         {
@@ -663,13 +674,27 @@ public partial class MainWindow : Window
         SaveSettings();
     }
 
+    private string GetCurrentQuote()
+    {
+        var validQuotes = _watermarkQuotes.Where(q => !string.IsNullOrWhiteSpace(q)).ToList();
+        if (validQuotes.Count == 0) return "If it feels easy, then you are doing it wrong.";
+        int index = Math.Clamp(_currentQuoteIndex, 0, validQuotes.Count - 1);
+        return validQuotes[index];
+    }
+
     private void WatermarkText_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (!_uiReady) return;
-        _watermarkText = WatermarkTextBox.Text;
+        _watermarkQuotes = new[]
+        {
+            WatermarkTextBox1?.Text?.Trim() ?? "",
+            WatermarkTextBox2?.Text?.Trim() ?? "",
+            WatermarkTextBox3?.Text?.Trim() ?? "",
+            WatermarkTextBox4?.Text?.Trim() ?? ""
+        };
         ApplyWatermarkSettings();
         if (WatermarkPopupText is not null)
-            WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
+            WatermarkPopupText.Text = GetCurrentQuote();
         SaveSettings();
     }
 
@@ -677,9 +702,7 @@ public partial class MainWindow : Window
     {
         if (WatermarkText is null) return;
         WatermarkText.Visibility = _showWatermark ? Visibility.Visible : Visibility.Collapsed;
-        WatermarkText.Text = string.IsNullOrWhiteSpace(_watermarkText) 
-            ? "If it feels easy, then you are doing it wrong." 
-            : _watermarkText;
+        WatermarkText.Text = GetCurrentQuote();
     }
 
     private void ApplyWatermarkPopupSettings()
@@ -692,7 +715,7 @@ public partial class MainWindow : Window
             _watermarkTimer.Stop();
             _watermarkTimer.Start();
             if (WatermarkPopupText is not null)
-                WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
+                WatermarkPopupText.Text = GetCurrentQuote();
         }
         else
         {
@@ -746,6 +769,16 @@ public partial class MainWindow : Window
     private void WatermarkTimer_Tick(object? sender, EventArgs e)
     {
         if (WatermarkPopupBorder is null) return;
+
+        // Advance to the next quote in the 4-quote rotation
+        var validQuotes = _watermarkQuotes.Where(q => !string.IsNullOrWhiteSpace(q)).ToList();
+        if (validQuotes.Count > 0)
+        {
+            _currentQuoteIndex = (_currentQuoteIndex + 1) % validQuotes.Count;
+        }
+        string currentQuote = GetCurrentQuote();
+        if (WatermarkPopupText is not null) WatermarkPopupText.Text = currentQuote;
+        if (WatermarkText is not null) WatermarkText.Text = currentQuote;
         
         PositionWatermarkPopup();
         WatermarkPopupBorder.Visibility = Visibility.Visible;
@@ -1706,7 +1739,14 @@ public partial class MainWindow : Window
             _quickColorSquareSize = Math.Clamp(s.QuickColorSquareSize, 18.0, 56.0);
             _showWatermark = s.ShowWatermark;
             _showWatermarkPopup = s.ShowWatermarkPopup;
-            _watermarkText = s.WatermarkText ?? "If it feels easy, then you are doing it wrong.";
+            if (s.WatermarkQuotes is { Length: >= 4 })
+            {
+                _watermarkQuotes = s.WatermarkQuotes;
+            }
+            else if (!string.IsNullOrWhiteSpace(s.WatermarkText))
+            {
+                _watermarkQuotes[0] = s.WatermarkText;
+            }
             _watermarkPositionIndex = Math.Clamp(s.WatermarkPositionIndex, 0, 5);
             _watermarkIntervalMinutes = Math.Clamp(s.WatermarkIntervalMinutes, 0.5, 60.0);
             _watermarkDurationSeconds = Math.Clamp(s.WatermarkDurationSeconds, 1.0, 30.0);
@@ -1742,7 +1782,8 @@ public partial class MainWindow : Window
                 QuickColorSquareSize = _quickColorSquareSize,
                 ShowWatermark = _showWatermark,
                 ShowWatermarkPopup = _showWatermarkPopup,
-                WatermarkText = _watermarkText,
+                WatermarkText = GetCurrentQuote(),
+                WatermarkQuotes = _watermarkQuotes,
                 WatermarkPositionIndex = _watermarkPositionIndex,
                 WatermarkIntervalMinutes = _watermarkIntervalMinutes,
                 WatermarkDurationSeconds = _watermarkDurationSeconds,

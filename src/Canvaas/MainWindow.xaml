@@ -834,13 +834,40 @@
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkPopupSettings_Changed" Unchecked="WatermarkPopupSettings_Changed"/>
 
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Quote 1" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox1" Padding="6,4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Quote 2" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox2" Padding="6,4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Quote 3" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox3" Padding="6,4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                </Grid>
+
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="180"/>
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Quote text" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
-                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox" Padding="6,4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                    <TextBlock Grid.Column="0" Text="Quote 4" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox4" Padding="6,4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
                                 </Grid>
 
                                 <Grid Margin="0,0,0,12">
