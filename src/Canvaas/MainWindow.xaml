@@ -520,11 +520,12 @@
                     </Canvas.RenderTransform>
                     <Rectangle x:Name="PageBackground" Canvas.Left="0" Canvas.Top="0" Fill="White" IsHitTestVisible="False"/>
                     
-                    <!-- Watermark Quote -->
+                    <!-- Watermark Quote (subtle and low-distraction) -->
                     <TextBlock x:Name="WatermarkText" 
                                Text="If it feels easy, then you are doing it wrong." 
-                               FontSize="42" FontWeight="Bold" FontStyle="Italic"
-                               Foreground="#30808080" 
+                               FontSize="36" FontWeight="SemiBold" FontStyle="Italic"
+                               Foreground="#14808080" 
+                               Opacity="0.5"
                                Canvas.Left="97" Canvas.Top="460" Width="600" 
                                TextWrapping="Wrap" TextAlignment="Center" 
                                IsHitTestVisible="False" Visibility="Visible" />
@@ -606,17 +607,21 @@
                 <TextBlock x:Name="StatusText" Foreground="White" FontSize="12"/>
             </Border>
 
-            <!-- Timer-driven Watermark Popup (Faded, no background box) -->
+            <!-- Timer-driven Watermark Popup (Click-through, soft appearance) -->
             <Border x:Name="WatermarkPopupBorder" 
-                    HorizontalAlignment="Center" VerticalAlignment="Center" 
-                    Background="Transparent" BorderThickness="0" 
-                    Padding="0" 
+                    HorizontalAlignment="Center" VerticalAlignment="Top" 
+                    Margin="0,60,0,0" Background="#CCFFFFFF" BorderBrush="#20000000" BorderThickness="1" 
+                    CornerRadius="12" Padding="20,12" 
                     Visibility="Collapsed" IsHitTestVisible="False" Panel.ZIndex="250"
                     Opacity="0">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.15" Color="Black"/>
+                </Border.Effect>
                 <TextBlock x:Name="WatermarkPopupText" 
                            Text="If it feels easy, then you are doing it wrong." 
-                           FontSize="48" FontWeight="Black" FontStyle="Italic" 
-                           Foreground="#40808080" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="700"/>
+                           FontSize="16" FontWeight="Medium" FontStyle="Italic" 
+                           Foreground="#444444" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
+                           IsHitTestVisible="False"/>
             </Border>
 
             <Border x:Name="MainMenuFlyout" HorizontalAlignment="Left" VerticalAlignment="Top"
@@ -818,15 +823,14 @@
 
                                 <Rectangle Height="1" Fill="#EEEEEE" Margin="0,16,0,20"/>
 
-                                <!-- Quick colour square -->
-                                <!-- Watermark Quote -->
-                                <TextBlock Text="Focus Watermark" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
+                                <!-- Focus Watermark & Popup Controls -->
+                                <TextBlock Text="Focus Watermark &amp; Reminder Popup" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,12"/>
                                 
                                 <CheckBox x:Name="ShowWatermarkCheck" Content="Show watermark quote on canvas" Margin="0,4,0,6"
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkSettings_Changed" Unchecked="WatermarkSettings_Changed"/>
 
-                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Show quote popup every minute" Margin="0,0,0,12"
+                                <CheckBox x:Name="ShowWatermarkPopupCheck" Content="Enable quote reminder popup" Margin="0,0,0,12"
                                           Foreground="#555555" FontSize="13"
                                           Checked="WatermarkPopupSettings_Changed" Unchecked="WatermarkPopupSettings_Changed"/>
 
@@ -836,20 +840,50 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Quote text" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
-                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox" Padding="4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
+                                    <TextBox Grid.Column="1" x:Name="WatermarkTextBox" Padding="6,4" FontSize="13" TextChanged="WatermarkText_TextChanged"/>
                                 </Grid>
 
-                                <Grid Margin="0,0,0,16">
+                                <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="180"/>
                                         <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="50"/>
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Popup duration (sec)" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
-                                    <Slider Grid.Column="1" x:Name="WatermarkPopupDurationSlider" Minimum="2" Maximum="30" Value="5"
+                                    <TextBlock Grid.Column="0" Text="Popup position" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <ComboBox Grid.Column="1" x:Name="WatermarkPositionCombo" Width="220" HorizontalAlignment="Left" SelectionChanged="WatermarkPositionCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Center"/>
+                                        <ComboBoxItem Content="Top-Left Corner"/>
+                                        <ComboBoxItem Content="Top-Right Corner"/>
+                                        <ComboBoxItem Content="Bottom-Left Corner"/>
+                                        <ComboBoxItem Content="Bottom-Right Corner"/>
+                                        <ComboBoxItem Content="Random Corner / Center"/>
+                                    </ComboBox>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="60"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Popup frequency" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="WatermarkIntervalSlider" Minimum="0.5" Maximum="30" Value="2"
+                                            TickFrequency="0.5" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                            ValueChanged="WatermarkIntervalSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="WatermarkIntervalText" Text="2 min" TextAlignment="Right"
+                                               VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="60"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Display duration" VerticalAlignment="Center" Foreground="#555555" FontSize="13"/>
+                                    <Slider Grid.Column="1" x:Name="WatermarkDurationSlider" Minimum="2" Maximum="15" Value="4"
                                             TickFrequency="1" IsSnapToTickEnabled="True" VerticalAlignment="Center"
-                                            ValueChanged="WatermarkPopupDurationSlider_ValueChanged"/>
-                                    <TextBlock Grid.Column="2" x:Name="WatermarkPopupDurationText" Text="5" TextAlignment="Right"
+                                            ValueChanged="WatermarkDurationSlider_ValueChanged"/>
+                                    <TextBlock Grid.Column="2" x:Name="WatermarkDurationText" Text="4 sec" TextAlignment="Right"
                                                VerticalAlignment="Center" Foreground="#555555" FontSize="12"/>
                                 </Grid>
 

@@ -116,8 +116,10 @@ public partial class MainWindow : Window
         public double QuickColorSquareSize { get; set; } = 24.0;
         public bool ShowWatermark { get; set; } = true;
         public bool ShowWatermarkPopup { get; set; } = false;
-        public double WatermarkPopupDuration { get; set; } = 5.0;
         public string WatermarkText { get; set; } = "If it feels easy, then you are doing it wrong.";
+        public int WatermarkPositionIndex { get; set; } = 0;
+        public double WatermarkIntervalMinutes { get; set; } = 2.0;
+        public double WatermarkDurationSeconds { get; set; } = 4.0;
         public Dictionary<string, string>? Shortcuts { get; set; }
         public int PdfPageSizeIndex { get; set; } = 0;
         public int PdfOrientationIndex { get; set; } = 0;
@@ -274,11 +276,14 @@ public partial class MainWindow : Window
     private double _quickColorSquareSize = 24.0;
     private bool _showWatermark = true;
     private bool _showWatermarkPopup = false;
-    private double _watermarkPopupDuration = 5.0;
     private string _watermarkText = "If it feels easy, then you are doing it wrong.";
+    private int _watermarkPositionIndex = 0;
+    private double _watermarkIntervalMinutes = 2.0;
+    private double _watermarkDurationSeconds = 4.0;
+    private static readonly Random _watermarkRnd = new();
 
-    private readonly DispatcherTimer _watermarkTimer = new() { Interval = TimeSpan.FromMinutes(1) };
-    private readonly DispatcherTimer _watermarkHideTimer = new() { Interval = TimeSpan.FromSeconds(5) };
+    private readonly DispatcherTimer _watermarkTimer = new() { Interval = TimeSpan.FromMinutes(2) };
+    private readonly DispatcherTimer _watermarkHideTimer = new() { Interval = TimeSpan.FromSeconds(4) };
 
     private Dictionary<string, string> _shortcuts = new();
     private readonly ObservableCollection<ShortcutItem> _shortcutItems = new();
@@ -542,12 +547,16 @@ public partial class MainWindow : Window
         if (ShowWatermarkCheck is not null) ShowWatermarkCheck.IsChecked = _showWatermark;
         if (ShowWatermarkPopupCheck is not null) ShowWatermarkPopupCheck.IsChecked = _showWatermarkPopup;
         if (WatermarkTextBox is not null) WatermarkTextBox.Text = _watermarkText;
-        if (WatermarkPopupDurationSlider is not null)
+        if (WatermarkPositionCombo is not null) WatermarkPositionCombo.SelectedIndex = Math.Clamp(_watermarkPositionIndex, 0, 5);
+        if (WatermarkIntervalSlider is not null)
         {
-            _suppressCounterChange = true;
-            WatermarkPopupDurationSlider.Value = Math.Clamp(_watermarkPopupDuration, 2, 30);
-            _suppressCounterChange = false;
-            if (WatermarkPopupDurationText is not null) WatermarkPopupDurationText.Text = ((int)_watermarkPopupDuration).ToString();
+            WatermarkIntervalSlider.Value = _watermarkIntervalMinutes;
+            if (WatermarkIntervalText is not null) WatermarkIntervalText.Text = $"{_watermarkIntervalMinutes:0.#} min";
+        }
+        if (WatermarkDurationSlider is not null)
+        {
+            WatermarkDurationSlider.Value = _watermarkDurationSeconds;
+            if (WatermarkDurationText is not null) WatermarkDurationText.Text = $"{(int)_watermarkDurationSeconds} sec";
         }
         if (QuickColorsSizeSlider is not null)
         {
@@ -629,11 +638,27 @@ public partial class MainWindow : Window
         SaveSettings();
     }
 
-    private void WatermarkPopupDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void WatermarkPositionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_uiReady || WatermarkPositionCombo is null) return;
+        _watermarkPositionIndex = WatermarkPositionCombo.SelectedIndex;
+        SaveSettings();
+    }
+
+    private void WatermarkIntervalSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (!_uiReady) return;
-        _watermarkPopupDuration = e.NewValue;
-        if (WatermarkPopupDurationText is not null) WatermarkPopupDurationText.Text = ((int)e.NewValue).ToString();
+        _watermarkIntervalMinutes = e.NewValue;
+        if (WatermarkIntervalText is not null) WatermarkIntervalText.Text = $"{e.NewValue:0.#} min";
+        ApplyWatermarkPopupSettings();
+        SaveSettings();
+    }
+
+    private void WatermarkDurationSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_uiReady) return;
+        _watermarkDurationSeconds = e.NewValue;
+        if (WatermarkDurationText is not null) WatermarkDurationText.Text = $"{(int)e.NewValue} sec";
         ApplyWatermarkPopupSettings();
         SaveSettings();
     }
@@ -659,8 +684,12 @@ public partial class MainWindow : Window
 
     private void ApplyWatermarkPopupSettings()
     {
+        _watermarkTimer.Interval = TimeSpan.FromMinutes(Math.Max(0.2, _watermarkIntervalMinutes));
+        _watermarkHideTimer.Interval = TimeSpan.FromSeconds(Math.Max(1.0, _watermarkDurationSeconds));
+
         if (_showWatermarkPopup)
         {
+            _watermarkTimer.Stop();
             _watermarkTimer.Start();
             if (WatermarkPopupText is not null)
                 WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
@@ -673,54 +702,57 @@ public partial class MainWindow : Window
         }
     }
 
-    private void WatermarkTimer_Tick(object? sender, EventArgs e)
+    private void PositionWatermarkPopup()
     {
         if (WatermarkPopupBorder is null) return;
 
-        // 1. Pick a random position
-        int pos = _random.Next(5);
-        switch (pos)
+        int pos = _watermarkPositionIndex;
+        if (pos == 5) // Random
         {
-            case 0:
-                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Left;
-                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
-                WatermarkPopupBorder.Margin = new Thickness(80, 80, 0, 0);
-                break;
-            case 1:
-                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Right;
-                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
-                WatermarkPopupBorder.Margin = new Thickness(0, 80, 80, 0);
-                break;
-            case 2:
-                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Left;
-                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Bottom;
-                WatermarkPopupBorder.Margin = new Thickness(80, 0, 0, 80);
-                break;
-            case 3:
-                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Right;
-                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Bottom;
-                WatermarkPopupBorder.Margin = new Thickness(0, 0, 80, 80);
-                break;
-            case 4:
-            default:
-                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Center;
-                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Center;
-                WatermarkPopupBorder.Margin = new Thickness(0);
-                break;
+            pos = _watermarkRnd.Next(0, 5);
         }
 
-        // 2. Update the text
-        if (WatermarkPopupText is not null)
-            WatermarkPopupText.Text = string.IsNullOrWhiteSpace(_watermarkText) ? "If it feels easy, then you are doing it wrong." : _watermarkText;
+        switch (pos)
+        {
+            case 1: // Top-Left
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Left;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
+                WatermarkPopupBorder.Margin = new Thickness(24, 60, 0, 0);
+                break;
+            case 2: // Top-Right
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Right;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
+                WatermarkPopupBorder.Margin = new Thickness(0, 60, 24, 0);
+                break;
+            case 3: // Bottom-Left
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Left;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Bottom;
+                WatermarkPopupBorder.Margin = new Thickness(24, 0, 0, 60);
+                break;
+            case 4: // Bottom-Right
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Right;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Bottom;
+                WatermarkPopupBorder.Margin = new Thickness(0, 0, 160, 60); // Keeps clear of zoom navbar
+                break;
+            case 0: // Center
+            default:
+                WatermarkPopupBorder.HorizontalAlignment = HorizontalAlignment.Center;
+                WatermarkPopupBorder.VerticalAlignment = VerticalAlignment.Top;
+                WatermarkPopupBorder.Margin = new Thickness(0, 70, 0, 0);
+                break;
+        }
+    }
 
-        // 3. Show and fade in
+    private void WatermarkTimer_Tick(object? sender, EventArgs e)
+    {
+        if (WatermarkPopupBorder is null) return;
+        
+        PositionWatermarkPopup();
         WatermarkPopupBorder.Visibility = Visibility.Visible;
-        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(800));
+        var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(350));
         WatermarkPopupBorder.BeginAnimation(OpacityProperty, fadeIn);
         
-        // 4. Use your custom duration from the settings
         _watermarkHideTimer.Stop();
-        _watermarkHideTimer.Interval = TimeSpan.FromSeconds(_watermarkPopupDuration);
         _watermarkHideTimer.Start();
     }
 
@@ -729,7 +761,7 @@ public partial class MainWindow : Window
         _watermarkHideTimer.Stop();
         if (WatermarkPopupBorder is null) return;
 
-        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(500));
+        var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(600));
         fadeOut.Completed += (s, a) =>
         {
             if (WatermarkPopupBorder is not null)
@@ -1674,8 +1706,10 @@ public partial class MainWindow : Window
             _quickColorSquareSize = Math.Clamp(s.QuickColorSquareSize, 18.0, 56.0);
             _showWatermark = s.ShowWatermark;
             _showWatermarkPopup = s.ShowWatermarkPopup;
-            _watermarkPopupDuration = Math.Clamp(s.WatermarkPopupDuration, 2.0, 30.0);
             _watermarkText = s.WatermarkText ?? "If it feels easy, then you are doing it wrong.";
+            _watermarkPositionIndex = Math.Clamp(s.WatermarkPositionIndex, 0, 5);
+            _watermarkIntervalMinutes = Math.Clamp(s.WatermarkIntervalMinutes, 0.5, 60.0);
+            _watermarkDurationSeconds = Math.Clamp(s.WatermarkDurationSeconds, 1.0, 30.0);
             _pdfPageSizeIndex = Math.Clamp(s.PdfPageSizeIndex, 0, 4);
             _pdfOrientationIndex = Math.Clamp(s.PdfOrientationIndex, 0, 1);
             if (s.Shortcuts is not null) _shortcuts = new Dictionary<string, string>(s.Shortcuts);
@@ -1708,8 +1742,10 @@ public partial class MainWindow : Window
                 QuickColorSquareSize = _quickColorSquareSize,
                 ShowWatermark = _showWatermark,
                 ShowWatermarkPopup = _showWatermarkPopup,
-                WatermarkPopupDuration = _watermarkPopupDuration,
                 WatermarkText = _watermarkText,
+                WatermarkPositionIndex = _watermarkPositionIndex,
+                WatermarkIntervalMinutes = _watermarkIntervalMinutes,
+                WatermarkDurationSeconds = _watermarkDurationSeconds,
                 Shortcuts = _shortcuts,
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
                 PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex
@@ -4514,14 +4550,8 @@ public partial class MainWindow : Window
         if (WatermarkText is not null)
         {
             WatermarkText.Foreground = dark 
-                ? new SolidColorBrush(Color.FromArgb(40, 255, 255, 255)) 
-                : new SolidColorBrush(Color.FromArgb(30, 0, 0, 0));
-        }
-        if (WatermarkPopupText is not null)
-        {
-            WatermarkPopupText.Foreground = dark 
-                ? new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)) 
-                : new SolidColorBrush(Color.FromArgb(50, 0, 0, 0));
+                ? new SolidColorBrush(Color.FromArgb(18, 255, 255, 255)) 
+                : new SolidColorBrush(Color.FromArgb(14, 0, 0, 0));
         }
         if (ZoomText is not null) ZoomText.Foreground = fg;
         if (PrevPageButton is not null) PrevPageButton.Opacity = PrevPageButton.IsEnabled ? 1.0 : 0.4;
