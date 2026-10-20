@@ -74,6 +74,9 @@ public partial class MainWindow : Window
         ("shapes_menu",  "Built-in shapes menu",       "Shift+S"),
         ("new_page",     "New page",                   "Ctrl+N"),
         ("clear_page",   "Clear page",                 "Ctrl+Del"),
+        ("screendraw",   "Draw on screen overlay",     "F8"),
+        ("snip",         "Desktop snip tool",          "F9"),
+        ("autopaste",    "Toggle keyword auto-paste",  "F10"),
         ("undo",         "Undo",                       "Ctrl+Z"),
         ("redo",         "Redo",                       "Ctrl+Y"),
         ("delete",       "Delete selection",           "Del"),
@@ -2150,6 +2153,9 @@ public partial class MainWindow : Window
             if (MatchesShortcut("shapes_menu", e.Key, modsNow)) { ShapesMenuButton_Click(ShapesMenuButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("new_page", e.Key, modsNow)) { NewNotebookPage_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("clear_page", e.Key, modsNow)) { ClearButton_Click(ClearButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("screendraw", e.Key, modsNow)) { ScreenDrawButton_Click(ScreenDrawButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("snip", e.Key, modsNow)) { SnipDeskButton_Click(SnipDeskButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("autopaste", e.Key, modsNow)) { AutoPasteButton_Click(AutoPasteButton, new RoutedEventArgs()); e.Handled = true; return; }
         }
 
         if (!textBoxFocused && e.Key == Key.Escape)
@@ -5495,5 +5501,302 @@ public partial class MainWindow : Window
 
         arrowShape = BuildArrowPoints(start, tip, false);
         return true;
+    }
+
+    // =====================================================================
+    // Step 3: Desktop Snip, Screen Draw Overlay, and Keyword Auto-Paste
+    // =====================================================================
+
+    // ---------- 1. Instant Keyword Auto-Paste (Clipboard Watcher) ----------
+    private readonly DispatcherTimer _clipboardMonitorTimer = new() { Interval = TimeSpan.FromMilliseconds(400) };
+    private bool _autoPasteActive = false;
+    private string _lastObservedClipboardText = "";
+
+    private void AutoPasteButton_Click(object sender, RoutedEventArgs e)
+    {
+        _autoPasteActive = !_autoPasteActive;
+        AutoPasteButton.Background = _autoPasteActive 
+            ? new SolidColorBrush(Color.FromArgb(70, 26, 115, 232)) 
+            : Brushes.Transparent;
+        
+        if (_autoPasteActive)
+        {
+            try { if (Clipboard.ContainsText()) _lastObservedClipboardText = Clipboard.GetText(); } catch { }
+            _clipboardMonitorTimer.Tick -= ClipboardMonitor_Tick;
+            _clipboardMonitorTimer.Tick += ClipboardMonitor_Tick;
+            _clipboardMonitorTimer.Start();
+            StatusText.Text = "Auto-Paste ON: any keywords you copy (Ctrl+C) will instantly paste onto your canvas!";
+        }
+        else
+        {
+            _clipboardMonitorTimer.Stop();
+            _clipboardMonitorTimer.Tick -= ClipboardMonitor_Tick;
+            StatusText.Text = "Auto-Paste OFF.";
+        }
+    }
+
+    private void ClipboardMonitor_Tick(object? sender, EventArgs e)
+    {
+        if (!_autoPasteActive) return;
+        try
+        {
+            if (Clipboard.ContainsText())
+            {
+                string txt = Clipboard.GetText();
+                if (!string.IsNullOrWhiteSpace(txt) && txt != _lastObservedClipboardText)
+                {
+                    _lastObservedClipboardText = txt;
+                    PasteTextAsKeywordBoxes(txt);
+                    StatusText.Text = "Auto-pasted copied keywords to your note!";
+                }
+            }
+        }
+        catch { }
+    }
+
+    // ---------- 2. Desktop Snip Tool ----------
+    [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, uint dwRop);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
+
+    private void SnipDeskButton_Click(object sender, RoutedEventArgs e) => StartDesktopSnip();
+
+    private async void StartDesktopSnip()
+    {
+        bool wasTopmost = Topmost;
+        Topmost = false;
+        Hide();
+        await System.Threading.Tasks.Task.Delay(260);
+
+        int screenW = (int)SystemParameters.PrimaryScreenWidth;
+        int screenH = (int)SystemParameters.PrimaryScreenHeight;
+
+        BitmapSource? fullBmp = null;
+        try
+        {
+            IntPtr hDesk = GetDesktopWindow();
+            IntPtr hDcDesk = GetDC(hDesk);
+            IntPtr hDcMem = CreateCompatibleDC(hDcDesk);
+            IntPtr hBmp = CreateCompatibleBitmap(hDcDesk, screenW, screenH);
+            IntPtr hOld = SelectObject(hDcMem, hBmp);
+
+            BitBlt(hDcMem, 0, 0, screenW, screenH, hDcDesk, 0, 0, 0x00CC0020);
+            SelectObject(hDcMem, hOld);
+            DeleteDC(hDcMem);
+            ReleaseDC(hDesk, hDcDesk);
+
+            fullBmp = Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            DeleteObject(hBmp);
+            fullBmp.Freeze();
+        }
+        catch { }
+
+        Show();
+        Topmost = wasTopmost;
+        if (fullBmp == null) { StatusText.Text = "Could not capture screen."; return; }
+
+        var snipWin = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            Topmost = true,
+            Left = 0, Top = 0,
+            Width = screenW, Height = screenH,
+            ShowInTaskbar = false,
+            Cursor = Cursors.Cross,
+            Background = Brushes.Black
+        };
+
+        var canvas = new Canvas();
+        var img = new Image { Source = fullBmp, Opacity = 0.60 };
+        canvas.Children.Add(img);
+
+        var selRect = new System.Windows.Shapes.Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(26, 115, 232)),
+            StrokeThickness = 2,
+            StrokeDashArray = new DoubleCollection { 3, 2 },
+            Fill = new SolidColorBrush(Color.FromArgb(40, 26, 115, 232)),
+            Visibility = Visibility.Collapsed
+        };
+        canvas.Children.Add(selRect);
+
+        Point startPt = new Point(0, 0);
+        bool dragging = false;
+
+        snipWin.MouseDown += (s, ev) =>
+        {
+            if (ev.LeftButton == MouseButtonState.Pressed)
+            {
+                dragging = true;
+                startPt = ev.GetPosition(canvas);
+                Canvas.SetLeft(selRect, startPt.X);
+                Canvas.SetTop(selRect, startPt.Y);
+                selRect.Width = 0; selRect.Height = 0;
+                selRect.Visibility = Visibility.Visible;
+            }
+        };
+
+        snipWin.MouseMove += (s, ev) =>
+        {
+            if (dragging)
+            {
+                var cur = ev.GetPosition(canvas);
+                double x = Math.Min(startPt.X, cur.X);
+                double y = Math.Min(startPt.Y, cur.Y);
+                double w = Math.Abs(cur.X - startPt.X);
+                double h = Math.Abs(cur.Y - startPt.Y);
+                Canvas.SetLeft(selRect, x);
+                Canvas.SetTop(selRect, y);
+                selRect.Width = w; selRect.Height = h;
+            }
+        };
+
+        snipWin.MouseUp += (s, ev) =>
+        {
+            if (dragging)
+            {
+                dragging = false;
+                snipWin.Close();
+                var cur = ev.GetPosition(canvas);
+                double sx = Math.Min(startPt.X, cur.X);
+                double sy = Math.Min(startPt.Y, cur.Y);
+                double sw = Math.Abs(cur.X - startPt.X);
+                double sh = Math.Abs(cur.Y - startPt.Y);
+
+                if (sw > 15 && sh > 15)
+                {
+                    try
+                    {
+                        double scaleX = fullBmp.PixelWidth / (double)screenW;
+                        double scaleY = fullBmp.PixelHeight / (double)screenH;
+                        int cx = Math.Clamp((int)(sx * scaleX), 0, fullBmp.PixelWidth - 1);
+                        int cy = Math.Clamp((int)(sy * scaleY), 0, fullBmp.PixelHeight - 1);
+                        int cw = Math.Clamp((int)(sw * scaleX), 1, fullBmp.PixelWidth - cx);
+                        int ch = Math.Clamp((int)(sh * scaleY), 1, fullBmp.PixelHeight - cy);
+
+                        var cropped = new CroppedBitmap(fullBmp, new Int32Rect(cx, cy, cw, ch));
+                        cropped.Freeze();
+                        AddImageToPage(cropped);
+                        StatusText.Text = "Snapped diagram pasted directly to note!";
+                    }
+                    catch { StatusText.Text = "Snip failed."; }
+                }
+            }
+        };
+
+        snipWin.KeyDown += (s, ev) => { if (ev.Key == Key.Escape) { snipWin.Close(); StatusText.Text = "Snip canceled."; } };
+        snipWin.Content = canvas;
+        snipWin.ShowDialog();
+    }
+
+    // ---------- 3. Draw on Screen (Overlay Annotation Mode) ----------
+    private void ScreenDrawButton_Click(object sender, RoutedEventArgs e)
+    {
+        var drawWin = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = true,
+            Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0)),
+            Topmost = true,
+            Left = 0, Top = 0,
+            Width = SystemParameters.PrimaryScreenWidth,
+            Height = SystemParameters.PrimaryScreenHeight,
+            ShowInTaskbar = false
+        };
+
+        var rootGrid = new Grid();
+        var screenInk = new InkCanvas
+        {
+            Background = Brushes.Transparent,
+            DefaultDrawingAttributes = new DrawingAttributes
+            {
+                Color = _penColor,
+                Width = Math.Max(2.5, _penSize),
+                Height = Math.Max(2.5, _penSize)
+            }
+        };
+        rootGrid.Children.Add(screenInk);
+
+        var toolbar = new Border
+        {
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 16, 0, 0),
+            Background = new SolidColorBrush(Color.FromRgb(0x22, 0x22, 0x22)),
+            CornerRadius = new CornerRadius(20),
+            Padding = new Thickness(14, 6, 14, 6)
+        };
+        toolbar.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Opacity = 0.4 };
+
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+
+        Button MakeBtn(string label, string tip, Action onClick)
+        {
+            var b = new Button
+            {
+                Content = label, ToolTip = tip,
+                Foreground = Brushes.White, Background = Brushes.Transparent,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(10, 4, 10, 4), Margin = new Thickness(3, 0, 3, 0),
+                Cursor = Cursors.Hand, FontSize = 13, FontWeight = FontWeights.SemiBold
+            };
+            b.Click += (s, ev) => onClick();
+            return b;
+        }
+
+        sp.Children.Add(MakeBtn("🖊 Pen", "Write on screen", () => {
+            screenInk.EditingMode = InkCanvasEditingMode.Ink;
+            screenInk.DefaultDrawingAttributes.Color = _penColor;
+            screenInk.DefaultDrawingAttributes.IsHighlighter = false;
+            screenInk.DefaultDrawingAttributes.Width = _penSize;
+            screenInk.DefaultDrawingAttributes.Height = _penSize;
+        }));
+
+        sp.Children.Add(MakeBtn("🖍 Highlight", "Highlight text on screen", () => {
+            screenInk.EditingMode = InkCanvasEditingMode.Ink;
+            screenInk.DefaultDrawingAttributes.Color = Color.FromArgb(120, 255, 235, 59);
+            screenInk.DefaultDrawingAttributes.IsHighlighter = true;
+            screenInk.DefaultDrawingAttributes.Width = 22;
+            screenInk.DefaultDrawingAttributes.Height = 22;
+        }));
+
+        sp.Children.Add(MakeBtn("🧹 Eraser", "Erase screen strokes", () => {
+            screenInk.EditingMode = InkCanvasEditingMode.EraseByStroke;
+        }));
+
+        sp.Children.Add(MakeBtn("🗑 Clear", "Clear drawing", () => screenInk.Strokes.Clear()));
+
+        sp.Children.Add(new Rectangle { Width = 1, Height = 18, Fill = Brushes.Gray, Margin = new Thickness(6, 0, 6, 0) });
+
+        sp.Children.Add(MakeBtn("📥 Send to Note", "Save drawing into Canvaas notebook", () => {
+            if (screenInk.Strokes.Count > 0)
+            {
+                var bounds = screenInk.Strokes.GetBounds();
+                if (bounds.Width > 5 && bounds.Height > 5)
+                {
+                    var bmp = RenderStrokesToBitmap(screenInk.Strokes, bounds);
+                    AddImageToPage(bmp);
+                    StatusText.Text = "Screen drawing saved directly to your note!";
+                }
+            }
+            drawWin.Close();
+        }));
+
+        sp.Children.Add(MakeBtn("✕ Exit", "Exit screen draw (Esc)", () => drawWin.Close()));
+
+        toolbar.Child = sp;
+        rootGrid.Children.Add(toolbar);
+
+        drawWin.KeyDown += (s, ev) => { if (ev.Key == Key.Escape) drawWin.Close(); };
+        drawWin.Content = rootGrid;
+        drawWin.Show();
     }
 }
