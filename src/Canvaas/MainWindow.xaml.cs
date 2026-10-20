@@ -4150,7 +4150,7 @@ public partial class MainWindow : Window
     {
         var points = e.Stroke.StylusPoints;
         if (points.Count == 0) return;
-        if (_shapeAssist && _tool == ToolMode.Pen && TrySnapShape(e.Stroke)) return;
+        if (_shapeAssist && _tool == ToolMode.Pen && TrySnapSmartShape(e.Stroke)) return;
         if (!e.Stroke.DrawingAttributes.IsHighlighter) SmoothCompletedStroke(e.Stroke);
     }
 
@@ -5279,5 +5279,221 @@ public partial class MainWindow : Window
         }
 
         return list;
+    }
+
+    // =====================================================================
+    // Upgraded Smart Auto-Shape Recognition Engine
+    // =====================================================================
+    private bool TrySnapSmartShape(Stroke original)
+    {
+        if (InkArea is null) return false;
+        var raw = original.StylusPoints;
+        if (raw.Count < 6) return false;
+
+        var pts = new List<Point>(raw.Count);
+        for (int i = 0; i < raw.Count; i++) pts.Add(new Point(raw[i].X, raw[i].Y));
+
+        double len = 0;
+        for (int i = 1; i < pts.Count; i++) len += (pts[i] - pts[i - 1]).Length;
+        if (len < 25) return false;
+
+        double minX = pts.Min(q => q.X), maxX = pts.Max(q => q.X);
+        double minY = pts.Min(q => q.Y), maxY = pts.Max(q => q.Y);
+        double w = maxX - minX, h = maxY - minY, maxDim = Math.Max(w, h);
+        if (maxDim < 15) return false;
+
+        var first = pts[0];
+        var last = pts[pts.Count - 1];
+        double gap = (last - first).Length;
+        bool isClosed = gap < Math.Max(35.0, 0.28 * len);
+
+        // 1. Hand-drawn Arrow (drawn in one stroke: shaft + head tip)
+        if (!isClosed && TryRecognizeHandDrawnArrow(pts, out var arrowShape))
+        {
+            return ReplaceWithShape(original, arrowShape);
+        }
+
+        // 2. Open strokes (Single straight line or L-shaped axes)
+        if (!isClosed)
+        {
+            var rdpPts = Rdp(pts, 0, pts.Count - 1, Math.Max(5.0, 0.06 * maxDim));
+            if (rdpPts.Count == 2)
+            {
+                var p1 = rdpPts[0];
+                var p2 = rdpPts[1];
+                double dx = Math.Abs(p2.X - p1.X), dy = Math.Abs(p2.Y - p1.Y);
+                if (dy < 0.10 * dx) p2 = new Point(p2.X, p1.Y); // Snap horizontal
+                else if (dx < 0.10 * dy) p2 = new Point(p1.X, p2.Y); // Snap vertical
+                return ReplaceWithShape(original, new List<Point> { p1, p2 });
+            }
+            if (rdpPts.Count == 3)
+            {
+                // L-shape / Axis (snap near 90 degree angle)
+                var p1 = rdpPts[0]; var p2 = rdpPts[1]; var p3 = rdpPts[2];
+                var v1 = p1 - p2; var v2 = p3 - p2;
+                double ang = Math.Abs(Vector.AngleBetween(v1, v2));
+                if (ang >= 65 && ang <= 115)
+                {
+                    if (Math.Abs(p1.X - p2.X) < Math.Abs(p1.Y - p2.Y)) p1 = new Point(p2.X, p1.Y);
+                    else p1 = new Point(p1.X, p2.Y);
+                    if (Math.Abs(p3.X - p2.X) < Math.Abs(p3.Y - p2.Y)) p3 = new Point(p2.X, p3.Y);
+                    else p3 = new Point(p3.X, p2.Y);
+                }
+                return ReplaceWithShape(original, new List<Point> { p1, p2, p3 });
+            }
+            if (rdpPts.Count >= 4 && rdpPts.Count <= 6)
+            {
+                return ReplaceWithShape(original, rdpPts);
+            }
+            return false;
+        }
+
+        // 3. Closed strokes (Circle / Ellipse)
+        double cx = (minX + maxX) / 2.0, cy = (minY + maxY) / 2.0;
+        double rx = w / 2.0, ry = h / 2.0;
+        if (rx >= 8 && ry >= 8)
+        {
+            double sumErr = 0;
+            foreach (var p in pts)
+            {
+                double q = Math.Sqrt(Math.Pow((p.X - cx) / rx, 2) + Math.Pow((p.Y - cy) / ry, 2));
+                sumErr += Math.Abs(q - 1.0);
+            }
+            if (sumErr / pts.Count < 0.16)
+            {
+                if (Math.Abs(rx - ry) < 0.18 * Math.Max(rx, ry))
+                {
+                    double avgR = (rx + ry) / 2.0;
+                    rx = avgR; ry = avgR;
+                }
+                var ring = new List<Point>();
+                for (int i = 0; i <= 64; i++)
+                {
+                    double rad = 2.0 * Math.PI * i / 64.0;
+                    ring.Add(new Point(cx + rx * Math.Cos(rad), cy + ry * Math.Sin(rad)));
+                }
+                return ReplaceWithShape(original, ring);
+            }
+        }
+
+        // 4. Polygon corners (Triangles, Rectangles, Diamonds, Pentagons, Hexagons)
+        var corners = PolygonCorners(pts, Math.Max(5.0, 0.07 * maxDim));
+        int count = corners.Count;
+
+        if (count == 3)
+        {
+            return ReplaceWithShape(original, new List<Point>(corners) { corners[0] });
+        }
+
+        if (count == 4)
+        {
+            // Check if Diamond (tips near top, bottom, left, right)
+            bool isDiamond = true;
+            foreach (var c in corners)
+            {
+                bool nearCenterAxes = (Math.Abs(c.X - cx) < 0.28 * w && (Math.Abs(c.Y - minY) < 0.28 * h || Math.Abs(c.Y - maxY) < 0.28 * h)) ||
+                                      (Math.Abs(c.Y - cy) < 0.28 * h && (Math.Abs(c.X - minX) < 0.28 * w || Math.Abs(c.X - maxX) < 0.28 * w));
+                if (!nearCenterAxes) isDiamond = false;
+            }
+
+            if (isDiamond)
+            {
+                return ReplaceWithShape(original, new List<Point>
+                {
+                    new Point(cx, minY), new Point(maxX, cy),
+                    new Point(cx, maxY), new Point(minX, cy),
+                    new Point(cx, minY)
+                });
+            }
+
+            // Check if Box / Rectangle / Square
+            bool rectLike = true;
+            for (int i = 0; i < 4; i++)
+            {
+                var v1 = corners[i] - corners[(i + 3) % 4];
+                var v2 = corners[(i + 1) % 4] - corners[i];
+                double ang = Math.Abs(Vector.AngleBetween(v1, v2));
+                if (ang < 58 || ang > 122) rectLike = false;
+            }
+
+            if (rectLike)
+            {
+                double rw = w, rh = h;
+                if (Math.Abs(w - h) < 0.16 * maxDim) { rw = (w + h) / 2.0; rh = rw; }
+                return ReplaceWithShape(original, new List<Point>
+                {
+                    new Point(cx - rw / 2, cy - rh / 2),
+                    new Point(cx + rw / 2, cy - rh / 2),
+                    new Point(cx + rw / 2, cy + rh / 2),
+                    new Point(cx - rw / 2, cy + rh / 2),
+                    new Point(cx - rw / 2, cy - rh / 2)
+                });
+            }
+
+            return ReplaceWithShape(original, new List<Point>(corners) { corners[0] });
+        }
+
+        // Pentagon (5 corners) - ribose, RNA/DNA rings
+        if (count == 5)
+        {
+            return ReplaceWithShape(original, new List<Point>(corners) { corners[0] });
+        }
+
+        // Hexagon (6 corners) - glucose, benzene, carbon rings
+        if (count == 6)
+        {
+            return ReplaceWithShape(original, new List<Point>(corners) { corners[0] });
+        }
+
+        // Octagon (7 or 8 corners)
+        if (count >= 7 && count <= 8)
+        {
+            return ReplaceWithShape(original, new List<Point>(corners) { corners[0] });
+        }
+
+        return false;
+    }
+
+    private static bool TryRecognizeHandDrawnArrow(List<Point> pts, out List<Point> arrowShape)
+    {
+        arrowShape = new List<Point>();
+        int n = pts.Count;
+        if (n < 10) return false;
+
+        var start = pts[0];
+        int maxIdx = 0;
+        double maxDist = 0;
+        for (int i = 0; i < n; i++)
+        {
+            double d = (pts[i] - start).Length;
+            if (d > maxDist) { maxDist = d; maxIdx = i; }
+        }
+
+        if (maxIdx < (int)(n * 0.45) || maxIdx >= n - 1) return false;
+        if (maxDist < 25) return false;
+
+        var tip = pts[maxIdx];
+        double shaftDx = tip.X - start.X, shaftDy = tip.Y - start.Y;
+        double shaftLen = Math.Sqrt(shaftDx * shaftDx + shaftDy * shaftDy);
+        if (shaftLen < 20) return false;
+
+        double maxShaftDev = 0;
+        for (int i = 1; i < maxIdx; i++)
+        {
+            double dev = Math.Abs((pts[i].X - start.X) * shaftDy - (pts[i].Y - start.Y) * shaftDx) / shaftLen;
+            if (dev > maxShaftDev) maxShaftDev = dev;
+        }
+        if (maxShaftDev > 0.16 * shaftLen) return false;
+
+        double maxHeadDist = 0;
+        for (int i = maxIdx; i < n; i++)
+        {
+            double hd = (pts[i] - tip).Length;
+            if (hd > maxHeadDist) maxHeadDist = hd;
+        }
+        if (maxHeadDist > 0.45 * shaftLen || maxHeadDist < 5) return false;
+
+        arrowShape = BuildArrowPoints(start, tip, false);
+        return true;
     }
 }
