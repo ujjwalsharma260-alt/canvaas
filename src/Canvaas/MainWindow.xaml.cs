@@ -62,20 +62,25 @@ public partial class MainWindow : Window
 
     private static readonly (string Id, string Name, string Default)[] ShortcutActions =
     {
-        ("fullscreen",   "Toggle fullscreen",   "F11"),
-        ("toggle_chrome","Show / hide toolbars","Tab"),
-        ("pen",          "Pen tool",            "1"),
-        ("highlighter",  "Highlighter tool",    "2"),
-        ("eraser",       "Eraser tool",         "3"),
-        ("lasso",        "Lasso tool",          "4"),
-        ("hand",         "Hand (pan)",          "5"),
-        ("undo",         "Undo",                "Ctrl+Z"),
-        ("redo",         "Redo",                "Ctrl+Y"),
-        ("delete",       "Delete selection",    "Del"),
-        ("copy",         "Copy selection",      "Ctrl+C"),
-        ("cut",          "Cut selection",       "Ctrl+X"),
-        ("paste",        "Paste",               "Ctrl+V"),
-        ("selectall",    "Select all",          "Ctrl+A"),
+        ("fullscreen",   "Toggle fullscreen",          "F11"),
+        ("toggle_chrome","Show / hide toolbars",       "Tab"),
+        ("pen",          "Pen tool",                   "1"),
+        ("highlighter",  "Highlighter tool",           "2"),
+        ("calligraphy",  "Fountain / Calligraphy pen", "6"),
+        ("eraser",       "Eraser tool",                "3"),
+        ("lasso",        "Lasso tool",                 "4"),
+        ("hand",         "Hand (pan)",                 "5"),
+        ("shapeassist",  "Toggle auto-shape assist",   "S"),
+        ("shapes_menu",  "Built-in shapes menu",       "Shift+S"),
+        ("new_page",     "New page",                   "Ctrl+N"),
+        ("clear_page",   "Clear page",                 "Ctrl+Del"),
+        ("undo",         "Undo",                       "Ctrl+Z"),
+        ("redo",         "Redo",                       "Ctrl+Y"),
+        ("delete",       "Delete selection",           "Del"),
+        ("copy",         "Copy selection",             "Ctrl+C"),
+        ("cut",          "Cut selection",              "Ctrl+X"),
+        ("paste",        "Paste",                      "Ctrl+V"),
+        ("selectall",    "Select all",                 "Ctrl+A"),
     };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -199,6 +204,12 @@ public partial class MainWindow : Window
 
     private readonly List<NotebookPage> _pages = new();
     private int _currentPageIndex;
+
+    private enum BuiltInShape { None, Line, Arrow, DoubleArrow, Axes, Rectangle, Circle, Triangle, Diamond, Star }
+    private BuiltInShape _selectedBuiltInShape = BuiltInShape.None;
+    private bool _shapeDrawing;
+    private Point _shapeStartWorld;
+    private Stroke? _shapePreviewStroke;
 
     private readonly Stack<object> _undo = new();
     private readonly Stack<object> _redo = new();
@@ -2131,9 +2142,14 @@ public partial class MainWindow : Window
             if (MatchesShortcut("redo", e.Key, modsNow)) { ApplicationCommands.Redo.Execute(null, this); e.Handled = true; return; }
             if (MatchesShortcut("pen", e.Key, modsNow)) { PenButton.IsChecked = true; _suppressToolPopup = true; PenButton_Click(PenButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("highlighter", e.Key, modsNow)) { HighlighterButton.IsChecked = true; _suppressToolPopup = true; HighlighterButton_Click(HighlighterButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("calligraphy", e.Key, modsNow)) { CalligraphyButton.IsChecked = true; _suppressToolPopup = true; CalligraphyButton_Click(CalligraphyButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("eraser", e.Key, modsNow)) { EraserButton.IsChecked = true; EraserButton_Click(EraserButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("lasso", e.Key, modsNow)) { LassoButton.IsChecked = true; LassoButton_Click(LassoButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("hand", e.Key, modsNow)) { HandButton.IsChecked = true; HandButton_Click(HandButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("shapeassist", e.Key, modsNow)) { ShapeAssistButton_Click(ShapeAssistButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("shapes_menu", e.Key, modsNow)) { ShapesMenuButton_Click(ShapesMenuButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("new_page", e.Key, modsNow)) { NewNotebookPage_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("clear_page", e.Key, modsNow)) { ClearButton_Click(ClearButton, new RoutedEventArgs()); e.Handled = true; return; }
         }
 
         if (!textBoxFocused && e.Key == Key.Escape)
@@ -3047,6 +3063,16 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_selectedBuiltInShape != BuiltInShape.None && e.LeftButton == MouseButtonState.Pressed)
+        {
+            _shapeDrawing = true;
+            _shapeStartWorld = ScreenToWorld(screenPt);
+            _shapePreviewStroke = null;
+            CanvasHostBorder.CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
         if (middleDrag || handDrag)
         {
             _panning = true;
@@ -3085,6 +3111,14 @@ public partial class MainWindow : Window
 
         if (_resizingHandle) { UpdateResize(ScreenToWorld(screenPt)); e.Handled = true; return; }
 
+        if (_shapeDrawing && InkArea is not null)
+        {
+            var currentWorld = ScreenToWorld(screenPt);
+            UpdateShapePreview(_shapeStartWorld, currentWorld);
+            e.Handled = true;
+            return;
+        }
+
         if (_panning)
         {
             _viewPanX = _panStartPanX + (screenPt.X - _panStart.X);
@@ -3113,6 +3147,7 @@ public partial class MainWindow : Window
 
     private void CanvasHostBorder_PreviewMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (_shapeDrawing) { EndShapeDrawing(); e.Handled = true; return; }
         if (_resizingHandle) { EndResize(); e.Handled = true; return; }
         if (_panning) { EndPan(); e.Handled = true; return; }
         if (_lassoActive) { EndLasso(); e.Handled = true; return; }
@@ -5058,5 +5093,191 @@ public partial class MainWindow : Window
     private static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    // =====================================================================
+    // Built-in Shapes System
+    // =====================================================================
+    private void ShapesMenuButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button b && b.ContextMenu is ContextMenu cm)
+        {
+            cm.PlacementTarget = b;
+            cm.Placement = PlacementMode.Bottom;
+            cm.IsOpen = true;
+        }
+    }
+
+    private void ShapeSelect_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is string shapeName &&
+            Enum.TryParse<BuiltInShape>(shapeName, out var shape))
+        {
+            _selectedBuiltInShape = shape;
+            if (InkArea is not null) InkArea.EditingMode = InkCanvasEditingMode.None;
+            StatusText.Text = $"Shape: {shapeName}. Drag on canvas to draw.";
+        }
+    }
+
+    private void UpdateShapePreview(Point start, Point end)
+    {
+        if (InkArea is null) return;
+        var stroke = GenerateShapeStroke(_selectedBuiltInShape, start, end);
+        if (stroke is null) return;
+
+        _applyingHistory = true;
+        try
+        {
+            if (_shapePreviewStroke is not null && InkArea.Strokes.Contains(_shapePreviewStroke))
+                InkArea.Strokes.Remove(_shapePreviewStroke);
+
+            InkArea.Strokes.Add(stroke);
+            _shapePreviewStroke = stroke;
+        }
+        finally { _applyingHistory = false; }
+    }
+
+    private void EndShapeDrawing()
+    {
+        if (!_shapeDrawing) return;
+        _shapeDrawing = false;
+        if (CanvasHostBorder is not null && CanvasHostBorder.IsMouseCaptured)
+            CanvasHostBorder.ReleaseMouseCapture();
+
+        if (_shapePreviewStroke is not null && InkArea is not null)
+        {
+            _undo.Push(new StrokeChange(new StrokeCollection { _shapePreviewStroke }, new StrokeCollection()));
+            _redo.Clear();
+            MarkDirty();
+            StatusText.Text = $"Drawn {_selectedBuiltInShape}. Back to Pen.";
+        }
+
+        _shapePreviewStroke = null;
+        _selectedBuiltInShape = BuiltInShape.None;
+        if (PenButton is not null) PenButton.IsChecked = true;
+        if (InkArea is not null) InkArea.EditingMode = InkCanvasEditingMode.Ink;
+    }
+
+    private Stroke? GenerateShapeStroke(BuiltInShape shape, Point a, Point b)
+    {
+        var pts = new List<Point>();
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double minX = Math.Min(a.X, b.X), maxX = Math.Max(a.X, b.X);
+        double minY = Math.Min(a.Y, b.Y), maxY = Math.Max(a.Y, b.Y);
+        double w = maxX - minX, h = maxY - minY;
+        double cx = (a.X + b.X) / 2.0, cy = (a.Y + b.Y) / 2.0;
+
+        switch (shape)
+        {
+            case BuiltInShape.Line:
+                pts.Add(a); pts.Add(b);
+                break;
+
+            case BuiltInShape.Arrow:
+                pts.AddRange(BuildArrowPoints(a, b, false));
+                break;
+
+            case BuiltInShape.DoubleArrow:
+                pts.AddRange(BuildArrowPoints(a, b, true));
+                break;
+
+            case BuiltInShape.Axes:
+                // Y-axis pointing up, X-axis pointing right
+                Point origin = new Point(minX, maxY);
+                Point topY = new Point(minX, minY);
+                Point rightX = new Point(maxX, maxY);
+                pts.AddRange(BuildArrowPoints(origin, topY, false));
+                pts.Add(origin);
+                pts.AddRange(BuildArrowPoints(origin, rightX, false));
+                break;
+
+            case BuiltInShape.Rectangle:
+                pts.Add(new Point(minX, minY));
+                pts.Add(new Point(maxX, minY));
+                pts.Add(new Point(maxX, maxY));
+                pts.Add(new Point(minX, maxY));
+                pts.Add(new Point(minX, minY));
+                break;
+
+            case BuiltInShape.Circle:
+                double rx = Math.Max(4, w / 2.0), ry = Math.Max(4, h / 2.0);
+                for (int i = 0; i <= 60; i++)
+                {
+                    double rad = 2.0 * Math.PI * i / 60.0;
+                    pts.Add(new Point(cx + rx * Math.Cos(rad), cy + ry * Math.Sin(rad)));
+                }
+                break;
+
+            case BuiltInShape.Triangle:
+                pts.Add(new Point(cx, minY));
+                pts.Add(new Point(maxX, maxY));
+                pts.Add(new Point(minX, maxY));
+                pts.Add(new Point(cx, minY));
+                break;
+
+            case BuiltInShape.Diamond:
+                pts.Add(new Point(cx, minY));
+                pts.Add(new Point(maxX, cy));
+                pts.Add(new Point(cx, maxY));
+                pts.Add(new Point(minX, cy));
+                pts.Add(new Point(cx, minY));
+                break;
+
+            case BuiltInShape.Star:
+                double R = Math.Max(w, h) / 2.0;
+                double r = R * 0.45;
+                for (int i = 0; i <= 10; i++)
+                {
+                    double radius = (i % 2 == 0) ? R : r;
+                    double angle = -Math.PI / 2 + (i * Math.PI / 5);
+                    pts.Add(new Point(cx + radius * Math.Cos(angle), cy + radius * Math.Sin(angle)));
+                }
+                break;
+
+            default:
+                return null;
+        }
+
+        if (pts.Count < 2) return null;
+        var spc = new StylusPointCollection();
+        foreach (var p in pts) spc.Add(new StylusPoint(p.X, p.Y, 0.5f));
+        var da = new DrawingAttributes
+        {
+            Color = _penColor,
+            Width = _penSize,
+            Height = _penSize,
+            FitToCurve = false,
+            IgnorePressure = true
+        };
+        return new Stroke(spc, da);
+    }
+
+    private static List<Point> BuildArrowPoints(Point from, Point to, bool doubleArrow)
+    {
+        var list = new List<Point> { from, to };
+        double dx = to.X - from.X, dy = to.Y - from.Y;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 6) return list;
+
+        double ux = dx / len, uy = dy / len;
+        double nx = -uy, ny = ux;
+        double head = Math.Min(22.0, Math.Max(10.0, len * 0.25));
+        double width = head * 0.55;
+
+        // Head at 'to'
+        list.Add(new Point(to.X - ux * head + nx * width, to.Y - uy * head + ny * width));
+        list.Add(to);
+        list.Add(new Point(to.X - ux * head - nx * width, to.Y - uy * head - ny * width));
+
+        if (doubleArrow)
+        {
+            list.Add(to);
+            list.Add(from);
+            list.Add(new Point(from.X + ux * head + nx * width, from.Y + uy * head + ny * width));
+            list.Add(from);
+            list.Add(new Point(from.X + ux * head - nx * width, from.Y + uy * head - ny * width));
+        }
+
+        return list;
     }
 }

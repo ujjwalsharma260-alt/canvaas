@@ -450,7 +450,23 @@
                     <RadioButton x:Name="CalligraphyButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="✒" FontFamily="Segoe UI Symbol" FontSize="17" ToolTip="Calligraphy pen" Click="CalligraphyButton_Click"/>
                     <RadioButton x:Name="EraserButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE75C;" ToolTip="Eraser (3)" Click="EraserButton_Click"/>
                     <RadioButton x:Name="LassoButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="&#xE75D;" ToolTip="Lasso (4)" Click="LassoButton_Click"/>
-                    <Button x:Name="ShapeAssistButton" Style="{StaticResource TopIconButton}" Content="&#x25B3;" FontFamily="Segoe UI Symbol" FontSize="20" ToolTip="Auto shapes: draw a circle, square, triangle or line and lift the pen" Click="ShapeAssistButton_Click"/>
+                    <Button x:Name="ShapeAssistButton" Style="{StaticResource TopIconButton}" Content="&#x25B3;" FontFamily="Segoe UI Symbol" FontSize="20" ToolTip="Auto shapes: draw a circle, square, triangle or line and lift the pen (S)" Click="ShapeAssistButton_Click"/>
+                    <Button x:Name="ShapesMenuButton" Style="{StaticResource TopIconButton}" Content="⬡" FontFamily="Segoe UI Symbol" FontSize="19" ToolTip="Built-in shapes (Shift+S)" Click="ShapesMenuButton_Click">
+                        <Button.ContextMenu>
+                            <ContextMenu x:Name="ShapesContextMenu">
+                                <MenuItem Header="Line  ( / )" Click="ShapeSelect_Click" Tag="Line"/>
+                                <MenuItem Header="Arrow  ( ➔ )" Click="ShapeSelect_Click" Tag="Arrow"/>
+                                <MenuItem Header="Double Arrow  ( ⬌ )" Click="ShapeSelect_Click" Tag="DoubleArrow"/>
+                                <MenuItem Header="Coordinate Axes  ( ✛ )" Click="ShapeSelect_Click" Tag="Axes"/>
+                                <Separator/>
+                                <MenuItem Header="Rectangle / Box  ( ▭ )" Click="ShapeSelect_Click" Tag="Rectangle"/>
+                                <MenuItem Header="Circle / Ellipse  ( ○ )" Click="ShapeSelect_Click" Tag="Circle"/>
+                                <MenuItem Header="Triangle  ( △ )" Click="ShapeSelect_Click" Tag="Triangle"/>
+                                <MenuItem Header="Diamond  ( ◇ )" Click="ShapeSelect_Click" Tag="Diamond"/>
+                                <MenuItem Header="Star  ( ★ )" Click="ShapeSelect_Click" Tag="Star"/>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
                     <RadioButton x:Name="HandButton" Style="{StaticResource TopToolRadio}" GroupName="Tools" Content="✋" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Pan (5)" Click="HandButton_Click"/>
 
                     <Rectangle Width="1" Height="24" Margin="12,0" Fill="#9A9A9A"/>
