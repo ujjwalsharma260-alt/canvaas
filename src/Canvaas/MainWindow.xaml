@@ -471,9 +471,7 @@
 
                     <Rectangle Width="1" Height="24" Margin="12,0" Fill="#9A9A9A"/>
 
-                    <Button x:Name="ScreenDrawButton" Style="{StaticResource TopIconButton}" Content="🖊" ToolTip="Draw on screen over any app (F8)" Click="ScreenDrawButton_Click"/>
-                    <Button x:Name="SnipDeskButton" Style="{StaticResource TopIconButton}" Content="✂" ToolTip="Snip desktop diagram to note (F9)" Click="SnipDeskButton_Click"/>
-                    <Button x:Name="AutoPasteButton" Style="{StaticResource TopIconButton}" Content="📋" ToolTip="Toggle keyword auto-paste (F10)" Click="AutoPasteButton_Click"/>
+                    <Button x:Name="AutoPasteButton" Style="{StaticResource TopIconButton}" Content="📋" ToolTip="Auto-paste copied text as keyword cards (Ctrl+C from anywhere)" Click="AutoPasteButton_Click"/>
 
                     <Button x:Name="AddMenuButton" Style="{StaticResource TopIconButton}" Content="&#xE710;" ToolTip="Insert / paste" Click="MenuButton2_Click">
                         <Button.ContextMenu>

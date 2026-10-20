@@ -74,8 +74,6 @@ public partial class MainWindow : Window
         ("shapes_menu",  "Built-in shapes menu",       "Shift+S"),
         ("new_page",     "New page",                   "Ctrl+N"),
         ("clear_page",   "Clear page",                 "Ctrl+Del"),
-        ("screendraw",   "Draw on screen overlay",     "F8"),
-        ("snip",         "Desktop snip tool",          "F9"),
         ("autopaste",    "Toggle keyword auto-paste",  "F10"),
         ("undo",         "Undo",                       "Ctrl+Z"),
         ("redo",         "Redo",                       "Ctrl+Y"),
@@ -2153,8 +2151,6 @@ public partial class MainWindow : Window
             if (MatchesShortcut("shapes_menu", e.Key, modsNow)) { ShapesMenuButton_Click(ShapesMenuButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("new_page", e.Key, modsNow)) { NewNotebookPage_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("clear_page", e.Key, modsNow)) { ClearButton_Click(ClearButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("screendraw", e.Key, modsNow)) { ScreenDrawButton_Click(ScreenDrawButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("snip", e.Key, modsNow)) { SnipDeskButton_Click(SnipDeskButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("autopaste", e.Key, modsNow)) { AutoPasteButton_Click(AutoPasteButton, new RoutedEventArgs()); e.Handled = true; return; }
         }
 
@@ -2224,8 +2220,7 @@ public partial class MainWindow : Window
             if (trimmed.Length > 0) tokens.Add(trimmed);
         }
         if (tokens.Count == 0) return;
-        var fontName = AskPasteFont();
-        if (fontName is null) return;
+        var fontName = _pasteFont;
 
         const double boxW = 220, boxH = 48, gap = 20, margin = 60;
         int perRow = 6;
@@ -5554,7 +5549,7 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    // ---------- 2. Desktop Snip Tool ----------
+    } ----------
     [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
