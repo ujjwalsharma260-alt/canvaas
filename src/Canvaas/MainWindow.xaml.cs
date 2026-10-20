@@ -74,6 +74,8 @@ public partial class MainWindow : Window
         ("shapes_menu",  "Built-in shapes menu",       "Shift+S"),
         ("new_page",     "New page",                   "Ctrl+N"),
         ("clear_page",   "Clear page",                 "Ctrl+Del"),
+        ("screendraw",   "Draw on screen overlay",     "F8"),
+        ("snip",         "Desktop snip tool",          "F9"),
         ("autopaste",    "Toggle keyword auto-paste",  "F10"),
         ("undo",         "Undo",                       "Ctrl+Z"),
         ("redo",         "Redo",                       "Ctrl+Y"),
@@ -2151,6 +2153,8 @@ public partial class MainWindow : Window
             if (MatchesShortcut("shapes_menu", e.Key, modsNow)) { ShapesMenuButton_Click(ShapesMenuButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("new_page", e.Key, modsNow)) { NewNotebookPage_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("clear_page", e.Key, modsNow)) { ClearButton_Click(ClearButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("screendraw", e.Key, modsNow)) { ScreenDrawButton_Click(ScreenDrawButton, new RoutedEventArgs()); e.Handled = true; return; }
+            if (MatchesShortcut("snip", e.Key, modsNow)) { SnipDeskButton_Click(SnipDeskButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("autopaste", e.Key, modsNow)) { AutoPasteButton_Click(AutoPasteButton, new RoutedEventArgs()); e.Handled = true; return; }
         }
 
@@ -2220,7 +2224,8 @@ public partial class MainWindow : Window
             if (trimmed.Length > 0) tokens.Add(trimmed);
         }
         if (tokens.Count == 0) return;
-        var fontName = _pasteFont;
+        // Uses the 1st handwriting font immediately without interrupting you
+        var fontName = !string.IsNullOrEmpty(_pasteFont) ? _pasteFont : "Ink Free";
 
         const double boxW = 220, boxH = 48, gap = 20, margin = 60;
         int perRow = 6;
@@ -4751,6 +4756,16 @@ public partial class MainWindow : Window
     private static List<string> SplitKeywords(string text)
     {
         var result = new List<string>();
+        string trimmedAll = text.Trim();
+        // If it's a web link, keep it as one single card without splitting
+        if (trimmedAll.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            trimmedAll.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            trimmedAll.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+        {
+            result.Add(trimmedAll);
+            return result;
+        }
+
         var parts = new List<string>(text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries));
         if (parts.Count == 1)
         {
@@ -5549,7 +5564,7 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    } ----------
+    // ---------- 2. Desktop Snip Tool ----------
     [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
@@ -5559,6 +5574,7 @@ public partial class MainWindow : Window
     [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
     [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hdc);
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
+    [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
 
     private void SnipDeskButton_Click(object sender, RoutedEventArgs e) => StartDesktopSnip();
 
@@ -5569,19 +5585,27 @@ public partial class MainWindow : Window
         Hide();
         await System.Threading.Tasks.Task.Delay(260);
 
-        int screenW = (int)SystemParameters.PrimaryScreenWidth;
-        int screenH = (int)SystemParameters.PrimaryScreenHeight;
+        double wpfW = SystemParameters.PrimaryScreenWidth;
+        double wpfH = SystemParameters.PrimaryScreenHeight;
 
         BitmapSource? fullBmp = null;
+        int physW = (int)wpfW, physH = (int)wpfH;
+
         try
         {
             IntPtr hDesk = GetDesktopWindow();
             IntPtr hDcDesk = GetDC(hDesk);
+            // Read true hardware resolution regardless of 125% / 150% laptop scaling
+            physW = GetDeviceCaps(hDcDesk, 118);
+            physH = GetDeviceCaps(hDcDesk, 117);
+            if (physW < 100) physW = (int)wpfW;
+            if (physH < 100) physH = (int)wpfH;
+
             IntPtr hDcMem = CreateCompatibleDC(hDcDesk);
-            IntPtr hBmp = CreateCompatibleBitmap(hDcDesk, screenW, screenH);
+            IntPtr hBmp = CreateCompatibleBitmap(hDcDesk, physW, physH);
             IntPtr hOld = SelectObject(hDcMem, hBmp);
 
-            BitBlt(hDcMem, 0, 0, screenW, screenH, hDcDesk, 0, 0, 0x00CC0020);
+            BitBlt(hDcMem, 0, 0, physW, physH, hDcDesk, 0, 0, 0x00CC0020);
             SelectObject(hDcMem, hOld);
             DeleteDC(hDcMem);
             ReleaseDC(hDesk, hDcDesk);
@@ -5602,14 +5626,14 @@ public partial class MainWindow : Window
             ResizeMode = ResizeMode.NoResize,
             Topmost = true,
             Left = 0, Top = 0,
-            Width = screenW, Height = screenH,
+            Width = wpfW, Height = wpfH,
             ShowInTaskbar = false,
             Cursor = Cursors.Cross,
             Background = Brushes.Black
         };
 
         var canvas = new Canvas();
-        var img = new Image { Source = fullBmp, Opacity = 0.60 };
+        var img = new Image { Source = fullBmp, Width = wpfW, Height = wpfH, Stretch = Stretch.Fill, Opacity = 0.65 };
         canvas.Children.Add(img);
 
         var selRect = new System.Windows.Shapes.Rectangle
@@ -5669,8 +5693,9 @@ public partial class MainWindow : Window
                 {
                     try
                     {
-                        double scaleX = fullBmp.PixelWidth / (double)screenW;
-                        double scaleY = fullBmp.PixelHeight / (double)screenH;
+                        // Accurate scaling calculation eliminates offset errors
+                        double scaleX = fullBmp.PixelWidth / wpfW;
+                        double scaleY = fullBmp.PixelHeight / wpfH;
                         int cx = Math.Clamp((int)(sx * scaleX), 0, fullBmp.PixelWidth - 1);
                         int cy = Math.Clamp((int)(sy * scaleY), 0, fullBmp.PixelHeight - 1);
                         int cw = Math.Clamp((int)(sw * scaleX), 1, fullBmp.PixelWidth - cx);
@@ -5691,7 +5716,7 @@ public partial class MainWindow : Window
         snipWin.ShowDialog();
     }
 
-    // ---------- 3. Draw on Screen (Overlay Annotation Mode) ----------
+    // ---------- 3. Draw on Screen (with Mouse/Interact mode) ----------
     private void ScreenDrawButton_Click(object sender, RoutedEventArgs e)
     {
         var drawWin = new Window
@@ -5747,15 +5772,37 @@ public partial class MainWindow : Window
             return b;
         }
 
-        sp.Children.Add(MakeBtn("🖊 Pen", "Write on screen", () => {
+        Button? penBtn = null;
+        Button? mouseBtn = null;
+
+        // Mouse mode lets you click tabs, browse, and scroll while keeping your drawing on screen!
+        mouseBtn = MakeBtn("🖱 Mouse (Click Tabs)", "Click to interact with browser/tabs below", () => {
+            screenInk.IsHitTestVisible = false;
+            drawWin.Background = Brushes.Transparent;
+            if (mouseBtn != null) mouseBtn.Background = new SolidColorBrush(Color.FromArgb(90, 26, 115, 232));
+            if (penBtn != null) penBtn.Background = Brushes.Transparent;
+        });
+
+        penBtn = MakeBtn("🖊 Pen (Draw)", "Draw on screen", () => {
+            screenInk.IsHitTestVisible = true;
+            drawWin.Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0));
             screenInk.EditingMode = InkCanvasEditingMode.Ink;
             screenInk.DefaultDrawingAttributes.Color = _penColor;
             screenInk.DefaultDrawingAttributes.IsHighlighter = false;
             screenInk.DefaultDrawingAttributes.Width = _penSize;
             screenInk.DefaultDrawingAttributes.Height = _penSize;
-        }));
+            if (penBtn != null) penBtn.Background = new SolidColorBrush(Color.FromArgb(90, 26, 115, 232));
+            if (mouseBtn != null) mouseBtn.Background = Brushes.Transparent;
+        });
+
+        penBtn.Background = new SolidColorBrush(Color.FromArgb(90, 26, 115, 232));
+
+        sp.Children.Add(mouseBtn);
+        sp.Children.Add(penBtn);
 
         sp.Children.Add(MakeBtn("🖍 Highlight", "Highlight text on screen", () => {
+            screenInk.IsHitTestVisible = true;
+            drawWin.Background = new SolidColorBrush(Color.FromArgb(1, 0, 0, 0));
             screenInk.EditingMode = InkCanvasEditingMode.Ink;
             screenInk.DefaultDrawingAttributes.Color = Color.FromArgb(120, 255, 235, 59);
             screenInk.DefaultDrawingAttributes.IsHighlighter = true;
@@ -5764,6 +5811,7 @@ public partial class MainWindow : Window
         }));
 
         sp.Children.Add(MakeBtn("🧹 Eraser", "Erase screen strokes", () => {
+            screenInk.IsHitTestVisible = true;
             screenInk.EditingMode = InkCanvasEditingMode.EraseByStroke;
         }));
 
