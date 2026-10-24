@@ -1575,6 +1575,20 @@ public partial class MainWindow : Window
     {
         if (_resizeHandles.Count == 0) return false;
 
+        // If the selection is very small on screen, clicking near the center should drag, not resize.
+        double sl = _viewPanX + _selectionWorldBounds.Left * _viewZoom;
+        double st = _viewPanY + _selectionWorldBounds.Top * _viewZoom;
+        double sr = _viewPanX + _selectionWorldBounds.Right * _viewZoom;
+        double sb = _viewPanY + _selectionWorldBounds.Bottom * _viewZoom;
+
+        if (sr - sl < 90 && sb - st < 90)
+        {
+            double cx = (sl + sr) / 2;
+            double cy = (st + sb) / 2;
+            double distToCenter = Math.Sqrt(Math.Pow(screenPt.X - cx, 2) + Math.Pow(screenPt.Y - cy, 2));
+            if (distToCenter < 20) return false; // 20px dead zone in the middle for dragging
+        }
+
         const double grabRadius = 22.0;
         ResizeHandle bestHandle = default;
         double bestDist = double.MaxValue;
@@ -2051,22 +2065,30 @@ public partial class MainWindow : Window
         var da = InkArea.DefaultDrawingAttributes;
         if (da is null) return;
         da.StylusTip = StylusTip.Ellipse; da.StylusTipTransform = Matrix.Identity;
+
+        // Automatically shrink the pen size when zoomed in so it doesn't act like a giant marker
+        double effectiveSize = _penSize;
+        if (_viewZoom > 1.0)
+        {
+            effectiveSize = Math.Max(0.1, _penSize / _viewZoom);
+        }
+
         if (_tool == ToolMode.Highlighter)
         {
             da.Color = Color.FromArgb(110, _penColor.R, _penColor.G, _penColor.B);
-            double hs = Math.Max(14, _penSize * 6);
+            double hs = Math.Max(14, effectiveSize * 6);
             da.Width = hs; da.Height = hs;
             da.IsHighlighter = true; da.FitToCurve = false; da.IgnorePressure = true;
         }
         else
         {
-            da.Color = _penColor; da.Width = _penSize; da.Height = _penSize;
+            da.Color = _penColor; da.Width = effectiveSize; da.Height = effectiveSize;
             da.IsHighlighter = false; da.FitToCurve = false; da.IgnorePressure = !_pressureEnabled;
             if (_tool == ToolMode.Calligraphy)
             {
                 da.StylusTip = StylusTip.Rectangle;
-                da.Width = Math.Max(3, _penSize * 2.6);
-                da.Height = Math.Max(1, _penSize * 0.7);
+                da.Width = Math.Max(3, effectiveSize * 2.6);
+                da.Height = Math.Max(1, effectiveSize * 0.7);
                 var nib = Matrix.Identity; nib.Rotate(-40);
                 da.StylusTipTransform = nib;
             }
@@ -2409,6 +2431,7 @@ public partial class MainWindow : Window
         if (Math.Abs(_lastBrushZoom - _viewZoom) > 0.001)
         {
             _lastBrushZoom = _viewZoom;
+            ApplyPenAttributesCore(); // <-- This updates the pen size dynamically
             if (CurrentPage.Template != PageTemplate.Blank)
                 UpdatePageBackground();
         }
