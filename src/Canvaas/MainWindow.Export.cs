@@ -617,6 +617,7 @@ public partial class MainWindow
         public double NotesFactor = 1.3;
         public int GridMode;        // 0 plain, 1 dots, 2 lines, 3 squares
         public bool Divider = true;
+        public bool BothSides = false;
         public int Sharpness = 2;   // 1..4
     }
 
@@ -725,11 +726,19 @@ public partial class MainWindow
             Margin = new Thickness(0, 4, 0, 0)
         });
 
+        var bothSides = new CheckBox
+        {
+            Content = "Blank space on BOTH sides of the PDF",
+            IsChecked = false,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        panel.Children.Add(bothSides);
+
         var divider = new CheckBox
         {
             Content = "Thin line between textbook and notes",
             IsChecked = true,
-            Margin = new Thickness(0, 12, 0, 0)
+            Margin = new Thickness(0, 8, 0, 0)
         };
         panel.Children.Add(divider);
 
@@ -851,6 +860,11 @@ public partial class MainWindow
                 double aspect = bmp.PixelWidth / (double)bmp.PixelHeight;
                 double tw = Math.Clamp(A4Height * aspect, 600, 1500);
                 double th = tw / aspect;
+
+                // Calculate offset and total width based on the "Both Sides" toggle
+                double leftOffset = opt.BothSides ? (tw * opt.NotesFactor) : 0;
+                double totalWidth = opt.BothSides ? (tw + 2 * tw * opt.NotesFactor) : (tw * (1.0 + opt.NotesFactor));
+
                 var np = new NotebookPage
                 {
                     BackgroundColor = cur.BackgroundColor,
@@ -860,13 +874,14 @@ public partial class MainWindow
                     PatternOpacity = cur.PatternOpacity,
                     PatternThickness = cur.PatternThickness,
                     PatternDotSize = cur.PatternDotSize,
-                    WorldWidth = tw * (1.0 + opt.NotesFactor),
+                    WorldWidth = totalWidth,
                     WorldHeight = th
                 };
                 var img = new Image { Source = bmp, Width = tw, Height = th, Stretch = Stretch.Uniform };
-                InkCanvas.SetLeft(img, 0);
+                InkCanvas.SetLeft(img, leftOffset);
                 InkCanvas.SetTop(img, 0);
                 np.Elements.Add(img);
+                
                 if (opt.Divider)
                 {
                     bool dark = IsDarkColor(cur.BackgroundColor);
@@ -878,10 +893,21 @@ public partial class MainWindow
                         FitToCurve = false,
                         IgnorePressure = true
                     };
+                    
+                    // Left divider
                     var pts = new StylusPointCollection();
-                    pts.Add(new StylusPoint(tw, 0));
-                    pts.Add(new StylusPoint(tw, th));
+                    pts.Add(new StylusPoint(leftOffset, 0));
+                    pts.Add(new StylusPoint(leftOffset, th));
                     np.Strokes.Add(new Stroke(pts, da));
+
+                    // Right divider (only if Both Sides is checked)
+                    if (opt.BothSides)
+                    {
+                        var pts2 = new StylusPointCollection();
+                        pts2.Add(new StylusPoint(leftOffset + tw, 0));
+                        pts2.Add(new StylusPoint(leftOffset + tw, th));
+                        np.Strokes.Add(new Stroke(pts2, da));
+                    }
                 }
                 _pages.Insert(originalIndex + 1 + i, np);
             }
