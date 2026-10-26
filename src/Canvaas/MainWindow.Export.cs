@@ -756,6 +756,7 @@ public partial class MainWindow
             result.GridMode = Math.Max(0, gridBtns.FindIndex(r => r.IsChecked == true));
             result.Sharpness = Math.Max(0, sharpBtns.FindIndex(r => r.IsChecked == true)) + 1;
             result.Divider = divider.IsChecked == true;
+            result.BothSides = bothSides.IsChecked == true;
             ok = true;
             win.Close();
         };
