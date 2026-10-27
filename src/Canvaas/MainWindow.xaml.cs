@@ -125,11 +125,11 @@ public partial class MainWindow : Window
         public bool ShowQuickColorSquare { get; set; } = true;
         public double QuickColorSquareSize { get; set; } = 24.0;
         public bool ShowWatermark { get; set; } = true;
-        public bool ShowWatermarkPopup { get; set; } = false;
+        public bool ShowWatermarkPopup { get; set; } = true;
         public string WatermarkText { get; set; } = "If it feels easy, then you are doing it wrong.";
         public string[]? WatermarkQuotes { get; set; }
-        public int WatermarkPositionIndex { get; set; } = 0;
-        public double WatermarkIntervalMinutes { get; set; } = 2.0;
+        public int WatermarkPositionIndex { get; set; } = 5;
+        public double WatermarkIntervalMinutes { get; set; } = 1.0;
         public double WatermarkDurationSeconds { get; set; } = 4.0;
         public Dictionary<string, string>? Shortcuts { get; set; }
         public int PdfPageSizeIndex { get; set; } = 0;
@@ -302,7 +302,7 @@ public partial class MainWindow : Window
     };
     private int _currentQuoteIndex = 0;
     private int _watermarkPositionIndex = 0;
-    private double _watermarkIntervalMinutes = 2.0;
+    private double _watermarkIntervalMinutes = 1.0;
     private double _watermarkDurationSeconds = 4.0;
     private static readonly Random _watermarkRnd = new();
 
@@ -732,6 +732,9 @@ public partial class MainWindow : Window
             _watermarkTimer.Start();
             if (WatermarkPopupText is not null)
                 WatermarkPopupText.Text = GetCurrentQuote();
+            
+            // Show it immediately on launch so you know it works!
+            WatermarkTimer_Tick(null, EventArgs.Empty);
         }
         else
         {
