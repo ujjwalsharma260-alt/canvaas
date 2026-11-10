@@ -92,6 +92,8 @@ canvaas/
 │  ├─ Canvaas.csproj              WPF project, net10.0-windows, assembly name Canvaas, version 0.1.0.
 │  ├─ App.xaml / App.xaml.cs      Application entry; StartupUri = MainWindow.xaml.
 │  └─ MainWindow.xaml / .xaml.cs  Main window: toolbar, InkCanvas (InkArea), status bar. Holds tools, undo/redo history (stack of StrokeChange), save/open (ZIP: manifest.json + ink.isf), dirty tracking.
+├─ .opencode/
+│  └─ skills/sketch-to-ui/SKILL.md  Project skill for the opencode AI assistant: the agreed sketch-to-UI workflow (sketch/screenshot → questions → edit the project's files).
 └─ tools/
    └─ check_files.py              Static checks for AI assistants (XML validity, event handlers exist, class names match).
 ```
@@ -161,6 +163,7 @@ If a build fails: ask the user for a screenshot of the failing step (the red ✗
 - 2026-10-09 — Phase 0 confirmed working. Repo recreated fresh (old one deleted by user).
 - 2026-10-09 — Save format v1: ZIP with `manifest.json` + optional `ink.isf` (ISF = Microsoft's built-in ink format). Chosen because it is simple, inspectable, versionable, and extendable to multi-page in Phase 2.
 - 2026-10-09 — Undo/redo built by hand (InkCanvas has none): StrokesChanged records added/removed strokes; a flag stops undo/redo from recording itself.
+- 2026-11-10 — Added project-local opencode skill `sketch-to-ui` (`.opencode/skills/sketch-to-ui/SKILL.md`). Defines the agreed workflow for AI sessions: read CONTEXT.md first, accept sketches/photos/screenshots, ask-first (no guessing), edit the project's files directly, verify honestly (local build if possible, else CI), and keep CONTEXT.md/CHANGELOG/Version updated. No product code changed; version unchanged.
 - OPEN — Does the user's Deco tablet deliver pressure through Windows Ink in WPF? Test in Phase 1/4 and record here.
 - OPEN — Infinite canvas approach (see section 4 risk). Prototype before committing.
 - OPEN — Whether to keep the repo public; installer choice; code signing (probably not, to stay free).
