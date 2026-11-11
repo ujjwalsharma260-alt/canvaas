@@ -27,7 +27,14 @@ for xaml in root.rglob("*.xaml"):
         continue
     cs = pathlib.Path(str(xaml) + ".cs")
     xtext = xaml.read_text(encoding="utf-8")
-    ctext = cs.read_text(encoding="utf-8") if cs.exists() else ""
+    # A XAML class can be split across several partial-class source files
+    # (e.g. MainWindow.xaml.cs plus MainWindow.Export.cs). Gather all of
+    # them next to the code-behind so handler checks do not produce
+    # false "missing" reports.
+    src_dir = cs.parent
+    base = cs.name[:-len(".xaml.cs")] if cs.name.endswith(".xaml.cs") else cs.stem
+    partial_texts = [p.read_text(encoding="utf-8") for p in src_dir.glob(base + "*.cs") if p.is_file()]
+    ctext = "\n".join(partial_texts)
     for h in handler_attrs.findall(xtext):
         if not re.search(r'\b' + re.escape(h) + r'\s*\(', ctext):
             errors.append(f"MISSING HANDLER: {h} used in {xaml.name} but not found in {cs.name}")

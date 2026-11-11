@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0 — Corner close + visual polish
+- Hovering the very top-right screen edge in fullscreen reveals minimize / maximize / close buttons (no more pressing a shortcut just to close).
+- Colour swatches are now glossy vector circles (sharp at any size); toolbar tool buttons are rounded chips with a blue tint for the active tool.
+- Hand panning behaviour unchanged (a smoother pan experiment was removed at the user's request before release).
+## 0.2.0 — Quality of life fixes (v0.2.0)
+- App now starts directly in the friendly mode: full screen, toolbars visible, taskbar hidden (no need to press a key after launch).
+- Each ink tool (pen, highlighter, calligraphy) remembers its own colour; switching tools restores that tool's colour instead of sharing one global colour.
+- Removed the desktop snip feature (button, F9 shortcut and all its code).
+- Screen-draw toolbar icon changed (was an emoji pen that looked like the pen tool).
+- tools/check_files.py now scans all partial-class source files (fixes false "missing handler" reports).
+
 ## 0.1.0 — Phase 1 (handwriting prototype)  [fix1: added missing using System.IO; awaiting build + hand test]
 - White writing page with pen and mouse input.
 - Pen and stroke-eraser tools.

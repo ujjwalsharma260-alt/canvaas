@@ -75,7 +75,6 @@ public partial class MainWindow : Window
         ("new_page",     "New page",                   "Ctrl+N"),
         ("clear_page",   "Clear page",                 "Ctrl+Del"),
         ("screendraw",   "Draw on screen overlay",     "F8"),
-        ("snip",         "Desktop snip tool",          "F9"),
         ("autopaste",    "Toggle keyword auto-paste",  "F10"),
         ("undo",         "Undo",                       "Ctrl+Z"),
         ("redo",         "Redo",                       "Ctrl+Y"),
@@ -234,6 +233,10 @@ public partial class MainWindow : Window
 
     private ToolMode _tool = ToolMode.Pen;
     private Color _penColor = Colors.Black;
+    // Each ink tool remembers its own last chosen colour (per-tool palettes).
+    private Color _penToolColor = Colors.Black;
+    private Color _highlighterToolColor = Color.FromRgb(255, 235, 0);
+    private Color _calligraphyToolColor = Colors.Black;
     private double _penSize = 2.5;
     private bool _pressureEnabled = true;
     private PenCursorStyle _cursorStyle = PenCursorStyle.HollowRingDot;
@@ -402,6 +405,12 @@ public partial class MainWindow : Window
                     ApplyWatermarkPopupSettings();
                     PositionColorSquare();
                     CheckForCrashRecovery();
+
+                    // Start in the state the user wants: full screen with the
+                    // toolbars visible and the Windows taskbar covered.
+                    _barsPinned = true;
+                    ApplyBars(true);
+                    ToggleFullscreen();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
@@ -1136,6 +1145,7 @@ public partial class MainWindow : Window
             else
             {
                 _penColor = colour;
+                RememberToolColor(_tool);
                 ApplyPenAttributes();
                 UpdateThicknessPreview();
                 StatusText.Text = $"Pen colour: {hex}";
@@ -1970,7 +1980,7 @@ public partial class MainWindow : Window
             bool hasSelection = (_selectedElements.Count > 0) ||
                 (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
             if (hasSelection) ApplyColourToSelection(colour);
-            else { _penColor = colour; ApplyPenAttributes(); UpdateThicknessPreview(); }
+            else { _penColor = colour; RememberToolColor(_tool); ApplyPenAttributes(); UpdateThicknessPreview(); }
         }
     }
 
@@ -2020,7 +2030,7 @@ public partial class MainWindow : Window
         foreach (var el in _selectedElements)
             if (el is TextBox tb) { tb.Foreground = new SolidColorBrush(newColour); any = true; }
         if (any) { MarkDirty(); StatusText.Text = "Recoloured selection."; }
-        else { _penColor = newColour; ApplyPenAttributes(); UpdateThicknessPreview(); }
+        else { _penColor = newColour; RememberToolColor(_tool); ApplyPenAttributes(); UpdateThicknessPreview(); }
     }
 
     private void UpdateCursor()
@@ -2040,6 +2050,30 @@ public partial class MainWindow : Window
         }
         if (CanvasHostBorder is not null) CanvasHostBorder.Cursor = c;
         if (InkArea is not null) InkArea.Cursor = c;
+    }
+
+    // Save the current colour into the tool that owns it right now.
+    private void RememberToolColor(ToolMode t)
+    {
+        if (t == ToolMode.Pen) _penToolColor = _penColor;
+        else if (t == ToolMode.Calligraphy) _calligraphyToolColor = _penColor;
+        else if (t == ToolMode.Highlighter) _highlighterToolColor = _penColor;
+    }
+
+    // Give the newly selected tool back its own remembered colour.
+    private void RestoreToolColor(ToolMode t)
+    {
+        Color restored =
+            t == ToolMode.Pen ? _penToolColor :
+            t == ToolMode.Calligraphy ? _calligraphyToolColor :
+            t == ToolMode.Highlighter ? _highlighterToolColor :
+            _penColor;
+        if (restored != _penColor)
+        {
+            _penColor = restored;
+            HighlightToolbarColor();
+            UpdateThicknessPreview();
+        }
     }
 
     private void HighlightToolbarColor()
@@ -2179,7 +2213,6 @@ public partial class MainWindow : Window
             if (MatchesShortcut("new_page", e.Key, modsNow)) { NewNotebookPage_Click(this, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("clear_page", e.Key, modsNow)) { ClearButton_Click(ClearButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("screendraw", e.Key, modsNow)) { ScreenDrawButton_Click(ScreenDrawButton, new RoutedEventArgs()); e.Handled = true; return; }
-            if (MatchesShortcut("snip", e.Key, modsNow)) { SnipDeskButton_Click(SnipDeskButton, new RoutedEventArgs()); e.Handled = true; return; }
             if (MatchesShortcut("autopaste", e.Key, modsNow)) { AutoPasteButton_Click(AutoPasteButton, new RoutedEventArgs()); e.Handled = true; return; }
         }
 
@@ -2385,6 +2418,10 @@ public partial class MainWindow : Window
 
             StatusText.Text = "Exited fullscreen.";
         }
+
+        if (CornerCloseCatcher is not null)
+            CornerCloseCatcher.Visibility = _fullscreenMode ? Visibility.Visible : Visibility.Collapsed;
+        HideCornerFlyout();
 
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
     }
@@ -3688,6 +3725,48 @@ public partial class MainWindow : Window
     // =====================================================================
     // Title bar
     // =====================================================================
+    // ----- Corner hover close (fullscreen): hover the very top-right edge -----
+    private System.Windows.Threading.DispatcherTimer? _cornerHideTimer;
+
+    private void CornerCloseCatcher_MouseEnter(object sender, MouseEventArgs e)
+    {
+        CancelCornerHide();
+        if (CornerCloseFlyout is not null) CornerCloseFlyout.Visibility = Visibility.Visible;
+    }
+
+    private void CornerCloseCatcher_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (CornerCloseFlyout is not null && CornerCloseFlyout.IsMouseOver) return;
+        ScheduleCornerHide();
+    }
+
+    private void CornerCloseFlyout_MouseEnter(object sender, MouseEventArgs e) => CancelCornerHide();
+
+    private void CornerCloseFlyout_MouseLeave(object sender, MouseEventArgs e) => ScheduleCornerHide();
+
+    private void CornerCloseFlyout_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) => ScheduleCornerHide();
+
+    private void ScheduleCornerHide()
+    {
+        if (_cornerHideTimer is null)
+        {
+            _cornerHideTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
+            _cornerHideTimer.Tick += (s, e) => { CancelCornerHide(); HideCornerFlyout(); };
+        }
+        _cornerHideTimer.Stop();
+        _cornerHideTimer.Start();
+    }
+
+    private void CancelCornerHide()
+    {
+        if (_cornerHideTimer is not null) _cornerHideTimer.Stop();
+    }
+
+    private void HideCornerFlyout()
+    {
+        if (CornerCloseFlyout is not null) CornerCloseFlyout.Visibility = Visibility.Collapsed;
+    }
+
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeButton_Click(object sender, RoutedEventArgs e) =>
         WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
@@ -4057,7 +4136,9 @@ public partial class MainWindow : Window
         bool showPopup = fromPointer && !_suppressToolPopup;
         _suppressToolPopup = false;
         _lastInputFromStylus = false;
+        RememberToolColor(_tool);
         _tool = ToolMode.Pen;
+        RestoreToolColor(_tool);
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
@@ -4073,7 +4154,9 @@ public partial class MainWindow : Window
         bool showPopup = fromPointer && !_suppressToolPopup;
         _suppressToolPopup = false;
         _lastInputFromStylus = false;
+        RememberToolColor(_tool);
         _tool = ToolMode.Calligraphy;
+        RestoreToolColor(_tool);
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
@@ -4089,7 +4172,9 @@ public partial class MainWindow : Window
         bool showPopup = fromPointer && !_suppressToolPopup;
         _suppressToolPopup = false;
         _lastInputFromStylus = false;
+        RememberToolColor(_tool);
         _tool = ToolMode.Highlighter;
+        RestoreToolColor(_tool);
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.Ink; }
         ApplyPenAttributes();
@@ -4100,6 +4185,7 @@ public partial class MainWindow : Window
 
     private void EraserButton_Click(object sender, RoutedEventArgs e)
     {
+        RememberToolColor(_tool);
         _tool = ToolMode.Eraser;
         ClearElementSelection();
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.EraseByStroke; }
@@ -4110,7 +4196,9 @@ public partial class MainWindow : Window
 
     private void LassoButton_Click(object sender, RoutedEventArgs e)
     {
+        RememberToolColor(_tool);
         _tool = ToolMode.Lasso;
+        RestoreToolColor(_tool);
         if (CanvasHost is not null) { try { CanvasHost.CacheMode = null; } catch { } }
         if (InkArea is not null) { InkArea.IsHitTestVisible = true; InkArea.EditingMode = InkCanvasEditingMode.None; }
         UpdateCursor();
@@ -4132,7 +4220,9 @@ public partial class MainWindow : Window
         if (InkArea is null) return;
         if (_tool != ToolMode.Lasso)
         {
+            RememberToolColor(_tool);
             _tool = ToolMode.Lasso;
+            RestoreToolColor(_tool);
             if (LassoButton is not null) LassoButton.IsChecked = true;
             InkArea.EditingMode = InkCanvasEditingMode.None;
         }
@@ -4148,7 +4238,9 @@ public partial class MainWindow : Window
 
     private void HandButton_Click(object sender, RoutedEventArgs e)
     {
+        RememberToolColor(_tool);
         _tool = ToolMode.Hand;
+        RestoreToolColor(_tool);
         ClearElementSelection();
         if (InkArea is not null) InkArea.IsHitTestVisible = false;
         UpdateCursor();
@@ -4656,7 +4748,7 @@ public partial class MainWindow : Window
             for (int i = 0; i < 4; i++)
             {
                 if (ParseHexColor(oldSet[i], Colors.Black) == _penColor)
-                { _penColor = ParseHexColor(newSet[i], Colors.Black); break; }
+                { _penColor = ParseHexColor(newSet[i], Colors.Black); RememberToolColor(_tool); break; }
             }
         }
         _quickIsDark = dark;
@@ -5540,7 +5632,7 @@ public partial class MainWindow : Window
     }
 
     // =====================================================================
-    // Step 3: Desktop Snip, Screen Draw Overlay, and Keyword Auto-Paste
+    // Step 3: Screen Draw Overlay and Keyword Auto-Paste
     // =====================================================================
 
     // ---------- 1. Instant Keyword Auto-Paste (Clipboard Watcher) ----------
@@ -5590,157 +5682,6 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    // ---------- 2. Desktop Snip Tool ----------
-    [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
-    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
-    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
-    [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, uint dwRop);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
-    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
-    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr hgdiobj);
-    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hdc);
-    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr hObject);
-    [DllImport("gdi32.dll")] private static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
-
-    private void SnipDeskButton_Click(object sender, RoutedEventArgs e) => StartDesktopSnip();
-
-    private async void StartDesktopSnip()
-    {
-        bool wasTopmost = Topmost;
-        Topmost = false;
-        Hide();
-        await System.Threading.Tasks.Task.Delay(260);
-
-        double wpfW = SystemParameters.PrimaryScreenWidth;
-        double wpfH = SystemParameters.PrimaryScreenHeight;
-
-        BitmapSource? fullBmp = null;
-        int physW = (int)wpfW, physH = (int)wpfH;
-
-        try
-        {
-            IntPtr hDesk = GetDesktopWindow();
-            IntPtr hDcDesk = GetDC(hDesk);
-            // Read true hardware resolution regardless of 125% / 150% laptop scaling
-            physW = GetDeviceCaps(hDcDesk, 118);
-            physH = GetDeviceCaps(hDcDesk, 117);
-            if (physW < 100) physW = (int)wpfW;
-            if (physH < 100) physH = (int)wpfH;
-
-            IntPtr hDcMem = CreateCompatibleDC(hDcDesk);
-            IntPtr hBmp = CreateCompatibleBitmap(hDcDesk, physW, physH);
-            IntPtr hOld = SelectObject(hDcMem, hBmp);
-
-            BitBlt(hDcMem, 0, 0, physW, physH, hDcDesk, 0, 0, 0x00CC0020);
-            SelectObject(hDcMem, hOld);
-            DeleteDC(hDcMem);
-            ReleaseDC(hDesk, hDcDesk);
-
-            fullBmp = Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
-            DeleteObject(hBmp);
-            fullBmp.Freeze();
-        }
-        catch { }
-
-        Show();
-        Topmost = wasTopmost;
-        if (fullBmp == null) { StatusText.Text = "Could not capture screen."; return; }
-
-        var snipWin = new Window
-        {
-            WindowStyle = WindowStyle.None,
-            ResizeMode = ResizeMode.NoResize,
-            Topmost = true,
-            Left = 0, Top = 0,
-            Width = wpfW, Height = wpfH,
-            ShowInTaskbar = false,
-            Cursor = Cursors.Cross,
-            Background = Brushes.Black
-        };
-
-        var canvas = new Canvas();
-        var img = new Image { Source = fullBmp, Width = wpfW, Height = wpfH, Stretch = Stretch.Fill, Opacity = 0.65 };
-        canvas.Children.Add(img);
-
-        var selRect = new System.Windows.Shapes.Rectangle
-        {
-            Stroke = new SolidColorBrush(Color.FromRgb(26, 115, 232)),
-            StrokeThickness = 2,
-            StrokeDashArray = new DoubleCollection { 3, 2 },
-            Fill = new SolidColorBrush(Color.FromArgb(40, 26, 115, 232)),
-            Visibility = Visibility.Collapsed
-        };
-        canvas.Children.Add(selRect);
-
-        Point startPt = new Point(0, 0);
-        bool dragging = false;
-
-        snipWin.MouseDown += (s, ev) =>
-        {
-            if (ev.LeftButton == MouseButtonState.Pressed)
-            {
-                dragging = true;
-                startPt = ev.GetPosition(canvas);
-                Canvas.SetLeft(selRect, startPt.X);
-                Canvas.SetTop(selRect, startPt.Y);
-                selRect.Width = 0; selRect.Height = 0;
-                selRect.Visibility = Visibility.Visible;
-            }
-        };
-
-        snipWin.MouseMove += (s, ev) =>
-        {
-            if (dragging)
-            {
-                var cur = ev.GetPosition(canvas);
-                double x = Math.Min(startPt.X, cur.X);
-                double y = Math.Min(startPt.Y, cur.Y);
-                double w = Math.Abs(cur.X - startPt.X);
-                double h = Math.Abs(cur.Y - startPt.Y);
-                Canvas.SetLeft(selRect, x);
-                Canvas.SetTop(selRect, y);
-                selRect.Width = w; selRect.Height = h;
-            }
-        };
-
-        snipWin.MouseUp += (s, ev) =>
-        {
-            if (dragging)
-            {
-                dragging = false;
-                snipWin.Close();
-                var cur = ev.GetPosition(canvas);
-                double sx = Math.Min(startPt.X, cur.X);
-                double sy = Math.Min(startPt.Y, cur.Y);
-                double sw = Math.Abs(cur.X - startPt.X);
-                double sh = Math.Abs(cur.Y - startPt.Y);
-
-                if (sw > 15 && sh > 15)
-                {
-                    try
-                    {
-                        // Accurate scaling calculation eliminates offset errors
-                        double scaleX = fullBmp.PixelWidth / wpfW;
-                        double scaleY = fullBmp.PixelHeight / wpfH;
-                        int cx = Math.Clamp((int)(sx * scaleX), 0, fullBmp.PixelWidth - 1);
-                        int cy = Math.Clamp((int)(sy * scaleY), 0, fullBmp.PixelHeight - 1);
-                        int cw = Math.Clamp((int)(sw * scaleX), 1, fullBmp.PixelWidth - cx);
-                        int ch = Math.Clamp((int)(sh * scaleY), 1, fullBmp.PixelHeight - cy);
-
-                        var cropped = new CroppedBitmap(fullBmp, new Int32Rect(cx, cy, cw, ch));
-                        cropped.Freeze();
-                        AddImageToPage(cropped);
-                        StatusText.Text = "Snapped diagram pasted directly to note!";
-                    }
-                    catch { StatusText.Text = "Snip failed."; }
-                }
-            }
-        };
-
-        snipWin.KeyDown += (s, ev) => { if (ev.Key == Key.Escape) { snipWin.Close(); StatusText.Text = "Snip canceled."; } };
-        snipWin.Content = canvas;
-        snipWin.ShowDialog();
-    }
 
     // ---------- 3. Draw on Screen (with Mouse/Interact mode) ----------
     private void ScreenDrawButton_Click(object sender, RoutedEventArgs e)

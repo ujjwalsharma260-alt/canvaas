@@ -144,16 +144,30 @@
 
         <Style x:Key="PopupSwatchButton" TargetType="Button">
             <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
-            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Margin" Value="3"/><Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
                     <Grid>
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="17" BorderBrush="#CCCCCC" BorderThickness="1"/>
+                        <Ellipse x:Name="Swatch" Fill="{TemplateBinding Background}" RenderTransformOrigin="0.5,0.5"/>
+                        <Ellipse>
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#59FFFFFF" Offset="0"/>
+                                    <GradientStop Color="#00FFFFFF" Offset="0.55"/>
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse x:Name="Ring" Stroke="#44333333" StrokeThickness="1" Fill="Transparent"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="#1A73E8"/>
-                            <Setter TargetName="Bd" Property="BorderThickness" Value="2"/>
+                            <Setter TargetName="Ring" Property="Stroke" Value="#1A73E8"/>
+                            <Setter TargetName="Ring" Property="StrokeThickness" Value="2.5"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Swatch" Property="RenderTransform">
+                                <Setter.Value><ScaleTransform ScaleX="0.92" ScaleY="0.92"/></Setter.Value>
+                            </Setter>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate></Setter.Value>
@@ -251,7 +265,7 @@
             <Setter Property="TextOptions.TextFormattingMode" Value="Display"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" SnapsToDevicePixels="True">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="10" SnapsToDevicePixels="True">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -278,7 +292,7 @@
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="RadioButton">
                     <Grid SnapsToDevicePixels="True">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="2"/>
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="10"/>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,-4,0,0"/>
                         <TextBlock x:Name="Chevron" Text="&#xE70D;" FontFamily="Segoe MDL2 Assets" FontSize="7"
                                    Foreground="#1A73E8" HorizontalAlignment="Center" VerticalAlignment="Bottom"
@@ -288,6 +302,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#40808080"/></Trigger>
                         <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#261A73E8"/>
                             <Setter TargetName="Underline" Property="Visibility" Value="Visible"/>
                             <Setter TargetName="Chevron" Property="Visibility" Value="Visible"/>
                         </Trigger>
@@ -343,11 +358,31 @@
         <Style x:Key="QuickColorSquare" TargetType="Button">
             <Setter Property="Width" Value="34"/><Setter Property="Height" Value="34"/>
             <Setter Property="Margin" Value="2"/><Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="#BBBBBB"/>
             <Setter Property="Template">
                 <Setter.Value><ControlTemplate TargetType="Button">
-                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2"/>
+                    <Grid>
+                        <Ellipse x:Name="Swatch" Fill="{TemplateBinding Background}" RenderTransformOrigin="0.5,0.5"/>
+                        <Ellipse>
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#59FFFFFF" Offset="0"/>
+                                    <GradientStop Color="#00FFFFFF" Offset="0.55"/>
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse x:Name="Ring" Stroke="#44333333" StrokeThickness="1" Fill="Transparent"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="Stroke" Value="#1A73E8"/>
+                            <Setter TargetName="Ring" Property="StrokeThickness" Value="2"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Swatch" Property="RenderTransform">
+                                <Setter.Value><ScaleTransform ScaleX="0.92" ScaleY="0.92"/></Setter.Value>
+                            </Setter>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate></Setter.Value>
             </Setter>
         </Style>
@@ -471,8 +506,7 @@
 
                     <Rectangle Width="1" Height="24" Margin="12,0" Fill="#9A9A9A"/>
 
-                    <Button x:Name="ScreenDrawButton" Style="{StaticResource TopIconButton}" Content="🖊" ToolTip="Draw on screen over any app (F8)" Click="ScreenDrawButton_Click"/>
-                    <Button x:Name="SnipDeskButton" Style="{StaticResource TopIconButton}" Content="✂" ToolTip="Snip desktop diagram to note (F9)" Click="SnipDeskButton_Click"/>
+                    <Button x:Name="ScreenDrawButton" Style="{StaticResource TopIconButton}" Content="✍" FontFamily="Segoe UI Emoji" FontSize="16" ToolTip="Draw on screen over any app (F8)" Click="ScreenDrawButton_Click"/>
                     <Button x:Name="AutoPasteButton" Style="{StaticResource TopIconButton}" Content="📋" ToolTip="Toggle keyword auto-paste (F10)" Click="AutoPasteButton_Click"/>
 
                     <Button x:Name="AddMenuButton" Style="{StaticResource TopIconButton}" Content="&#xE710;" ToolTip="Insert / paste" Click="MenuButton2_Click">
@@ -705,7 +739,30 @@
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
+        </Grid.RowDefinitions>
+
+        <!-- Hover the very top-right edge of the screen to reveal close/minimize/maximize -->
+        <Border x:Name="CornerCloseCatcher" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Width="140" Height="8" Background="Transparent" Panel.ZIndex="1000"
+                Visibility="Collapsed" MouseEnter="CornerCloseCatcher_MouseEnter" MouseLeave="CornerCloseCatcher_MouseLeave"/>
+        <Border x:Name="CornerCloseFlyout" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,2,2,0" Panel.ZIndex="1001" Visibility="Collapsed"
+                Background="#F02D2F31" CornerRadius="8" Padding="6,3"
+                MouseEnter="CornerCloseFlyout_MouseEnter" MouseLeave="CornerCloseFlyout_MouseLeave"
+                PreviewMouseLeftButtonUp="CornerCloseFlyout_MouseLeftButtonUp">
+            <StackPanel Orientation="Horizontal">
+                <Button Width="34" Height="30" Background="Transparent" BorderThickness="0"
+                        FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#FFFFFF" Content="&#xE921;"
+                        ToolTip="Minimize" Click="MinimizeButton_Click"/>
+                <Button Width="34" Height="30" Background="Transparent" BorderThickness="0"
+                        FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#FFFFFF" Content="&#xE922;"
+                        ToolTip="Restore / maximize" Click="MaximizeButton_Click"/>
+                <Button Width="40" Height="30" Background="Transparent" BorderThickness="0"
+                        FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#FFFFFF" Content="&#xE8BB;"
+                        ToolTip="Close" Click="CloseButton_Click"/>
+            </StackPanel>
+        </Border>
+
 
                         <Border Grid.Row="0" Background="#F5F5F5" CornerRadius="12,12,0,0">
                             <DockPanel Margin="20,14">

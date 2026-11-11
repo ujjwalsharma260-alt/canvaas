@@ -1,7 +1,7 @@
 # CANVAAS — FULL PROJECT CONTEXT (READ THIS FIRST)
 
 > **For any AI coding assistant:** this file is the single source of truth for the Canvaas project. Read all of it before changing anything. Keep it up to date: every ZIP/patch you deliver MUST include an updated copy of this file (sections 4, 5, 6, 10, 11 especially).
-> **Last updated:** 2026-10-09 by Claude (Phase 1 handwriting prototype). Update this line every time.
+> **Last updated:** 2026-11-11 by opencode (v0.2.0 quality-of-life milestone: startup fullscreen-with-bars, per-tool colours, snip removed, checker partial-file fix). Update this line every time.
 
 ---
 
@@ -63,10 +63,14 @@ Known trade-offs / risks to keep in mind:
 
 ## 5. Current status (UPDATE THIS)
 
+- **2026-11-11 (v0.3.0):** corner hover-close overlay in fullscreen (CornerCloseCatcher/CornerCloseFlyout; hooking existing Minimize/Maximize/Close handlers). Visual pass: colour swatch buttons (QuickColorSquare, PopupSwatchButton) rebuilt as glossy ellipse templates; TopToolRadio rounded chip with active blue tint; TopIconButton radius 10. A pan-ghost experiment (RenderTargetBitmap snapshot while panning) was implemented and then fully reverted at the user's request — hand pan is back to the original behaviour. Files changed: MainWindow.xaml, MainWindow.xaml.cs, Canvaas.csproj, CHANGELOG.md, CONTEXT.md.
+- **2026-11-11 (v0.2.0, built locally on the user's Windows machine):** startup now enters the user's preferred mode (fullscreen + toolbars visible + taskbar covered) automatically; per-tool colour memory implemented for pen/highlighter/calligraphy (each tool keeps its own colour, switch restores it); desktop snip feature fully removed (XAML button, F9 shortcut entry, dispatcher line, StartDesktopSnip and its Win32 helper block; Step 3 comment retitled); ScreenDraw toolbar icon changed from the emoji pen to a writing-hand glyph so it no longer looks like the pen tool; tools/check_files.py scans partial files (MainWindow.xaml.cs + partials) fixing false MISSING HANDLER reports. Local Release build succeeded (0 errors). Known pending: user's saved shortcuts have F bound to three actions (fullscreen, toggle_chrome, eraser) — needs user-approved rebinding.
+- **Phase 1 (v0.1.0): CONFIRMED working in practice** via the user's ongoing use (80+ commits since, v1/v2/75-81 iterations, autosave, export, habit tracker added since this file's last full update — a full CONTEXT.md reconciliation pass is scheduled).
+- **Phase 0: DONE and CONFIRMED.**
+
 - **Phase 0: DONE and CONFIRMED.** GitHub Actions run #1 was green (52 s) and the user downloaded and opened `Canvaas.exe` (window showed "Canvaas ... Version 0.0.1"). Repo was recreated fresh and is public.
-- **Phase 1 (v0.1.0): code delivered, NOT YET CONFIRMED.** Written without access to Windows or a .NET SDK, so only static checks were done (`tools/check_files.py`: XAML valid, handlers exist, classes match). The user must push it and report the Actions result, then test the app by hand. Do not call Phase 1 working until both are confirmed.
-- Phase 1 features in the code: white writing page (InkCanvas); Pen and Eraser (erase whole stroke) tools; mouse works as fallback; Undo/Redo (Ctrl+Z / Ctrl+Y); Clear page with confirmation (undoable); New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As; `.canvaas` file format v1 (see `docs/FILE_FORMAT.md`); safe save via temp file; friendly error messages on open/save failure; unsaved-changes prompt on New/Open/close; status bar shows pressure info for the last stroke (to test the Deco tablet).
-- NOT implemented (do not assume they exist): notebooks/pages/templates, infinite canvas, pen colour/thickness settings, point eraser, autosave/crash recovery, settings file, export (PNG/PDF), backup, installer.
+- **Phase 1 (v0.1.0): CONFIRMED working in practice.** (History: it was first delivered without a Windows build environment; it is now in daily use.) Phase 1 features in the code: white writing page (InkCanvas); Pen and Eraser (erase whole stroke) tools; mouse works as fallback; Undo/Redo (Ctrl+Z / Ctrl+Y); Clear page with confirmation (undoable); New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As; `.canvaas` file format v1 (see `docs/FILE_FORMAT.md`); safe save via temp file; friendly error messages on open/save failure; unsaved-changes prompt on New/Open/close; status bar shows pressure info for the last stroke (to test the Deco tablet).
+- Built and extended since (by the user's later milestones, v1/v2/75–81): notebooks with many pages, infinite canvas, pen colour/thickness, point eraser, autosave + crash recovery, a settings file, PNG/PDF export, a habit tracker, screen draw and keyword auto-paste overlays. A full CONTEXT.md reconciliation pass with exact file inventories is scheduled.
 
 ### History of the first (failed) attempt — lessons
 1. `CS0103: 'InkCanvasEditingMode' does not exist` — missing `using System.Windows.Controls;`.
@@ -106,7 +110,7 @@ Possible leftovers from the old attempt (safe to ignore or delete with the user'
 
 **Phase 0 — Verified foundation** *(DONE, confirmed 2026-10-09)*.
 
-**Phase 1 — Usable handwriting prototype** *(current: code delivered, awaiting build + hand test)*: blank white canvas; pen input + mouse fallback; pen and stroke-eraser modes; undo/redo; clear page with confirmation; save/reopen in a documented local format; clear file-error messages.
+**Phase 1 — Usable handwriting prototype** *(DONE — confirmed in daily use)*: blank white canvas; pen input + mouse fallback; pen and stroke-eraser modes; undo/redo; clear page with confirmation; save/reopen in a documented local format; clear file-error messages.
 
 **Phase 2 — Fixed notebook pages:** create/open notebooks; add/rename/reorder/delete pages safely; navigation; blank/ruled/grid/dot-grid templates; autosave + crash recovery; stable file format with version number and migration plan.
 
@@ -164,12 +168,29 @@ If a build fails: ask the user for a screenshot of the failing step (the red ✗
 - 2026-10-09 — Save format v1: ZIP with `manifest.json` + optional `ink.isf` (ISF = Microsoft's built-in ink format). Chosen because it is simple, inspectable, versionable, and extendable to multi-page in Phase 2.
 - 2026-10-09 — Undo/redo built by hand (InkCanvas has none): StrokesChanged records added/removed strokes; a flag stops undo/redo from recording itself.
 - 2026-11-10 — Added project-local opencode skill `sketch-to-ui` (`.opencode/skills/sketch-to-ui/SKILL.md`). Defines the agreed workflow for AI sessions: read CONTEXT.md first, accept sketches/photos/screenshots, ask-first (no guessing), edit the project's files directly, verify honestly (local build if possible, else CI), and keep CONTEXT.md/CHANGELOG/Version updated. No product code changed; version unchanged.
+- 2026-11-11 — v0.3.0: pan-ghost was tried (RenderTargetBitmap snapshot while panning, no vanishing) but the user asked to revert hand pan to the original behaviour; reverted before release. Corner hover-close added for fullscreen. Glossy circle swatches replace square swatches. 3D colourful toolbar icons and a full dialogue redesign are acknowledged as the NEXT visual milestone (user to sketch icon ideas first). Lag on very large pages remains an OPEN topic; revisit with smarter approaches (e.g. caching layers) only with the user's approval.
+- 2026-11-11 — v0.2.0 milestone built and verified locally on the user's Windows machine (WSL + local .NET 10 SDK): startup goes straight to fullscreen-with-visible-toolbars; per-tool colour memory for pen/highlighter/calligraphy; desktop snip feature removed completely; ScreenDraw toolbar icon changed; check_files.py now scans partial-class files. Changed files: src/Canvaas/MainWindow.xaml, src/Canvaas/MainWindow.xaml.cs, src/Canvaas/Canvaas.csproj, tools/check_files.py, CHANGELOG.md, CONTEXT.md.
 - OPEN — Does the user's Deco tablet deliver pressure through Windows Ink in WPF? Test in Phase 1/4 and record here.
 - OPEN — Infinite canvas approach (see section 4 risk). Prototype before committing.
 - OPEN — Whether to keep the repo public; installer choice; code signing (probably not, to stay free).
 
 ---
 
-## 12. Copy-paste prompt for starting a new AI session
+## 12. How to start a NEW AI session (updated 2026-11-11)
+
+The user now works with **opencode**, running on this machine (WSL on Windows). No ZIPs, no find-and-replace, no manual patching.
+
+**The user's one-liner for any new session (in opencode, opened inside the repo):**
+
+> Read `CONTEXT.md` fully first, then check `CHANGELOG.md` (newest entry = current state), `git log --oneline -10`, and follow all rules in this file. The project skill `sketch-to-ui` is loaded automatically. Here is my request: ______
+
+**Rules for continuity (non-negotiable):**
+1. CONTEXT.md + CHANGELOG.md + the `<Version>` in Canvaas.csproj are updated **every milestone** — they are the project's memory across sessions; a session that forgets to update them is breaking the memory chain.
+2. The user does not code and does not use terminals. The AI runs builds itself (local .NET works; WSL (`dotnet build src/Canvaas/Canvaas.csproj`) is verified working) and never fakes success.
+3. One milestone at a time; wait for the user's hand-test result before calling it done.
+4. The user commits via **GitHub Desktop** (never the AI).
+5. If CONTEXT.md seems stale relative to the code, say so and schedule a reconciliation pass before continuing.
+
+### 12b. Legacy (pre-opencode) prompt — kept for compatibility
 
 > I am a non-programmer building **Canvaas**, a free, local-first Windows handwriting/study-notes app (WPF, .NET 10) for a pen tablet. The repo is https://github.com/ujjwalsharma260-alt/canvaas. Please read `CONTEXT.md` in the repo (I will paste it or attach it) fully before doing anything. Follow its rules: simple English, one milestone at a time, click-by-click steps, complete ZIPs with files at the repo root, no terminal use by me, never claim a build passed without proof, and include an updated `CONTEXT.md` and `CHANGELOG.md` in every ZIP. My request now is: ______
