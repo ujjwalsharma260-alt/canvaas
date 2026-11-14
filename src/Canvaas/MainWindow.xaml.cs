@@ -223,6 +223,7 @@ public partial class MainWindow : Window
     private bool _suppressCounterChange;
     private bool _suppressSpacingChange;
     private bool _suppressPatternChange;
+    private bool _suppressWatermarkTextChange;
     private bool _fullscreenMode;
     private bool _uiReady;
 
@@ -579,10 +580,23 @@ public partial class MainWindow : Window
         if (ShowQuickColorsCheck is not null) ShowQuickColorsCheck.IsChecked = _showQuickColorSquare;
         if (ShowWatermarkCheck is not null) ShowWatermarkCheck.IsChecked = _showWatermark;
         if (ShowWatermarkPopupCheck is not null) ShowWatermarkPopupCheck.IsChecked = _showWatermarkPopup;
-        if (WatermarkTextBox1 is not null) WatermarkTextBox1.Text = _watermarkQuotes.Length > 0 ? _watermarkQuotes[0] : "";
-        if (WatermarkTextBox2 is not null) WatermarkTextBox2.Text = _watermarkQuotes.Length > 1 ? _watermarkQuotes[1] : "";
-        if (WatermarkTextBox3 is not null) WatermarkTextBox3.Text = _watermarkQuotes.Length > 2 ? _watermarkQuotes[2] : "";
-        if (WatermarkTextBox4 is not null) WatermarkTextBox4.Text = _watermarkQuotes.Length > 3 ? _watermarkQuotes[3] : "";
+
+        // Fill the four quote boxes from the saved quotes. The flag stops the
+        // TextChanged handler from reading the half-filled boxes and saving
+        // quotes 2-4 as empty (this was why only Quote 1 survived a restart).
+        string[] quotes = NormalizeQuotes(_watermarkQuotes);
+        _suppressWatermarkTextChange = true;
+        try
+        {
+            if (WatermarkTextBox1 is not null) WatermarkTextBox1.Text = quotes[0];
+            if (WatermarkTextBox2 is not null) WatermarkTextBox2.Text = quotes[1];
+            if (WatermarkTextBox3 is not null) WatermarkTextBox3.Text = quotes[2];
+            if (WatermarkTextBox4 is not null) WatermarkTextBox4.Text = quotes[3];
+        }
+        finally
+        {
+            _suppressWatermarkTextChange = false;
+        }
         if (WatermarkPositionCombo is not null) WatermarkPositionCombo.SelectedIndex = Math.Clamp(_watermarkPositionIndex, 0, 5);
         if (WatermarkIntervalSlider is not null)
         {
@@ -707,9 +721,20 @@ public partial class MainWindow : Window
         return validQuotes[index];
     }
 
+    // Always return exactly four quote slots, padding with empty strings.
+    // Older settings files may hold a shorter list (even a single quote).
+    private static string[] NormalizeQuotes(string[]? quotes)
+    {
+        var result = new string[4];
+        if (quotes is null) return result;
+        for (int i = 0; i < result.Length && i < quotes.Length; i++)
+            result[i] = quotes[i] ?? "";
+        return result;
+    }
+
     private void WatermarkText_TextChanged(object sender, TextChangedEventArgs e)
     {
-        if (!_uiReady) return;
+        if (!_uiReady || _suppressWatermarkTextChange) return;
         _watermarkQuotes = new[]
         {
             WatermarkTextBox1?.Text?.Trim() ?? "",
@@ -1782,12 +1807,15 @@ public partial class MainWindow : Window
             _quickColorSquareSize = Math.Clamp(s.QuickColorSquareSize, 18.0, 56.0);
             _showWatermark = s.ShowWatermark;
             _showWatermarkPopup = s.ShowWatermarkPopup;
-            if (s.WatermarkQuotes is { Length: >= 4 })
+            // Accept any saved length (older files stored a single quote) and
+            // always keep the working list at four entries.
+            if (s.WatermarkQuotes is { Length: > 0 })
             {
-                _watermarkQuotes = s.WatermarkQuotes;
+                _watermarkQuotes = NormalizeQuotes(s.WatermarkQuotes);
             }
             else if (!string.IsNullOrWhiteSpace(s.WatermarkText))
             {
+                _watermarkQuotes = NormalizeQuotes(_watermarkQuotes);
                 _watermarkQuotes[0] = s.WatermarkText;
             }
             _watermarkPositionIndex = Math.Clamp(s.WatermarkPositionIndex, 0, 5);
@@ -1826,7 +1854,7 @@ public partial class MainWindow : Window
                 ShowWatermark = _showWatermark,
                 ShowWatermarkPopup = _showWatermarkPopup,
                 WatermarkText = GetCurrentQuote(),
-                WatermarkQuotes = _watermarkQuotes,
+                WatermarkQuotes = NormalizeQuotes(_watermarkQuotes),
                 WatermarkPositionIndex = _watermarkPositionIndex,
                 WatermarkIntervalMinutes = _watermarkIntervalMinutes,
                 WatermarkDurationSeconds = _watermarkDurationSeconds,
