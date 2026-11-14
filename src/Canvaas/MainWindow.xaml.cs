@@ -57,6 +57,21 @@ public partial class MainWindow : Window
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_FRAMECHANGED = 0x0020;
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+    [DllImport("user32.dll")]
+    private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+    private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int cbSize;
+        public NativeRect rcMonitor;
+        public NativeRect rcWork;
+        public uint dwFlags;
+    }
+
     private enum ExpandDirection { Right, Left, Up, Down }
     private enum ResizeHandle { NW, N, NE, E, SE, S, SW, W }
 
@@ -396,7 +411,6 @@ public partial class MainWindow : Window
         {
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                WindowState = WindowState.Maximized;
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     if (!CurrentPage.ViewInitialized) CenterViewOnCanvas();
@@ -407,11 +421,10 @@ public partial class MainWindow : Window
                     PositionColorSquare();
                     CheckForCrashRecovery();
 
-                    // Start in the state the user wants: full screen with the
-                    // toolbars visible and the Windows taskbar covered.
+                    // Fullscreen geometry is already applied in OnSourceInitialized
+                    // (before the first paint), so only the toolbars need setting up.
                     _barsPinned = true;
                     ApplyBars(true);
-                    ToggleFullscreen();
                 }), DispatcherPriority.Loaded);
             }), DispatcherPriority.ApplicationIdle);
         };
@@ -2357,6 +2370,73 @@ public partial class MainWindow : Window
     // =====================================================================
     // Fullscreen (debounced + fully chrome-free)
     // =====================================================================
+    // Runs once, after the window handle exists but BEFORE the window is first
+    // painted. Entering fullscreen here (instead of from Loaded) means the user
+    // never sees a maximized window, a taskbar flash, or a layout jump on launch.
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        _fullscreenMode = true;
+        _preFullscreenWindowState = WindowState.Maximized;
+        _preFullscreenTopmost = false;
+
+        if (AppWindowChrome is not null)
+        {
+            AppWindowChrome.CaptionHeight = 0;
+            AppWindowChrome.ResizeBorderThickness = new Thickness(0);
+        }
+
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.NoResize;
+
+        var bounds = GetCurrentMonitorBounds();
+        Left = bounds.Left;
+        Top = bounds.Top;
+        Width = bounds.Width;
+        Height = bounds.Height;
+        WindowState = WindowState.Normal;
+
+        // Topmost puts the window above the taskbar, so the taskbar is covered
+        // without ever being visible first.
+        Topmost = true;
+
+        if (CornerCloseCatcher is not null)
+            CornerCloseCatcher.Visibility = Visibility.Visible;
+    }
+
+    // Real bounds of the monitor the window is on, converted to the units WPF
+    // uses for Left/Top/Width/Height. Falls back to the primary screen size.
+    private Rect GetCurrentMonitorBounds()
+    {
+        try
+        {
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero)
+            {
+                IntPtr monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                if (monitor != IntPtr.Zero)
+                {
+                    var info = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
+                    if (GetMonitorInfo(monitor, ref info))
+                    {
+                        var dpi = VisualTreeHelper.GetDpi(this);
+                        double scaleX = dpi.DpiScaleX <= 0 ? 1 : dpi.DpiScaleX;
+                        double scaleY = dpi.DpiScaleY <= 0 ? 1 : dpi.DpiScaleY;
+                        return new Rect(
+                            info.rcMonitor.Left / scaleX,
+                            info.rcMonitor.Top / scaleY,
+                            (info.rcMonitor.Right - info.rcMonitor.Left) / scaleX,
+                            (info.rcMonitor.Bottom - info.rcMonitor.Top) / scaleY);
+                    }
+                }
+            }
+        }
+        catch { }
+
+        return new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
+    }
+
     private void FullscreenButton_Click(object sender, RoutedEventArgs e) => ToggleFullscreen();
 
     private void CycleFullscreen()

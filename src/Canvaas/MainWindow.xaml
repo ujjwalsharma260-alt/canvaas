@@ -4,7 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Untitled - Canvaas"
         Width="1280" Height="800" MinWidth="720" MinHeight="480"
-        WindowStartupLocation="CenterScreen" WindowState="Maximized"
+        WindowStartupLocation="Manual" WindowState="Normal" ResizeMode="NoResize"
         WindowStyle="None" Background="#E6E6E6"
         Icon="canvaas-icon.ico"
         TextOptions.TextFormattingMode="Display"

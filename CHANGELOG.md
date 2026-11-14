@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2 — Launch no longer flashes a windowed mode
+- Fixed: clicking the app icon showed a maximized window with the Windows taskbar for a moment, then jumped to fullscreen — it looked like the app pressed the fullscreen key by itself. Cause: the window was created `Maximized`, and the switch to fullscreen ran later from the `Loaded` handler at `ApplicationIdle` priority, so the first layout and paint happened in the wrong mode. The fullscreen geometry is now applied in `OnSourceInitialized` (handle exists, nothing painted yet), and `MainWindow.xaml` starts as `WindowState="Normal"`, `ResizeMode="NoResize"`, `WindowStartupLocation="Manual"`. The delayed `WindowState = Maximized` + `ToggleFullscreen()` calls were removed from `Loaded`.
+- Fullscreen size now comes from the real bounds of the monitor the window is on (`MonitorFromWindow` + `GetMonitorInfo`, converted to WPF units with the window's DPI) instead of `SystemParameters.PrimaryScreenWidth/Height`.
+- Verified: Release build 0 errors (3 pre-existing warnings). A probe launched the built exe and sampled `GetWindowRect` every ~25 ms: a single state was observed, `left=0 top=0 size=1366x768` (screen 1366×768), with the taskbar already covered on the first visible frame.
+
 ## 0.3.1 — Quotes now survive a restart + real app icon
 - Fixed: adding Quote 2, 3 or 4 in Settings only lasted until the app closed; after reopening, only Quote 1 remained. Cause: when the Settings panel filled the four quote boxes on startup, the first box triggered the "text changed" code while boxes 2–4 were still empty, which saved them as blank. A guard flag now stops automatic filling from being treated as typing.
 - Settings loading now accepts an older quote list of any length (previously it required exactly four saved quotes).
