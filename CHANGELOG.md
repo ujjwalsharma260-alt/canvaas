@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3 — No jump when leaving fullscreen + menu no longer hides "Settings"
+- Fixed: leaving fullscreen (toolbar button, ESC, or the F/F11 cycle) visibly switched modes. One frame showed WPF's remembered "restore" size (a tiny 720×480 window) before the maximized window appeared, and the taskbar could pop up over the still full-screen-sized window. Exit now restores `ResizeMode` first (WPF ignores `Maximized` while a window is `NoResize`), pre-sizes the window to the monitor work area, maximizes, and only drops "always on top" after the new layout has been laid out. The forced `SWP_FRAMECHANGED` repaint was removed from both directions.
+- Fixed: with floating (unpinned) toolbars, opening the ☰ menu hid its first row — "Settings" was drawn behind the toolbar. The menu is now parked just below the visible title bar/toolbar each time it opens, and re-positioned if the bars change while it is open.
+- Measured: the window rectangle sampled every ~10 ms around enter and exit shows a single change (1366×768 ↔ 1380×782 at −7,−7), no intermediate size; in floating-toolbar fullscreen the menu screenshot now shows "Settings" as the first visible row.
+
 ## 0.3.2 — Launch no longer flashes a windowed mode
 - Fixed: clicking the app icon showed a maximized window with the Windows taskbar for a moment, then jumped to fullscreen — it looked like the app pressed the fullscreen key by itself. Cause: the window was created `Maximized`, and the switch to fullscreen ran later from the `Loaded` handler at `ApplicationIdle` priority, so the first layout and paint happened in the wrong mode. The fullscreen geometry is now applied in `OnSourceInitialized` (handle exists, nothing painted yet), and `MainWindow.xaml` starts as `WindowState="Normal"`, `ResizeMode="NoResize"`, `WindowStartupLocation="Manual"`. The delayed `WindowState = Maximized` + `ToggleFullscreen()` calls were removed from `Loaded`.
 - Fullscreen size now comes from the real bounds of the monitor the window is on (`MonitorFromWindow` + `GetMonitorInfo`, converted to WPF units with the window's DPI) instead of `SystemParameters.PrimaryScreenWidth/Height`.

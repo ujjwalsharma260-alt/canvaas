@@ -468,8 +468,36 @@ public partial class MainWindow : Window
     private void MenuButton_Click(object sender, RoutedEventArgs e)
     {
         if (MainMenuFlyout is null) return;
-        MainMenuFlyout.Visibility = MainMenuFlyout.Visibility == Visibility.Visible
-            ? Visibility.Collapsed : Visibility.Visible;
+
+        if (MainMenuFlyout.Visibility == Visibility.Visible)
+        {
+            MainMenuFlyout.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        PositionMainMenuFlyout();
+        MainMenuFlyout.Visibility = Visibility.Visible;
+    }
+
+    // The menu lives inside CanvasArea, which starts at the very top of the window
+    // whenever the toolbars float over the page. Park the menu just below the visible
+    // toolbars, otherwise its first row (Settings) is hidden behind them.
+    private void PositionMainMenuFlyout()
+    {
+        if (MainMenuFlyout is null || CanvasArea is null) return;
+
+        try
+        {
+            double barsBottom = 0;
+            if (TitleBarBorder is not null && TitleBarBorder.Visibility == Visibility.Visible)
+                barsBottom += TitleBarBorder.ActualHeight;
+            if (TopToolbarBorder is not null && TopToolbarBorder.Visibility == Visibility.Visible)
+                barsBottom += TopToolbarBorder.ActualHeight;
+
+            double canvasTop = CanvasArea.TranslatePoint(new Point(0, 0), this).Y;
+            MainMenuFlyout.Margin = new Thickness(6, Math.Max(6, barsBottom - canvasTop + 6), 0, 0);
+        }
+        catch { }
     }
 
     private void MenuButton2_Click(object sender, RoutedEventArgs e)
@@ -2405,9 +2433,13 @@ public partial class MainWindow : Window
             CornerCloseCatcher.Visibility = Visibility.Visible;
     }
 
+    private Rect GetCurrentMonitorBounds() => GetCurrentMonitorRect(false);
+
+    private Rect GetCurrentMonitorWorkArea() => GetCurrentMonitorRect(true);
+
     // Real bounds of the monitor the window is on, converted to the units WPF
-    // uses for Left/Top/Width/Height. Falls back to the primary screen size.
-    private Rect GetCurrentMonitorBounds()
+    // uses for Left/Top/Width/Height. workArea = true excludes the taskbar.
+    private Rect GetCurrentMonitorRect(bool workArea)
     {
         try
         {
@@ -2420,20 +2452,26 @@ public partial class MainWindow : Window
                     var info = new MonitorInfo { cbSize = Marshal.SizeOf<MonitorInfo>() };
                     if (GetMonitorInfo(monitor, ref info))
                     {
+                        var r = workArea ? info.rcWork : info.rcMonitor;
                         var dpi = VisualTreeHelper.GetDpi(this);
                         double scaleX = dpi.DpiScaleX <= 0 ? 1 : dpi.DpiScaleX;
                         double scaleY = dpi.DpiScaleY <= 0 ? 1 : dpi.DpiScaleY;
                         return new Rect(
-                            info.rcMonitor.Left / scaleX,
-                            info.rcMonitor.Top / scaleY,
-                            (info.rcMonitor.Right - info.rcMonitor.Left) / scaleX,
-                            (info.rcMonitor.Bottom - info.rcMonitor.Top) / scaleY);
+                            r.Left / scaleX,
+                            r.Top / scaleY,
+                            (r.Right - r.Left) / scaleX,
+                            (r.Bottom - r.Top) / scaleY);
                     }
                 }
             }
         }
         catch { }
 
+        if (workArea)
+        {
+            var wa = SystemParameters.WorkArea;
+            return new Rect(wa.Left, wa.Top, wa.Width, wa.Height);
+        }
         return new Rect(0, 0, SystemParameters.PrimaryScreenWidth, SystemParameters.PrimaryScreenHeight);
     }
 
@@ -2473,63 +2511,93 @@ public partial class MainWindow : Window
         _lastFullscreenToggle = now;
 
         _fullscreenMode = !_fullscreenMode;
+        ReleaseAllCaptures();
+
+        IntPtr hwnd;
+        try { hwnd = new WindowInteropHelper(this).Handle; } catch { hwnd = IntPtr.Zero; }
+
+        // Window style first: WPF ignores a change to Maximized while the window is
+        // still NoResize, so the resizable state must be restored before the exit.
+        WindowStyle = WindowStyle.None;
+        ResizeMode = _fullscreenMode ? ResizeMode.NoResize : ResizeMode.CanResize;
+
+        // The window gets its new size/state FIRST, and only then do the title bar,
+        // toolbars and canvas re-lay out. Doing it the other way round paints a frame
+        // with the new layout at the old size (the visible "glitch").
+        if (_fullscreenMode)
+        {
+            _preFullscreenWindowState = WindowState;
+            _preFullscreenTopmost = Topmost;
+
+            // The startup window is a *normal* window stretched over the whole screen.
+            // Exiting fullscreen from it should land on a maximized window, not on that
+            // same full-screen normal window (which would hide the taskbar area).
+            if (WindowState == WindowState.Normal)
+            {
+                var screenNow = GetCurrentMonitorBounds();
+                if (Math.Abs(Left - screenNow.Left) < 2 && Math.Abs(Top - screenNow.Top) < 2 &&
+                    Math.Abs(Width - screenNow.Width) < 2 && Math.Abs(Height - screenNow.Height) < 2)
+                    _preFullscreenWindowState = WindowState.Maximized;
+            }
+
+            var screen = GetCurrentMonitorBounds();
+            Left = screen.Left; Top = screen.Top;
+            Width = screen.Width; Height = screen.Height;
+            WindowState = WindowState.Normal;
+            Topmost = true;
+        }
+        else
+        {
+            var targetState = _preFullscreenWindowState;
+            if (targetState == WindowState.Minimized) targetState = WindowState.Maximized;
+
+            // Pre-size to the maximized (work-area) rectangle while the window is still
+            // a normal window. Maximizing then needs no resize from WPF's remembered
+            // "restore" size, which used to flash a small window for one frame.
+            if (targetState == WindowState.Maximized)
+            {
+                var work = GetCurrentMonitorWorkArea();
+                Left = work.Left; Top = work.Top;
+                Width = work.Width; Height = work.Height;
+            }
+
+            WindowState = targetState;
+
+            // Drop topmost only after the resize has been laid out, otherwise the
+            // taskbar pops up over a still full-screen-sized window.
+            bool restoreTopmost = _preFullscreenTopmost;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                Topmost = restoreTopmost;
+                try
+                {
+                    IntPtr h2 = new WindowInteropHelper(this).Handle;
+                    if (h2 != IntPtr.Zero && !restoreTopmost)
+                        SetWindowPos(h2, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+                catch { }
+            }), DispatcherPriority.Loaded);
+        }
+
         if (AppWindowChrome is not null)
         {
             AppWindowChrome.CaptionHeight = _fullscreenMode ? 0 : 36;
             AppWindowChrome.ResizeBorderThickness = _fullscreenMode ? new Thickness(0) : new Thickness(6);
         }
         ApplyBars(_barsShown);
-        ReleaseAllCaptures();
 
-        IntPtr hwnd;
-        try { hwnd = new WindowInteropHelper(this).Handle; } catch { hwnd = IntPtr.Zero; }
-
-        if (_fullscreenMode)
-        {
-            _preFullscreenWindowState = WindowState;
-            _preFullscreenTopmost = Topmost;
-
-            WindowStyle = WindowStyle.None;
-            ResizeMode = ResizeMode.NoResize;
-
-            double sw = SystemParameters.PrimaryScreenWidth;
-            double sh = SystemParameters.PrimaryScreenHeight;
-
-            // Set the new restore bounds FIRST (while still maximized). WPF stores
-            // these as the "restore" size, so flipping to Normal below goes straight
-            // to fullscreen — Windows never paints the old small size.
-            Left = 0; Top = 0;
-            Width = sw; Height = sh;
-            WindowState = WindowState.Normal;
-
-            Topmost = true;
-
-            if (hwnd != IntPtr.Zero)
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, (int)sw, (int)sh, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
-
-            StatusText.Text = "Fullscreen. Press ESC or F11 to exit.";
-        }
-        else
-        {
-            Topmost = _preFullscreenTopmost;
-            WindowStyle = WindowStyle.None;
-            ResizeMode = ResizeMode.CanResize;
-
-            if (hwnd != IntPtr.Zero)
-                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOACTIVATE | SWP_FRAMECHANGED);
-
-            // Jump straight to the saved state (usually Maximized). No Normal in
-            // between → no visible shrink.
-            var targetState = _preFullscreenWindowState;
-            if (targetState == WindowState.Minimized) targetState = WindowState.Maximized;
-            WindowState = targetState;
-
-            StatusText.Text = "Exited fullscreen.";
-        }
+        // Only z-order is forced here (no move/size/frame change), so no extra repaint.
+        // On exit the topmost drop is deferred with the layout step below.
+        if (hwnd != IntPtr.Zero && _fullscreenMode)
+            SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
         if (CornerCloseCatcher is not null)
             CornerCloseCatcher.Visibility = _fullscreenMode ? Visibility.Visible : Visibility.Collapsed;
         HideCornerFlyout();
+
+        StatusText.Text = _fullscreenMode
+            ? "Fullscreen. Press ESC or F11 to exit."
+            : "Exited fullscreen.";
 
         Dispatcher.BeginInvoke(new Action(ScheduleRebuildEdgeButtons), DispatcherPriority.Loaded);
     }
@@ -5053,6 +5121,10 @@ public partial class MainWindow : Window
             Grid.SetRow(CanvasArea, _barsPinned ? 2 : 0);
             Grid.SetRowSpan(CanvasArea, _barsPinned ? 1 : 3);
         }
+
+        // The open menu must follow the toolbars when the layout changes.
+        if (MainMenuFlyout is not null && MainMenuFlyout.Visibility == Visibility.Visible)
+            PositionMainMenuFlyout();
     }
 
     private bool AnyBarPopupOpen()
