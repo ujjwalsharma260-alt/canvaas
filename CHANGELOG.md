@@ -1,9 +1,10 @@
 # Changelog
 
-## 0.3.1 — Quotes now survive a restart
+## 0.3.1 — Quotes now survive a restart + real app icon
 - Fixed: adding Quote 2, 3 or 4 in Settings only lasted until the app closed; after reopening, only Quote 1 remained. Cause: when the Settings panel filled the four quote boxes on startup, the first box triggered the "text changed" code while boxes 2–4 were still empty, which saved them as blank. A guard flag now stops automatic filling from being treated as typing.
 - Settings loading now accepts an older quote list of any length (previously it required exactly four saved quotes).
 - Saving always stores the four quote slots in a stable, padded form.
+- The existing `canvaas-icon.ico` is now built into the app: it shows on `Canvaas.exe` in File Explorer and in the taskbar/title icon, so the app no longer depends on a desktop shortcut for its icon.
 ## 0.3.0 — Corner close + visual polish
 - Hovering the very top-right screen edge in fullscreen reveals minimize / maximize / close buttons (no more pressing a shortcut just to close).
 - Colour swatches are now glossy vector circles (sharp at any size); toolbar tool buttons are rounded chips with a blue tint for the active tool.

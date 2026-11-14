@@ -11,9 +11,11 @@
     <Version>0.3.1</Version>
     <Product>Canvaas</Product>
     <Company>Canvaas</Company>
+    <ApplicationIcon>canvaas-icon.ico</ApplicationIcon>
   </PropertyGroup>
 
 <ItemGroup>
     <Resource Include="crumpled.jpg" />
+    <Resource Include="canvaas-icon.ico" />
   </ItemGroup>
 </Project>
