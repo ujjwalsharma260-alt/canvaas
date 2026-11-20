@@ -798,6 +798,18 @@
                                     <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
                                 </UniformGrid>
 
+                                <TextBlock Text="Canvas colour" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
+                                <UniformGrid Columns="8" Margin="0,0,0,16">
+                                    <RadioButton x:Name="CanvasColorDefault" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#FFFFFF" ToolTip="Default white" Click="CanvasColorSwatch_Click" Tag="#FFFFFF"/>
+                                    <RadioButton x:Name="CanvasColorPaper" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#FAF6E3" ToolTip="Paper cream" Click="CanvasColorSwatch_Click" Tag="#FAF6E3"/>
+                                    <RadioButton x:Name="CanvasColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#EEEEEE" ToolTip="Light grey" Click="CanvasColorSwatch_Click" Tag="#EEEEEE"/>
+                                    <RadioButton x:Name="CanvasColorSage" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#DCE9D5" ToolTip="Sage" Click="CanvasColorSwatch_Click" Tag="#DCE9D5"/>
+                                    <RadioButton x:Name="CanvasColorSky" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#DCE4F2" ToolTip="Sky blue" Click="CanvasColorSwatch_Click" Tag="#DCE4F2"/>
+                                    <RadioButton x:Name="CanvasColorNavy" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#2C3E5C" ToolTip="Navy" Click="CanvasColorSwatch_Click" Tag="#2C3E5C"/>
+                                    <RadioButton x:Name="CanvasColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#1E4D3A" ToolTip="Dark green" Click="CanvasColorSwatch_Click" Tag="#1E4D3A"/>
+                                    <RadioButton x:Name="CanvasColorCustom" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#CCCCCC" ToolTip="Custom colour..." Tag="#FFFFFF"/>
+                                </UniformGrid>
+
                                 <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
                                 <UniformGrid Columns="4" Margin="0,0,0,16">
                                     <RadioButton x:Name="TemplateBlank" Style="{StaticResource TemplateThumb}" GroupName="Template" Background="{StaticResource PreviewBlank}" ToolTip="Blank" Click="TemplateButton_Click" Tag="Blank"/>
@@ -999,6 +1011,16 @@
                                 <CheckBox x:Name="ShowQuickColorsCheck" Content="Show the quick colour square" Margin="0,4,0,12"
                                           Foreground="#555555" FontSize="13"
                                           Checked="ShowQuickColorsCheck_Changed" Unchecked="ShowQuickColorsCheck_Changed"/>
+
+                                <TextBlock Text="Quick colour palette" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
+                                <UniformGrid Columns="6" Margin="0,0,0,16">
+                                    <RadioButton x:Name="SettingsQuickColorNone" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="Transparent" ToolTip="None" Click="QuickColorSwatch_Click" Tag="#FFFFFF"/>
+                                    <RadioButton x:Name="SettingsQuickColor1" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#000000" ToolTip="Black" Click="QuickColorSwatch_Click" Tag="#000000"/>
+                                    <RadioButton x:Name="SettingsQuickColor2" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#E53935" ToolTip="Red" Click="QuickColorSwatch_Click" Tag="#E53935"/>
+                                    <RadioButton x:Name="SettingsQuickColor3" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#1E88E5" ToolTip="Blue" Click="QuickColorSwatch_Click" Tag="#1E88E5"/>
+                                    <RadioButton x:Name="SettingsQuickColor4" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#43A047" ToolTip="Green" Click="QuickColorSwatch_Click" Tag="#43A047"/>
+                                    <RadioButton x:Name="SettingsQuickColorCustom" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#CCCCCC" ToolTip="Custom colour..." Tag="#FFFFFF"/>
+                                </UniformGrid>
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>

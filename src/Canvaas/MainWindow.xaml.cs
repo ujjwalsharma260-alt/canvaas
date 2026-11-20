@@ -157,6 +157,9 @@ public partial class MainWindow : Window
         public double? DefPatternDotSize { get; set; }
         public string[]? LightQuick { get; set; }
         public string[]? DarkQuick { get; set; }
+        // New: customizable canvas and palette colours (hex strings, ARGB format)
+        public string? CanvasBackgroundColor { get; set; } = "#FFFFFF";
+        public string[]? QuickColorHex { get; set; } = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
     }
 
     private sealed class StrokeChange
@@ -251,6 +254,9 @@ public partial class MainWindow : Window
     private Color _penColor = Colors.Black;
     // Each ink tool remembers its own last chosen colour (per-tool palettes).
     private Color _penToolColor = Colors.Black;
+    // New: customizable canvas and palette colours (hex strings, loaded from settings)
+    private string _canvasBackgroundColor = "#FFFFFF";
+    private string[] _quickColorHex = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
     private Color _highlighterToolColor = Color.FromRgb(255, 235, 0);
     private Color _calligraphyToolColor = Colors.Black;
     private double _penSize = 2.5;
@@ -656,6 +662,27 @@ public partial class MainWindow : Window
             if (QuickColorsSizeText is not null) QuickColorsSizeText.Text = ((int)Math.Round(v)).ToString();
         }
 
+        // Sync canvas background colour - preset colours only
+        // Preset options: Default White, Paper Cream, Light Grey, Sage, Sky Blue, Navy, Dark Green
+        // XAML names: CanvasColorDefault, CanvasColorPaper, CanvasColorLightGray, CanvasColorSage, CanvasColorSky, CanvasColorNavy, CanvasColorDarkGreen
+        if (CanvasColorDefault is not null) CanvasColorDefault.IsChecked = _canvasBackgroundColor == "#FFFFFF";
+        if (CanvasColorPaper is not null) CanvasColorPaper.IsChecked = _canvasBackgroundColor == "#FAF6E3";
+        if (CanvasColorLightGray is not null) CanvasColorLightGray.IsChecked = _canvasBackgroundColor == "#EEEEEE";
+        if (CanvasColorSage is not null) CanvasColorSage.IsChecked = _canvasBackgroundColor == "#DCE9D5";
+        if (CanvasColorSky is not null) CanvasColorSky.IsChecked = _canvasBackgroundColor == "#DCE4F2";
+        if (CanvasColorNavy is not null) CanvasColorNavy.IsChecked = _canvasBackgroundColor == "#2C3E5C";
+        if (CanvasColorDarkGreen is not null) CanvasColorDarkGreen.IsChecked = _canvasBackgroundColor == "#1E4D3A";
+
+        // Sync quick colour palette - preset colours only
+        // _quickColorHex[0]=black, [1]=red, [2]=blue, [3]=green
+        // XAML names: SettingsQuickColorNone, SettingsQuickColor1, SettingsQuickColor2, SettingsQuickColor3, SettingsQuickColor4, SettingsQuickColorCustom
+        if (SettingsQuickColorNone is not null) SettingsQuickColorNone.IsChecked = _quickColorHex?[0] != "#000000" && _quickColorHex?[0] != "#E53935" && _quickColorHex?[0] != "#1E88E5" && _quickColorHex?[0] != "#43A047";
+        if (SettingsQuickColor1 is not null) SettingsQuickColor1.IsChecked = (_quickColorHex?[0] ?? "#000000") == "#000000";
+        if (SettingsQuickColor2 is not null) SettingsQuickColor2.IsChecked = (_quickColorHex?[1] ?? "#E53935") == "#E53935";
+        if (SettingsQuickColor3 is not null) SettingsQuickColor3.IsChecked = (_quickColorHex?[2] ?? "#1E88E5") == "#1E88E5";
+        if (SettingsQuickColor4 is not null) SettingsQuickColor4.IsChecked = (_quickColorHex?[3] ?? "#43A047") == "#43A047";
+        if (SettingsQuickColorCustom is not null) SettingsQuickColorCustom.IsChecked = (_quickColorHex?[0] ?? "#000000") != "#000000" && (_quickColorHex?[0] ?? "#000000") != "#E53935" && (_quickColorHex?[0] ?? "#000000") != "#1E88E5" && (_quickColorHex?[0] ?? "#000000") != "#43A047";
+
         if (PdfPageSizeCombo is not null) PdfPageSizeCombo.SelectedIndex = Math.Clamp(_pdfPageSizeIndex, 0, 4);
         if (PdfOrientationCombo is not null) PdfOrientationCombo.SelectedIndex = Math.Clamp(_pdfOrientationIndex, 0, 1);
     }
@@ -926,6 +953,8 @@ public partial class MainWindow : Window
         CurrentPage.PatternOpacity = 50;
         CurrentPage.PatternThickness = 1.0;
         CurrentPage.PatternDotSize = 1.2;
+        _canvasBackgroundColor = "#FFFFFF";
+        _quickColorHex = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
         RefreshShortcutUI();
         SyncSettingsUI();
         if (PointerSizeSlider is not null) PointerSizeSlider.Value = 12;
@@ -1204,7 +1233,17 @@ public partial class MainWindow : Window
     {
         if (sender is Button b && b.Tag is string hex)
         {
-            var colour = ParseHexColor(hex, Colors.Black);
+            // Use the customizable quick color hex array, falling back to defaults
+            var quickColors = _quickColorHex ?? new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
+            int colorIndex = -1;
+            switch (hex)
+            {
+                case "#000000": colorIndex = 0; break;
+                case "#E53935": colorIndex = 1; break;
+                case "#1E88E5": colorIndex = 2; break;
+                case "#43A047": colorIndex = 3; break;
+            }
+            var colour = ParseHexColor(colorIndex >= 0 && colorIndex < quickColors.Length ? quickColors[colorIndex] : hex, Colors.Black);
             bool hasSelection = (_selectedElements.Count > 0) ||
                 (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
             if (hasSelection) ApplyColourToSelection(colour);
@@ -1868,6 +1907,9 @@ public partial class MainWindow : Window
             _savedStyle = s;
             if (s.LightQuick is { Length: 4 }) _lightQuick = s.LightQuick;
             if (s.DarkQuick is { Length: 4 }) _darkQuick = s.DarkQuick;
+            // New: load custom canvas and palette colours
+            if (!string.IsNullOrWhiteSpace(s.CanvasBackgroundColor)) _canvasBackgroundColor = s.CanvasBackgroundColor;
+            if (s.QuickColorHex is { Length: 4 }) _quickColorHex = s.QuickColorHex;
         }
         catch { }
     }
@@ -1901,7 +1943,9 @@ public partial class MainWindow : Window
                 WatermarkDurationSeconds = _watermarkDurationSeconds,
                 Shortcuts = _shortcuts,
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
-                PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex
+                PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex,
+                CanvasBackgroundColor = _canvasBackgroundColor,
+                QuickColorHex = _quickColorHex
             };
             CaptureStyle(s);
             File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOptions));
@@ -4086,6 +4130,42 @@ public partial class MainWindow : Window
             MarkDirty();
             StatusText.Text = $"Background: {rb.ToolTip}";
         }
+
+    } // closes ColorSwatch_Click method
+
+    private void CanvasColorSwatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string hex)
+        {
+            CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
+            ApplyThemeToChrome();
+            UpdatePageBackground();
+            RebuildHollowRingCursor();
+            UpdateCursor();
+            MarkDirty();
+            _canvasBackgroundColor = hex;
+            SaveSettings();
+            StatusText.Text = $"Canvas colour: {rb.ToolTip}";
+        }
+    }
+
+    private void QuickColorSwatch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string hex)
+        {
+            var colour = ParseHexColor(hex, Colors.Black);
+            bool hasSelection = (_selectedElements.Count > 0) ||
+                (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
+            if (hasSelection) ApplyColourToSelection(colour);
+            else
+            {
+                _penColor = colour;
+                RememberToolColor(_tool);
+                ApplyPenAttributes();
+                UpdateThicknessPreview();
+                StatusText.Text = $"Pen colour: {hex}";
+            }
+        }
     }
 
     private void TemplateButton_Click(object sender, RoutedEventArgs e)
@@ -4877,6 +4957,8 @@ public partial class MainWindow : Window
         var s = _savedStyle;
         if (s is null) return p;
         if (!string.IsNullOrEmpty(s.DefBackground)) p.BackgroundColor = ParseHexColor(s.DefBackground, Colors.White);
+        // New: load custom canvas background colour
+        if (!string.IsNullOrWhiteSpace(s.CanvasBackgroundColor)) p.BackgroundColor = ParseHexColor(s.CanvasBackgroundColor, Colors.White);
         if (Enum.TryParse<PageTemplate>(s.DefTemplate, out var t)) p.Template = t;
         if (Enum.TryParse<PaperStyle>(s.DefPaper, out var ps)) p.Paper = ps;
         if (s.DefSpacing is double sp && sp > 0) p.Spacing = Math.Clamp(sp, 1, 60);
@@ -4894,6 +4976,8 @@ public partial class MainWindow : Window
         {
             var p = CurrentPage;
             s.DefBackground = ColorToHex(p.BackgroundColor);
+            // New: save custom canvas background colour
+            s.CanvasBackgroundColor = ColorToHex(p.BackgroundColor);
             s.DefTemplate = p.Template.ToString();
             s.DefPaper = p.Paper.ToString();
             s.DefSpacing = p.Spacing;
