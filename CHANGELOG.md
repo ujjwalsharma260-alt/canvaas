@@ -31,5 +31,12 @@
 - Removed `ColorDialog`/`ColorTranslator` custom color picker code that required the deleted package.
 - Removed stale `Click="CanvasColorCustom_Click"` and `Click="QuickColorCustom_Click"` event handler references from XAML.
 
-## v0.3.3
+### Added
+- **Add page before current page** - Users can now add a new page before the currently selected page via the context menu (Shift+P or Context Menu → "Add page before current page").
+- **Merge notes feature** (planned) - Ability to combine pages from multiple .canvaas files into one notebook.
+
+### Changed
+- Added "Add page before current page" menu item in the Add Page context menu.
+
+### Fixed
 - Initial color palette implementation with preset options.

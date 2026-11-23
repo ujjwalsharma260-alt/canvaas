@@ -2988,6 +2988,47 @@ public partial class MainWindow : Window
         StatusText.Text = $"Added page {_currentPageIndex + 1} of {_pages.Count}.";
     }
 
+    private void AddPageBefore_Click(object sender, RoutedEventArgs e)
+    {
+        if (_pages.Count == 0)
+        {
+            // If no pages exist, just add a new page as the first one
+            NotebookPage __page_new = new NotebookPage()
+            {
+                BackgroundColor = CurrentPage.BackgroundColor,
+                Template = CurrentPage.Template,
+                Spacing = CurrentPage.Spacing,
+                Paper = CurrentPage.Paper,
+                PatternOpacity = CurrentPage.PatternOpacity,
+                PatternThickness = CurrentPage.PatternThickness,
+                PatternDotSize = CurrentPage.PatternDotSize
+            };
+            _pages.Add(__page_new);
+            _currentPageIndex = 0;
+            LoadCurrentPageIntoCanvas();
+            MarkDirty();
+            StatusText.Text = $"Added page {_currentPageIndex + 1} of {_pages.Count}.";
+            return;
+        }
+
+        NotebookPage __page_new2 = new NotebookPage()
+        {
+            BackgroundColor = CurrentPage.BackgroundColor,
+            Template = CurrentPage.Template,
+            Spacing = CurrentPage.Spacing,
+            Paper = CurrentPage.Paper,
+            PatternOpacity = CurrentPage.PatternOpacity,
+            PatternThickness = CurrentPage.PatternThickness,
+            PatternDotSize = CurrentPage.PatternDotSize
+        };
+        _pages.Insert(_currentPageIndex, __page_new2);
+        _currentPageIndex--;
+        if (_currentPageIndex < 0) _currentPageIndex = 0;
+        LoadCurrentPageIntoCanvas();
+        MarkDirty();
+        StatusText.Text = $"Added page {_currentPageIndex + 1} of {_pages.Count} (before current page).";
+    }
+
     private void DeletePageButton_Click(object sender, RoutedEventArgs e)
     {
         if (_pages.Count <= 1)

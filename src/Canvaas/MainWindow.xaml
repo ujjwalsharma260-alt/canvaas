@@ -539,6 +539,7 @@
                         <Button.ContextMenu>
                             <ContextMenu>
                                 <MenuItem Header="Add a new notebook page" Click="NewNotebookPage_Click"/>
+                                <MenuItem Header="Add page before current page" Click="AddPageBefore_Click"/>
                                 <MenuItem Header="Delete this notebook page" Click="DeletePageButton_Click"/>
                             </ContextMenu>
                         </Button.ContextMenu>
