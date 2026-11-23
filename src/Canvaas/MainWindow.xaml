@@ -812,6 +812,8 @@
                                 </UniformGrid>
 
                                 <TextBlock Text="Canvas colour" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
+                                <!-- Background colour section removed - Canvas colour section handles canvas colour changes -->
+
                                 <UniformGrid Columns="8" Margin="0,0,0,16">
                                     <RadioButton x:Name="CanvasColorDefault" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#FFFFFF" ToolTip="Default white" Click="CanvasColorSwatch_Click" Tag="#FFFFFF"/>
                                     <RadioButton x:Name="CanvasColorPaper" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#FAF6E3" ToolTip="Paper cream" Click="CanvasColorSwatch_Click" Tag="#FAF6E3"/>

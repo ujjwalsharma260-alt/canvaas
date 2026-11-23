@@ -456,7 +456,6 @@ public partial class MainWindow : Window
 
         PenButton.IsChecked = true;
         InkArea.EditingMode = InkCanvasEditingMode.Ink;
-        ColorWhite.IsChecked = true;
         TemplateBlank.IsChecked = true;
         PaperWhite.IsChecked = true;
 
@@ -4422,7 +4421,8 @@ public partial class MainWindow : Window
             paperBtn.IsChecked = true;
         }
         string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
-        RadioButton[] swatches = { ColorWhite, ColorCream, ColorLightGray, ColorSage, ColorSky, ColorNavy, ColorDarkGreen, ColorBlack, ColorPitch };
+        // Use CanvasColor radio buttons for canvas background colour sync
+        RadioButton[] swatches = { CanvasColorDefault, CanvasColorPaper, CanvasColorLightGray, CanvasColorSage, CanvasColorSky, CanvasColorNavy, CanvasColorDarkGreen, CanvasColorCustom };
         bool matched = false;
         foreach (var rb in swatches)
         {
@@ -4430,7 +4430,7 @@ public partial class MainWindow : Window
             if (rb.Tag is string s && string.Equals(s, hex, StringComparison.OrdinalIgnoreCase))
             { rb.IsChecked = true; matched = true; break; }
         }
-        if (!matched && ColorWhite is not null) ColorWhite.IsChecked = true;
+        if (!matched && CanvasColorDefault is not null) CanvasColorDefault.IsChecked = true;
 
         if (TemplateBlank is not null && TemplateRuled is not null && TemplateGrid is not null && TemplateDot is not null)
         {

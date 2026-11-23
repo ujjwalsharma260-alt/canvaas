@@ -22,7 +22,7 @@
 - Updated `SyncSettingsUI()` to sync colour control states on startup.
 - Updated `CanvasColorSwatch_Click` and `QuickColorSwatch_Click` event handlers to use preset colors only.
 - Updated `ResetAllSettings_Click` to reset new colour settings to defaults.
-- XAML: Added "Background colour" section with 7 colour options in Settings overlay.
+- **Removed "Background colour" section from Settings overlay** - The canvas colour section now handles all canvas colour changes, simplifying the UI.
 - XAML: Added "Canvas colour" section with 7 colour options in Settings overlay.
 
 ### Fixed
