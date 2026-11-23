@@ -9,6 +9,11 @@
 
 - **Canvas colour persistence** - Saved to and loaded from `%APPDATA%\Canvaas\settings.json` on every app startup.
 
+### Added
+- **Custom colour hex input** - Users can now type custom hex colour values (e.g. #FF0000) in the Settings overlay for both canvas background and quick colour palette, giving full control over colours beyond the preset options.
+- **Canvas colour custom TextBox** - In Settings → Canvas colour, type any hex value to set custom canvas background colour.
+- **Quick colour custom TextBox** - In Settings → Quick colour palette, type a hex value to set the first custom colour (index 0) in the palette.
+
 ### Changed
 - Updated `AppSettings` class with `CanvasBackgroundColor` and `QuickColorHex` fields.
 - Updated `LoadSettings()` and `SaveSettingsCore()` to persist new color settings.

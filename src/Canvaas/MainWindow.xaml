@@ -388,6 +388,19 @@
             </Setter>
         </Style>
 
+        <Style x:Key="CustomTextBox" TargetType="TextBox">
+            <Setter Property="Width" Value="80"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="2,0,2,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="#BBBBBB"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="SelectionBrush" Value="#1976D2"/>
+            <Setter Property="Foreground" Value="#333333"/>
+        </Style>
+
         <DrawingBrush x:Key="PreviewBlank" TileMode="None">
             <DrawingBrush.Drawing><GeometryDrawing Brush="White"><GeometryDrawing.Geometry><RectangleGeometry Rect="0,0,60,78"/></GeometryDrawing.Geometry></GeometryDrawing></DrawingBrush.Drawing>
         </DrawingBrush>
@@ -807,7 +820,8 @@
                                     <RadioButton x:Name="CanvasColorSky" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#DCE4F2" ToolTip="Sky blue" Click="CanvasColorSwatch_Click" Tag="#DCE4F2"/>
                                     <RadioButton x:Name="CanvasColorNavy" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#2C3E5C" ToolTip="Navy" Click="CanvasColorSwatch_Click" Tag="#2C3E5C"/>
                                     <RadioButton x:Name="CanvasColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#1E4D3A" ToolTip="Dark green" Click="CanvasColorSwatch_Click" Tag="#1E4D3A"/>
-                                    <RadioButton x:Name="CanvasColorCustom" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#CCCCCC" ToolTip="Custom colour..." Tag="#FFFFFF"/>
+                                    <RadioButton x:Name="CanvasColorCustom" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#CCCCCC" ToolTip="Custom colour..." Click="CanvasColorSwatch_Click" Tag="#FFFFFF"/>
+                                    <TextBox x:Name="CanvasColorCustomHex" Text="{Binding Path=CanvasBackgroundColor, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Style="{StaticResource CustomTextBox}" MaxLength="7" TextChanged="CanvasColorCustomHex_TextChanged" ToolTip="Enter custom hex colour (e.g. #FF0000)" Margin="4,0,0,0"/>
                                 </UniformGrid>
 
                                 <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
@@ -1019,7 +1033,8 @@
                                     <RadioButton x:Name="SettingsQuickColor2" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#E53935" ToolTip="Red" Click="QuickColorSwatch_Click" Tag="#E53935"/>
                                     <RadioButton x:Name="SettingsQuickColor3" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#1E88E5" ToolTip="Blue" Click="QuickColorSwatch_Click" Tag="#1E88E5"/>
                                     <RadioButton x:Name="SettingsQuickColor4" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#43A047" ToolTip="Green" Click="QuickColorSwatch_Click" Tag="#43A047"/>
-                                    <RadioButton x:Name="SettingsQuickColorCustom" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#CCCCCC" ToolTip="Custom colour..." Tag="#FFFFFF"/>
+                                    <RadioButton x:Name="SettingsQuickColorCustom" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#CCCCCC" ToolTip="Custom colour..." Click="QuickColorSwatch_Click" Tag="#FFFFFF"/>
+                                    <TextBox x:Name="SettingsQuickColorCustomHex" Style="{StaticResource CustomTextBox}" MaxLength="7" TextChanged="SettingsQuickColorCustomHex_TextChanged" ToolTip="Enter custom hex colour for index 0 (e.g. #FF0000)" Margin="4,0,0,0"/>
                                 </UniformGrid>
 
                                 <Grid Margin="0,0,0,12">

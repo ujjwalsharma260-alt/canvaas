@@ -1,7 +1,7 @@
 # CANVAAS — FULL PROJECT CONTEXT (READ THIS FIRST)
 
 > **For any AI coding assistant:** this file is the single source of truth for the Canvaas project. Read all of it before changing anything. Keep it up to date: every ZIP/patch you deliver MUST include an updated copy of this file (sections 4, 5, 6, 10, 11 especially).
-> **Last updated:** 2026-11-20 by opencode (v0.3.4: user-selectable colour palette and canvas colour with persistence). Update this line every time.
+> **Last updated:** 2026-11-23 by opencode (v0.3.4: custom colour hex input added - full RGB control from Settings). Update this line every time.
 
 ---
 

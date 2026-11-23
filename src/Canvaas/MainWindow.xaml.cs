@@ -673,6 +673,34 @@ public partial class MainWindow : Window
         if (CanvasColorNavy is not null) CanvasColorNavy.IsChecked = _canvasBackgroundColor == "#2C3E5C";
         if (CanvasColorDarkGreen is not null) CanvasColorDarkGreen.IsChecked = _canvasBackgroundColor == "#1E4D3A";
 
+        // Sync canvas background colour - preset colours only
+        // Preset options: Default White, Paper Cream, Light Grey, Sage, Sky Blue, Navy, Dark Green
+        // XAML names: CanvasColorDefault, CanvasColorPaper, CanvasColorLightGray, CanvasColorSage, CanvasColorSky, CanvasColorNavy, CanvasColorDarkGreen
+        if (CanvasColorDefault is not null) CanvasColorDefault.IsChecked = _canvasBackgroundColor == "#FFFFFF";
+        if (CanvasColorPaper is not null) CanvasColorPaper.IsChecked = _canvasBackgroundColor == "#FAF6E3";
+        if (CanvasColorLightGray is not null) CanvasColorLightGray.IsChecked = _canvasBackgroundColor == "#EEEEEE";
+        if (CanvasColorSage is not null) CanvasColorSage.IsChecked = _canvasBackgroundColor == "#DCE9D5";
+        if (CanvasColorSky is not null) CanvasColorSky.IsChecked = _canvasBackgroundColor == "#DCE4F2";
+        if (CanvasColorNavy is not null) CanvasColorNavy.IsChecked = _canvasBackgroundColor == "#2C3E5C";
+        if (CanvasColorDarkGreen is not null) CanvasColorDarkGreen.IsChecked = _canvasBackgroundColor == "#1E4D3A";
+
+        // Sync custom canvas colour from TextBox
+        if (CanvasColorCustomHex is not null && !string.IsNullOrWhiteSpace(CanvasColorCustomHex.Text))
+        {
+            string hex = CanvasColorCustomHex.Text.Trim();
+            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
+            {
+                _canvasBackgroundColor = hex;
+                if (CurrentPage is not null) CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
+                ApplyThemeToChrome();
+                UpdatePageBackground();
+                RebuildHollowRingCursor();
+                UpdateCursor();
+                MarkDirty();
+                StatusText.Text = $"Canvas colour: {hex}";
+            }
+        }
+
         // Sync quick colour palette - preset colours only
         // _quickColorHex[0]=black, [1]=red, [2]=blue, [3]=green
         // XAML names: SettingsQuickColorNone, SettingsQuickColor1, SettingsQuickColor2, SettingsQuickColor3, SettingsQuickColor4, SettingsQuickColorCustom
@@ -682,6 +710,20 @@ public partial class MainWindow : Window
         if (SettingsQuickColor3 is not null) SettingsQuickColor3.IsChecked = (_quickColorHex?[2] ?? "#1E88E5") == "#1E88E5";
         if (SettingsQuickColor4 is not null) SettingsQuickColor4.IsChecked = (_quickColorHex?[3] ?? "#43A047") == "#43A047";
         if (SettingsQuickColorCustom is not null) SettingsQuickColorCustom.IsChecked = (_quickColorHex?[0] ?? "#000000") != "#000000" && (_quickColorHex?[0] ?? "#000000") != "#E53935" && (_quickColorHex?[0] ?? "#000000") != "#1E88E5" && (_quickColorHex?[0] ?? "#000000") != "#43A047";
+
+        // Sync custom quick colour from TextBox (index 0)
+        if (SettingsQuickColorCustomHex is not null && !string.IsNullOrWhiteSpace(SettingsQuickColorCustomHex.Text))
+        {
+            string hex = SettingsQuickColorCustomHex.Text.Trim();
+            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
+            {
+                _quickColorHex[0] = hex;
+                RememberToolColor(_tool);
+                ApplyPenAttributes();
+                UpdateThicknessPreview();
+                StatusText.Text = $"Pen colour: {hex}";
+            }
+        }
 
         if (PdfPageSizeCombo is not null) PdfPageSizeCombo.SelectedIndex = Math.Clamp(_pdfPageSizeIndex, 0, 4);
         if (PdfOrientationCombo is not null) PdfOrientationCombo.SelectedIndex = Math.Clamp(_pdfOrientationIndex, 0, 1);
@@ -4160,6 +4202,41 @@ public partial class MainWindow : Window
             else
             {
                 _penColor = colour;
+                RememberToolColor(_tool);
+                ApplyPenAttributes();
+                UpdateThicknessPreview();
+                StatusText.Text = $"Pen colour: {hex}";
+            }
+        }
+    }
+
+    private void CanvasColorCustomHex_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (CanvasColorCustomHex is not null && !string.IsNullOrWhiteSpace(CanvasColorCustomHex.Text))
+        {
+            string hex = CanvasColorCustomHex.Text.Trim();
+            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
+            {
+                _canvasBackgroundColor = hex;
+                if (CurrentPage is not null) CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
+                ApplyThemeToChrome();
+                UpdatePageBackground();
+                RebuildHollowRingCursor();
+                UpdateCursor();
+                MarkDirty();
+                StatusText.Text = $"Canvas colour: {hex}";
+            }
+        }
+    }
+
+    private void SettingsQuickColorCustomHex_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SettingsQuickColorCustomHex is not null && !string.IsNullOrWhiteSpace(SettingsQuickColorCustomHex.Text))
+        {
+            string hex = SettingsQuickColorCustomHex.Text.Trim();
+            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
+            {
+                _quickColorHex[0] = hex;
                 RememberToolColor(_tool);
                 ApplyPenAttributes();
                 UpdateThicknessPreview();
