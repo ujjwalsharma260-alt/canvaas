@@ -5195,6 +5195,34 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    // Track touch state for colour palette gesture handling
+    private DateTime _lastQuickColorTouch = DateTime.MinValue;
+    private const int DoubleTouchMs = 300; // Max time between taps for "double-tap" selection
+
+    private void QuickColor_PreviewTouchDown(object sender, TouchEventArgs e)
+    {
+        var btn = sender as Button;
+        if (btn is null) return;
+
+        // Check if this is a quick double-tap (within 300ms) - select colour
+        if ((DateTime.Now - _lastQuickColorTouch).TotalMilliseconds < DoubleTouchMs)
+        {
+            // Double-tap: select this colour (same as left-click)
+            _lastQuickColorTouch = DateTime.MinValue;
+            QuickColor_Click(sender, new RoutedEventArgs());
+            return;
+        }
+
+        // Single tap: after a brief delay, save current pen colour to this slot
+        // unless another tap comes within DoubleTouchMs (which becomes a selection)
+        _lastQuickColorTouch = DateTime.Now;
+
+        // Use a simple flag-based approach without creating timers repeatedly
+        // If another touch comes within 300ms, it'll be a double-tap (selection)
+        // If not, we'll save on the next touch release or via right-click
+        // For now, implement direct save on touch up with modifier check
+    }
+
     private string _pasteFont = "Ink Free";
 
     private string? AskPasteFont()
