@@ -159,6 +159,7 @@ public partial class MainWindow : Window
         public string[]? DarkQuick { get; set; }
         // New: customizable canvas and palette colours (hex strings, ARGB format)
         public string? CanvasBackgroundColor { get; set; } = "#FFFFFF";
+        public string[]? BackgroundColors { get; set; } = new[] { "#FFFFFF" };
         public string? LibraryBackgroundColor { get; set; } = "#F5F5F5";
         public string[]? QuickColorHex { get; set; } = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
     }
@@ -257,8 +258,9 @@ public partial class MainWindow : Window
     private Color _penToolColor = Colors.Black;
     // New: customizable canvas and palette colours (hex strings, loaded from settings)
     private string _canvasBackgroundColor = "#FFFFFF";
+    private ObservableCollection<string> _backgroundColors = new() { "#FFFFFF" };
     private string _libraryBackgroundColor = "#F5F5F5";
-    private string[] _quickColorHex = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
+    private ObservableCollection<string> _paletteColors = new() { "#000000", "#E53935", "#1E88E5", "#43A047" };
     private Color _highlighterToolColor = Color.FromRgb(255, 235, 0);
     private Color _calligraphyToolColor = Colors.Black;
     private double _penSize = 2.5;
@@ -705,14 +707,14 @@ public partial class MainWindow : Window
         }
 
         // Sync quick colour palette - preset colours only
-        // _quickColorHex[0]=black, [1]=red, [2]=blue, [3]=green
+        // _paletteColors[0]=black, [1]=red, [2]=blue, [3]=green
         // XAML names: SettingsQuickColorNone, SettingsQuickColor1, SettingsQuickColor2, SettingsQuickColor3, SettingsQuickColor4, SettingsQuickColorCustom
-        if (SettingsQuickColorNone is not null) SettingsQuickColorNone.IsChecked = _quickColorHex?[0] != "#000000" && _quickColorHex?[0] != "#E53935" && _quickColorHex?[0] != "#1E88E5" && _quickColorHex?[0] != "#43A047";
-        if (SettingsQuickColor1 is not null) SettingsQuickColor1.IsChecked = (_quickColorHex?[0] ?? "#000000") == "#000000";
-        if (SettingsQuickColor2 is not null) SettingsQuickColor2.IsChecked = (_quickColorHex?[1] ?? "#E53935") == "#E53935";
-        if (SettingsQuickColor3 is not null) SettingsQuickColor3.IsChecked = (_quickColorHex?[2] ?? "#1E88E5") == "#1E88E5";
-        if (SettingsQuickColor4 is not null) SettingsQuickColor4.IsChecked = (_quickColorHex?[3] ?? "#43A047") == "#43A047";
-        if (SettingsQuickColorCustom is not null) SettingsQuickColorCustom.IsChecked = (_quickColorHex?[0] ?? "#000000") != "#000000" && (_quickColorHex?[0] ?? "#000000") != "#E53935" && (_quickColorHex?[0] ?? "#000000") != "#1E88E5" && (_quickColorHex?[0] ?? "#000000") != "#43A047";
+        if (SettingsQuickColorNone is not null) SettingsQuickColorNone.IsChecked = _paletteColors?[0] != "#000000" && _paletteColors?[0] != "#E53935" && _paletteColors?[0] != "#1E88E5" && _paletteColors?[0] != "#43A047";
+        if (SettingsQuickColor1 is not null) SettingsQuickColor1.IsChecked = (_paletteColors?[0] ?? "#000000") == "#000000";
+        if (SettingsQuickColor2 is not null) SettingsQuickColor2.IsChecked = (_paletteColors?[1] ?? "#E53935") == "#E53935";
+        if (SettingsQuickColor3 is not null) SettingsQuickColor3.IsChecked = (_paletteColors?[2] ?? "#1E88E5") == "#1E88E5";
+        if (SettingsQuickColor4 is not null) SettingsQuickColor4.IsChecked = (_paletteColors?[3] ?? "#43A047") == "#43A047";
+        if (SettingsQuickColorCustom is not null) SettingsQuickColorCustom.IsChecked = (_paletteColors?[0] ?? "#000000") != "#000000" && (_paletteColors?[0] ?? "#000000") != "#E53935" && (_paletteColors?[0] ?? "#000000") != "#1E88E5" && (_paletteColors?[0] ?? "#000000") != "#43A047";
 
         // Sync custom quick colour from TextBox (index 0)
         if (SettingsQuickColorCustomHex is not null && !string.IsNullOrWhiteSpace(SettingsQuickColorCustomHex.Text))
@@ -720,7 +722,7 @@ public partial class MainWindow : Window
             string hex = SettingsQuickColorCustomHex.Text.Trim();
             if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
             {
-                _quickColorHex[0] = hex;
+                _paletteColors[0] = hex;
                 RememberToolColor(_tool);
                 ApplyPenAttributes();
                 UpdateThicknessPreview();
@@ -999,7 +1001,7 @@ public partial class MainWindow : Window
         CurrentPage.PatternThickness = 1.0;
         CurrentPage.PatternDotSize = 1.2;
         _canvasBackgroundColor = "#FFFFFF";
-        _quickColorHex = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
+        _paletteColors = new ObservableCollection<string> { "#000000", "#E53935", "#1E88E5", "#43A047" };
         RefreshShortcutUI();
         SyncSettingsUI();
         if (PointerSizeSlider is not null) PointerSizeSlider.Value = 12;
@@ -1279,7 +1281,7 @@ public partial class MainWindow : Window
         if (sender is Button b && b.Tag is string hex)
         {
             // Use the customizable quick color hex array, falling back to defaults
-            var quickColors = _quickColorHex ?? new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
+            var quickColors = _paletteColors?.ToArray() ?? new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
             int colorIndex = -1;
             switch (hex)
             {
@@ -1954,8 +1956,9 @@ public partial class MainWindow : Window
             if (s.DarkQuick is { Length: 4 }) _darkQuick = s.DarkQuick;
             // New: load custom canvas and palette colours
             if (!string.IsNullOrWhiteSpace(s.CanvasBackgroundColor)) _canvasBackgroundColor = s.CanvasBackgroundColor;
+            if (s.BackgroundColors is { Length: > 0 }) _backgroundColors = new ObservableCollection<string>(s.BackgroundColors);
             if (!string.IsNullOrWhiteSpace(s.LibraryBackgroundColor)) _libraryBackgroundColor = s.LibraryBackgroundColor;
-            if (s.QuickColorHex is { Length: 4 }) _quickColorHex = s.QuickColorHex;
+            if (s.QuickColorHex is { Length: > 0 }) _paletteColors = new ObservableCollection<string>(s.QuickColorHex);
         }
         catch { }
     }
@@ -1991,8 +1994,9 @@ public partial class MainWindow : Window
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
                 PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex,
                 CanvasBackgroundColor = _canvasBackgroundColor,
+                BackgroundColors = _backgroundColors.ToArray(),
                 LibraryBackgroundColor = _libraryBackgroundColor,
-                QuickColorHex = _quickColorHex
+                QuickColorHex = _paletteColors.ToArray()
             };
             CaptureStyle(s);
             File.WriteAllText(path, JsonSerializer.Serialize(s, JsonOptions));
@@ -4289,7 +4293,7 @@ public partial class MainWindow : Window
     private void QuickColorPick_Click(object sender, RoutedEventArgs e)
     {
         Color current = Colors.Black;
-        try { current = ParseHexColor(_quickColorHex[0], Colors.Black); } catch { }
+        try { current = ParseHexColor(_paletteColors[0], Colors.Black); } catch { }
         var dlg = new ColorPickerDialog(current) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
@@ -4305,7 +4309,7 @@ public partial class MainWindow : Window
             string hex = SettingsQuickColorCustomHex.Text.Trim();
             if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
             {
-                _quickColorHex[0] = hex;
+                _paletteColors[0] = hex;
                 RememberToolColor(_tool);
                 ApplyPenAttributes();
                 UpdateThicknessPreview();
@@ -6385,7 +6389,8 @@ public partial class MainWindow : Window
             LibraryView.Background = new SolidColorBrush(ParseHexColor(_libraryBackgroundColor, Colors.White));
         }
         if (TopToolbarBorder is not null) TopToolbarBorder.Visibility = Visibility.Collapsed;
-        if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Collapsed;
+        // Keep CanvasArea visible so the Settings overlay can be shown from the library.
+        if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Visible;
         TitleBarText.Text = "Canvaas - My notebooks";
     }
 
@@ -6453,6 +6458,11 @@ public partial class MainWindow : Window
         }
     }
 
+    private void LibrarySettings_Click(object sender, RoutedEventArgs e)
+    {
+        OpenSettingsPanel("Settings");
+    }
+
     private void LibraryColorPick_Click(object sender, RoutedEventArgs e)
     {
         var current = ParseHexColor(_libraryBackgroundColor, Colors.White);
@@ -6517,6 +6527,18 @@ public partial class MainWindow : Window
             var renameItem = new MenuItem { Header = "Rename" };
             renameItem.Click += (s, ev) => RenameLibraryEntry(entry);
             menu.Items.Add(renameItem);
+
+            var moveItem = new MenuItem { Header = "Move to shelf" };
+            var allItem = new MenuItem { Header = "All notebooks" };
+            allItem.Click += (s, ev) => MoveLibraryEntryToShelf(entry, "");
+            moveItem.Items.Add(allItem);
+            foreach (var sh in _shelves.Where(s => s.Id != ""))
+            {
+                var si = new MenuItem { Header = sh.Name, Tag = sh.Id };
+                si.Click += (s, ev) => MoveLibraryEntryToShelf(entry, sh.Id);
+                moveItem.Items.Add(si);
+            }
+            menu.Items.Add(moveItem);
             var deleteItem = new MenuItem { Header = "Delete" };
             deleteItem.Click += (s, ev) => DeleteLibraryEntry(entry);
             menu.Items.Add(deleteItem);
@@ -6538,6 +6560,14 @@ public partial class MainWindow : Window
             if (LibraryList is not null) LibraryList.Items.Refresh();
             if (_currentLibraryEntry == entry) UpdateTitle();
         }
+    }
+
+    private void MoveLibraryEntryToShelf(LibraryEntry entry, string shelfId)
+    {
+        entry.ShelfId = shelfId;
+        entry.ModifiedUtc = DateTime.UtcNow;
+        SaveLibraryIndex();
+        RefreshLibraryView();
     }
 
     private void DeleteLibraryEntry(LibraryEntry entry)

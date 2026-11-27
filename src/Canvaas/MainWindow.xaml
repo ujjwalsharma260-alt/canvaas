@@ -742,7 +742,7 @@
                 </StackPanel>
             </Border>
 
-            <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Panel.ZIndex="500"
+            <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Panel.ZIndex="700"
                   Background="#AA000000" MouseDown="SettingsOverlay_MouseDown">
                 <Border Background="White" Width="640" MaxHeight="760"
                         BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="12"
@@ -1196,6 +1196,8 @@
                                 Click="LibraryNew_Click"/>
                         <Button x:Name="LibraryColorButton" Content="Background colour" Padding="10,6" Margin="0,0,12,0"
                                 DockPanel.Dock="Right" Click="LibraryColorPick_Click" HorizontalAlignment="Right"/>
+                        <Button x:Name="LibrarySettingsButton" Content="⚙ Settings" Padding="10,6" Margin="0,0,12,0"
+                                DockPanel.Dock="Right" Click="LibrarySettings_Click" HorizontalAlignment="Right"/>
                         <TextBlock Text="My notebooks" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </DockPanel>
                 </Border>
