@@ -490,6 +490,7 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="MenuButton" Style="{StaticResource TopIconButton}" Content="&#xE700;" ToolTip="Menu" Click="MenuButton_Click"/>
+                    <Button x:Name="BackToLibraryButton" Style="{StaticResource TopIconButton}" Content="&#xE80A;" ToolTip="Back to my notebooks" Click="BackToLibrary_Click"/>
                     <Button x:Name="FullscreenButton" Style="{StaticResource TopIconButton}" Content="&#xE740;" ToolTip="Fullscreen (F11)" Click="FullscreenButton_Click"/>
                 </StackPanel>
 
@@ -1157,5 +1158,53 @@
                 </StackPanel>
             </Border>
         </Popup>
+
+        <!-- ===== In-app library / bookshelf ===== -->
+        <Grid x:Name="LibraryView" Grid.Row="2" Background="White" Panel.ZIndex="600" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" Background="#F5F5F5" BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Padding="16,12">
+                <DockPanel>
+                    <Button x:Name="LibraryNewButton" Content="+ New notebook" Padding="12,6" Margin="0,0,12,0"
+                            Click="LibraryNew_Click"/>
+                    <TextBlock Text="My notebooks" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
+                <ItemsControl x:Name="LibraryList">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="180" Height="120" Margin="8" Background="#FFFFFF" BorderBrush="#D0D0D0"
+                                    BorderThickness="1" CornerRadius="8" Padding="10"
+                                    MouseLeftButtonDown="LibraryItem_MouseLeftButtonDown"
+                                    MouseRightButtonDown="LibraryItem_RightClick"
+                                    Cursor="Hand" Tag="{Binding}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="&#xE7C3;" FontFamily="Segoe MDL2 Assets" FontSize="36"
+                                               Foreground="#1A73E8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Row="1">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                                                   TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding ModifiedUtc, StringFormat={}{0:yyyy-MM-dd}}" FontSize="10"
+                                                   Foreground="#888888" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Window>

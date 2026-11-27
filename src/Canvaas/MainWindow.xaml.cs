@@ -462,6 +462,8 @@ public partial class MainWindow : Window
         ApplyPenAttributes();
         UpdateCursor();
         TitleBarText.Text = "Canvaas";
+
+        InitLibrary();
         InitBars();
         InitAutosave();
         UpdateTitle();
@@ -4826,6 +4828,7 @@ public partial class MainWindow : Window
         _currentPageIndex = 0;
         LoadCurrentPageIntoCanvas();
         _currentPath = null;
+        _currentLibraryEntry = null;
         _dirty = false;
         UpdateTitle();
         StatusText.Text = "New blank note.";
@@ -4835,7 +4838,7 @@ public partial class MainWindow : Window
     {
         if (!ConfirmDiscardChanges()) return;
         var dialog = new OpenFileDialog { Filter = FileFilter, DefaultExt = FileExtension, Title = "Open a Canvaas note" };
-        if (dialog.ShowDialog(this) == true) OpenFromFile(dialog.FileName);
+        if (dialog.ShowDialog(this) == true) { _currentLibraryEntry = null; OpenFromFile(dialog.FileName); }
     }
 
     private void Save_Executed(object sender, ExecutedRoutedEventArgs e) => SaveCurrent();
@@ -6219,4 +6222,177 @@ public partial class MainWindow : Window
         drawWin.Content = rootGrid;
         drawWin.Show();
     }
+
+    // =====================================================================
+    // In-app library / bookshelf
+    // =====================================================================
+    private sealed class LibraryEntry
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        public string Title { get; set; } = "Untitled notebook";
+        public string FileName { get; set; } = "";
+        public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
+        public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
+    }
+
+    private readonly ObservableCollection<LibraryEntry> _libraryEntries = new();
+    private LibraryEntry? _currentLibraryEntry;
+    private string _libraryRoot = "";
+    private string _libraryIndex = "";
+
+    private void InitLibrary()
+    {
+        _libraryRoot = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Canvaas", "Library");
+        System.IO.Directory.CreateDirectory(_libraryRoot);
+        _libraryIndex = System.IO.Path.Combine(_libraryRoot, "library.json");
+        LoadLibraryIndex();
+        if (LibraryList is not null) LibraryList.ItemsSource = _libraryEntries;
+        ShowLibrary();
+    }
+
+    private void LoadLibraryIndex()
+    {
+        _libraryEntries.Clear();
+        try
+        {
+            if (System.IO.File.Exists(_libraryIndex))
+            {
+                var json = System.IO.File.ReadAllText(_libraryIndex);
+                var list = JsonSerializer.Deserialize<List<LibraryEntry>>(json, JsonOptions);
+                if (list is not null)
+                    foreach (var e in list) _libraryEntries.Add(e);
+            }
+        }
+        catch { /* ignore corrupt index; start empty */ }
+    }
+
+    private void SaveLibraryIndex()
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(_libraryEntries.ToList(), JsonOptions);
+            System.IO.File.WriteAllText(_libraryIndex, json);
+        }
+        catch { }
+    }
+
+    private void ShowLibrary()
+    {
+        _currentLibraryEntry = null;
+        if (LibraryView is not null) LibraryView.Visibility = Visibility.Visible;
+        if (TopToolbarBorder is not null) TopToolbarBorder.Visibility = Visibility.Collapsed;
+        if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Collapsed;
+        TitleBarText.Text = "Canvaas - My notebooks";
+    }
+
+    private void HideLibrary()
+    {
+        if (LibraryView is not null) LibraryView.Visibility = Visibility.Collapsed;
+        if (TopToolbarBorder is not null) TopToolbarBorder.Visibility = Visibility.Visible;
+        if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Visible;
+    }
+
+    private void LibraryNew_Click(object sender, RoutedEventArgs e)
+    {
+        var entry = new LibraryEntry { Title = "New notebook" };
+        entry.FileName = entry.Id + FileExtension;
+        _libraryEntries.Insert(0, entry);
+        SaveLibraryIndex();
+        OpenLibraryEntry(entry);
+    }
+
+    private void OpenLibraryEntry(LibraryEntry entry)
+    {
+        if (!ConfirmDiscardChanges()) return;
+        var path = System.IO.Path.Combine(_libraryRoot, entry.FileName);
+        if (!System.IO.File.Exists(path))
+        {
+            // create an empty notebook file first
+            _pages.Clear();
+            _pages.Add(NewStyledPage());
+            _currentPageIndex = 0;
+            LoadCurrentPageIntoCanvas();
+            _currentPath = path;
+            _dirty = true;
+            if (!SaveToFile(path)) return;
+        }
+        if (OpenFromFile(path))
+        {
+            _currentLibraryEntry = entry;
+            entry.ModifiedUtc = DateTime.UtcNow;
+            SaveLibraryIndex();
+            HideLibrary();
+            UpdateTitle();
+        }
+    }
+
+    private void LibraryItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is LibraryEntry entry)
+            OpenLibraryEntry(entry);
+    }
+
+    private void LibraryItem_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is LibraryEntry entry)
+        {
+            var menu = new ContextMenu();
+            var openItem = new MenuItem { Header = "Open" };
+            openItem.Click += (s, ev) => OpenLibraryEntry(entry);
+            menu.Items.Add(openItem);
+            var renameItem = new MenuItem { Header = "Rename" };
+            renameItem.Click += (s, ev) => RenameLibraryEntry(entry);
+            menu.Items.Add(renameItem);
+            var deleteItem = new MenuItem { Header = "Delete" };
+            deleteItem.Click += (s, ev) => DeleteLibraryEntry(entry);
+            menu.Items.Add(deleteItem);
+            fe.ContextMenu = menu;
+            menu.IsOpen = true;
+            e.Handled = true;
+        }
+    }
+
+    private void RenameLibraryEntry(LibraryEntry entry)
+    {
+        var dlg = new SimpleInputDialog("Rename notebook", "New name:", entry.Title);
+        dlg.Owner = this;
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.Result))
+        {
+            entry.Title = dlg.Result.Trim();
+            entry.ModifiedUtc = DateTime.UtcNow;
+            SaveLibraryIndex();
+            if (LibraryList is not null) LibraryList.Items.Refresh();
+            if (_currentLibraryEntry == entry) UpdateTitle();
+        }
+    }
+
+    private void DeleteLibraryEntry(LibraryEntry entry)
+    {
+        if (MessageBox.Show(this, $"Delete \"{entry.Title}\"?", "Delete notebook",
+            MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        try
+        {
+            var path = System.IO.Path.Combine(_libraryRoot, entry.FileName);
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+        }
+        catch { }
+        _libraryEntries.Remove(entry);
+        SaveLibraryIndex();
+    }
+
+    private void BackToLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        // auto-save current notebook if it belongs to the library
+        if (_currentLibraryEntry is not null && _currentPath is not null)
+        {
+            _dirty = true;
+            SaveToFile(_currentPath);
+        }
+        _currentPath = null;
+        _dirty = false;
+        ShowLibrary();
+    }
+
 }

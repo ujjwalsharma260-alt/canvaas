@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.0
+
+### Added
+- **In-app notebook library ("bookshelf")** - Canvaas now opens to a library of your notebooks. Create, open, rename (right-click) and delete notebooks without touching files. Notebooks are stored inside the app's folder (%APPDATA%\\Canvaas\\Library).
+- **Auto-save on return** - The "Back to my notebooks" button saves the current notebook and returns to the library.
+- **New notebook button** in the library creates and opens a fresh notebook.
+
+### Changed
+- Version bumped to 0.4.0.
+
 ## v0.3.4
 
 ### Added
