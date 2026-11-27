@@ -827,6 +827,7 @@
                                     <RadioButton x:Name="CanvasColorCustom" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#CCCCCC" ToolTip="Custom colour..." Click="CanvasColorSwatch_Click" Tag="#FFFFFF"/>
                                     <TextBox x:Name="CanvasColorCustomHex" Text="{Binding Path=CanvasBackgroundColor, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Style="{StaticResource CustomTextBox}" MaxLength="7" TextChanged="CanvasColorCustomHex_TextChanged" ToolTip="Enter custom hex colour (e.g. #FF0000)" Margin="4,0,0,0"/>
                                 </UniformGrid>
+                                <Button Content="Pick colour (RGB)…" Margin="0,0,0,12" Padding="10,4" HorizontalAlignment="Left" Click="CanvasColorPick_Click"/>
 
                                 <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
                                 <UniformGrid Columns="4" Margin="0,0,0,16">
@@ -1040,6 +1041,7 @@
                                     <RadioButton x:Name="SettingsQuickColorCustom" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#CCCCCC" ToolTip="Custom colour..." Click="QuickColorSwatch_Click" Tag="#FFFFFF"/>
                                     <TextBox x:Name="SettingsQuickColorCustomHex" Style="{StaticResource CustomTextBox}" MaxLength="7" TextChanged="SettingsQuickColorCustomHex_TextChanged" ToolTip="Enter custom hex colour for index 0 (e.g. #FF0000)" Margin="4,0,0,0"/>
                                 </UniformGrid>
+                                <Button Content="Pick colour (RGB)…" Margin="0,0,0,12" Padding="10,4" HorizontalAlignment="Left" Click="QuickColorPick_Click"/>
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -1161,50 +1163,79 @@
 
         <!-- ===== In-app library / bookshelf ===== -->
         <Grid x:Name="LibraryView" Grid.Row="2" Background="White" Panel.ZIndex="600" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <Border Grid.Row="0" Background="#F5F5F5" BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Padding="16,12">
-                <DockPanel>
-                    <Button x:Name="LibraryNewButton" Content="+ New notebook" Padding="12,6" Margin="0,0,12,0"
-                            Click="LibraryNew_Click"/>
-                    <TextBlock Text="My notebooks" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                </DockPanel>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <!-- Left sidebar: shelves -->
+            <Border Grid.Column="0" Background="#F0F0F0" BorderBrush="#D0D0D0" BorderThickness="0,0,1,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Shelves" FontSize="16" FontWeight="SemiBold" Margin="12,12,12,8"/>
+                    <ListBox x:Name="ShelfList" Grid.Row="1" Margin="8,0,8,8"/>
+                    <StackPanel Grid.Row="2" Margin="8">
+                        <Button Content="+ New shelf" Margin="0,0,0,4" Click="ShelfNew_Click"/>
+                        <Button Content="Rename shelf" Margin="0,0,0,4" Click="ShelfRename_Click"/>
+                        <Button Content="Delete shelf" Click="ShelfDelete_Click"/>
+                    </StackPanel>
+                </Grid>
             </Border>
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
-                <ItemsControl x:Name="LibraryList">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border Width="180" Height="120" Margin="8" Background="#FFFFFF" BorderBrush="#D0D0D0"
-                                    BorderThickness="1" CornerRadius="8" Padding="10"
-                                    MouseLeftButtonDown="LibraryItem_MouseLeftButtonDown"
-                                    MouseRightButtonDown="LibraryItem_RightClick"
-                                    Cursor="Hand" Tag="{Binding}">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="*"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Text="&#xE7C3;" FontFamily="Segoe MDL2 Assets" FontSize="36"
-                                               Foreground="#1A73E8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    <StackPanel Grid.Row="1">
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
-                                                   TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="{Binding ModifiedUtc, StringFormat={}{0:yyyy-MM-dd}}" FontSize="10"
-                                                   Foreground="#888888" HorizontalAlignment="Center"/>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+            <!-- Main area -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Border Grid.Row="0" Background="#F5F5F5" BorderBrush="#D0D0D0" BorderThickness="0,0,0,1" Padding="16,12">
+                    <DockPanel>
+                        <Button x:Name="LibraryNewButton" Content="+ New notebook" Padding="12,6" Margin="0,0,12,0"
+                                Click="LibraryNew_Click"/>
+                        <Button x:Name="LibraryColorButton" Content="Background colour" Padding="10,6" Margin="0,0,12,0"
+                                DockPanel.Dock="Right" Click="LibraryColorPick_Click" HorizontalAlignment="Right"/>
+                        <TextBlock Text="My notebooks" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </DockPanel>
+                </Border>
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16">
+                    <ItemsControl x:Name="LibraryList">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Width="180" Height="140" Margin="8" Background="#FFFFFF" BorderBrush="#D0D0D0"
+                                        BorderThickness="1" CornerRadius="8" Padding="10"
+                                        MouseLeftButtonDown="LibraryItem_MouseLeftButtonDown"
+                                        MouseRightButtonDown="LibraryItem_RightClick"
+                                        Cursor="Hand" Tag="{Binding}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid>
+                                            <Image Source="{Binding ThumbnailPath}" Stretch="Uniform" />
+                                            <TextBlock Text="{Binding ShelfBadge}" FontSize="10" Foreground="#888888"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Top"/>
+                                        </Grid>
+                                        <StackPanel Grid.Row="1">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13"
+                                                       TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding ModifiedUtc, StringFormat={}{0:yyyy-MM-dd}}" FontSize="10"
+                                                       Foreground="#888888" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

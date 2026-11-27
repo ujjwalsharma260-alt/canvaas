@@ -159,6 +159,7 @@ public partial class MainWindow : Window
         public string[]? DarkQuick { get; set; }
         // New: customizable canvas and palette colours (hex strings, ARGB format)
         public string? CanvasBackgroundColor { get; set; } = "#FFFFFF";
+        public string? LibraryBackgroundColor { get; set; } = "#F5F5F5";
         public string[]? QuickColorHex { get; set; } = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
     }
 
@@ -256,6 +257,7 @@ public partial class MainWindow : Window
     private Color _penToolColor = Colors.Black;
     // New: customizable canvas and palette colours (hex strings, loaded from settings)
     private string _canvasBackgroundColor = "#FFFFFF";
+    private string _libraryBackgroundColor = "#F5F5F5";
     private string[] _quickColorHex = new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
     private Color _highlighterToolColor = Color.FromRgb(255, 235, 0);
     private Color _calligraphyToolColor = Colors.Black;
@@ -1952,6 +1954,7 @@ public partial class MainWindow : Window
             if (s.DarkQuick is { Length: 4 }) _darkQuick = s.DarkQuick;
             // New: load custom canvas and palette colours
             if (!string.IsNullOrWhiteSpace(s.CanvasBackgroundColor)) _canvasBackgroundColor = s.CanvasBackgroundColor;
+            if (!string.IsNullOrWhiteSpace(s.LibraryBackgroundColor)) _libraryBackgroundColor = s.LibraryBackgroundColor;
             if (s.QuickColorHex is { Length: 4 }) _quickColorHex = s.QuickColorHex;
         }
         catch { }
@@ -1988,6 +1991,7 @@ public partial class MainWindow : Window
                 PdfPageSizeIndex = PdfPageSizeCombo?.SelectedIndex ?? _pdfPageSizeIndex,
                 PdfOrientationIndex = PdfOrientationCombo?.SelectedIndex ?? _pdfOrientationIndex,
                 CanvasBackgroundColor = _canvasBackgroundColor,
+                LibraryBackgroundColor = _libraryBackgroundColor,
                 QuickColorHex = _quickColorHex
             };
             CaptureStyle(s);
@@ -4252,6 +4256,17 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CanvasColorPick_Click(object sender, RoutedEventArgs e)
+    {
+        var current = ParseHexColor(_canvasBackgroundColor, Colors.White);
+        var dlg = new ColorPickerDialog(current) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            string hex = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
+            if (CanvasColorCustomHex is not null) CanvasColorCustomHex.Text = hex;
+        }
+    }
+
     private void CanvasColorCustomHex_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (CanvasColorCustomHex is not null && !string.IsNullOrWhiteSpace(CanvasColorCustomHex.Text))
@@ -4268,6 +4283,18 @@ public partial class MainWindow : Window
                 MarkDirty();
                 StatusText.Text = $"Canvas colour: {hex}";
             }
+        }
+    }
+
+    private void QuickColorPick_Click(object sender, RoutedEventArgs e)
+    {
+        Color current = Colors.Black;
+        try { current = ParseHexColor(_quickColorHex[0], Colors.Black); } catch { }
+        var dlg = new ColorPickerDialog(current) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            string hex = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
+            if (SettingsQuickColorCustomHex is not null) SettingsQuickColorCustomHex.Text = hex;
         }
     }
 
@@ -6231,14 +6258,45 @@ public partial class MainWindow : Window
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
         public string Title { get; set; } = "Untitled notebook";
         public string FileName { get; set; } = "";
+        public string ShelfId { get; set; } = "";
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
         public DateTime ModifiedUtc { get; set; } = DateTime.UtcNow;
+        public bool HasPdf { get; set; } = false;
+
+        // Computed, not serialized.
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? ThumbnailPath
+        {
+            get
+            {
+                try
+                {
+                    var p = System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        "Canvaas", "Library", Id + ".png");
+                    return System.IO.File.Exists(p) ? p : null;
+                }
+                catch { return null; }
+            }
+        }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string PdfBadge => HasPdf ? "PDF" : "";
+    }
+
+    private sealed class ShelfEntry
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        public string Name { get; set; } = "New shelf";
     }
 
     private readonly ObservableCollection<LibraryEntry> _libraryEntries = new();
+    private readonly ObservableCollection<ShelfEntry> _shelves = new();
     private LibraryEntry? _currentLibraryEntry;
     private string _libraryRoot = "";
     private string _libraryIndex = "";
+    private string _shelvesIndex = "";
+    private string _selectedShelfId = "";
 
     private void InitLibrary()
     {
@@ -6247,8 +6305,21 @@ public partial class MainWindow : Window
             "Canvaas", "Library");
         System.IO.Directory.CreateDirectory(_libraryRoot);
         _libraryIndex = System.IO.Path.Combine(_libraryRoot, "library.json");
+        _shelvesIndex = System.IO.Path.Combine(_libraryRoot, "shelves.json");
+        LoadShelves();
         LoadLibraryIndex();
-        if (LibraryList is not null) LibraryList.ItemsSource = _libraryEntries;
+        if (ShelfList is not null)
+        {
+            ShelfList.DisplayMemberPath = "Name";
+            ShelfList.ItemsSource = _shelves;
+            if (_shelves.Count == 0 || _shelves[0].Id != "")
+            {
+                _shelves.Insert(0, new ShelfEntry { Id = "", Name = "All notebooks" });
+            }
+            ShelfList.SelectedIndex = 0;
+            ShelfList.SelectionChanged += ShelfList_SelectionChanged;
+        }
+        RefreshLibraryView();
         ShowLibrary();
     }
 
@@ -6268,6 +6339,33 @@ public partial class MainWindow : Window
         catch { /* ignore corrupt index; start empty */ }
     }
 
+    private void LoadShelves()
+    {
+        _shelves.Clear();
+        try
+        {
+            if (System.IO.File.Exists(_shelvesIndex))
+            {
+                var json = System.IO.File.ReadAllText(_shelvesIndex);
+                var list = JsonSerializer.Deserialize<List<ShelfEntry>>(json, JsonOptions);
+                if (list is not null) foreach (var s in list) _shelves.Add(s);
+            }
+        }
+        catch { }
+    }
+
+    private void SaveShelves()
+    {
+        try
+        {
+            // exclude virtual "All notebooks" shelf (Id == "")
+            var toSave = _shelves.Where(s => s.Id != "").ToList();
+            var json = JsonSerializer.Serialize(toSave, JsonOptions);
+            System.IO.File.WriteAllText(_shelvesIndex, json);
+        }
+        catch { }
+    }
+
     private void SaveLibraryIndex()
     {
         try
@@ -6281,7 +6379,11 @@ public partial class MainWindow : Window
     private void ShowLibrary()
     {
         _currentLibraryEntry = null;
-        if (LibraryView is not null) LibraryView.Visibility = Visibility.Visible;
+        if (LibraryView is not null)
+        {
+            LibraryView.Visibility = Visibility.Visible;
+            LibraryView.Background = new SolidColorBrush(ParseHexColor(_libraryBackgroundColor, Colors.White));
+        }
         if (TopToolbarBorder is not null) TopToolbarBorder.Visibility = Visibility.Collapsed;
         if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Collapsed;
         TitleBarText.Text = "Canvaas - My notebooks";
@@ -6294,9 +6396,79 @@ public partial class MainWindow : Window
         if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Visible;
     }
 
+    private void RefreshLibraryView()
+    {
+        if (LibraryList is null) return;
+        IEnumerable<LibraryEntry> filtered = _libraryEntries;
+        if (!string.IsNullOrEmpty(_selectedShelfId))
+            filtered = _libraryEntries.Where(e => e.ShelfId == _selectedShelfId);
+        LibraryList.ItemsSource = filtered.ToList();
+    }
+
+    private void ShelfNew_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new SimpleInputDialog("New shelf", "Shelf name:", "New shelf");
+        dlg.Owner = this;
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.Result))
+        {
+            var shelf = new ShelfEntry { Name = dlg.Result.Trim() };
+            _shelves.Add(shelf);
+            SaveShelves();
+            if (ShelfList is not null) ShelfList.SelectedItem = shelf;
+        }
+    }
+
+    private void ShelfRename_Click(object sender, RoutedEventArgs e)
+    {
+        if (ShelfList?.SelectedItem is not ShelfEntry se || se.Id == "") return;
+        var dlg = new SimpleInputDialog("Rename shelf", "New name:", se.Name);
+        dlg.Owner = this;
+        if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.Result))
+        {
+            se.Name = dlg.Result.Trim();
+            SaveShelves();
+            if (ShelfList is not null) ShelfList.Items.Refresh();
+        }
+    }
+
+    private void ShelfDelete_Click(object sender, RoutedEventArgs e)
+    {
+        if (ShelfList?.SelectedItem is not ShelfEntry se || se.Id == "") return;
+        if (MessageBox.Show(this, $"Delete shelf \"{se.Name}\"? Notebooks in it move to All notebooks.",
+            "Delete shelf", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        foreach (var nb in _libraryEntries.Where(n => n.ShelfId == se.Id).ToList())
+            nb.ShelfId = "";
+        _shelves.Remove(se);
+        SaveShelves();
+        SaveLibraryIndex();
+        if (ShelfList is not null) ShelfList.SelectedIndex = 0;
+    }
+
+    private void ShelfList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ShelfList?.SelectedItem is ShelfEntry se)
+        {
+            _selectedShelfId = se.Id;
+            RefreshLibraryView();
+        }
+    }
+
+    private void LibraryColorPick_Click(object sender, RoutedEventArgs e)
+    {
+        var current = ParseHexColor(_libraryBackgroundColor, Colors.White);
+        var dlg = new ColorPickerDialog(current) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            _libraryBackgroundColor = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
+            if (LibraryView is not null)
+                LibraryView.Background = new SolidColorBrush(ParseHexColor(_libraryBackgroundColor, Colors.White));
+            SaveSettings();
+        }
+    }
+
     private void LibraryNew_Click(object sender, RoutedEventArgs e)
     {
-        var entry = new LibraryEntry { Title = "New notebook" };
+        var entry = new LibraryEntry { Title = "New notebook", ShelfId = _selectedShelfId };
         entry.FileName = entry.Id + FileExtension;
         _libraryEntries.Insert(0, entry);
         SaveLibraryIndex();
@@ -6389,9 +6561,26 @@ public partial class MainWindow : Window
         {
             _dirty = true;
             SaveToFile(_currentPath);
+            // refresh thumbnail of first page
+            try
+            {
+                if (_pages.Count > 0)
+                {
+                    var bmp = RenderPageForPrint(_pages[0], 180, 140);
+                    var thumbPath = System.IO.Path.Combine(_libraryRoot, _currentLibraryEntry.Id + ".png");
+                    using var fs = new System.IO.FileStream(thumbPath, System.IO.FileMode.Create);
+                    var enc = new PngBitmapEncoder();
+                    enc.Frames.Add(BitmapFrame.Create(bmp));
+                    enc.Save(fs);
+                }
+                _currentLibraryEntry.ModifiedUtc = DateTime.UtcNow;
+                SaveLibraryIndex();
+            }
+            catch { }
         }
         _currentPath = null;
         _dirty = false;
+        RefreshLibraryView();
         ShowLibrary();
     }
 

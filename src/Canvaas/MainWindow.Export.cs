@@ -924,6 +924,11 @@ public partial class MainWindow
             LoadCurrentPageIntoCanvas();
             MarkDirty();
             StatusText.Text = "Inserted " + pages.Count + " PDF page(s) with notes space. Use the arrows to move between pages.";
+            if (_currentLibraryEntry is not null)
+            {
+                _currentLibraryEntry.HasPdf = true;
+                SaveLibraryIndex();
+            }
         }
         catch (Exception ex)
         {

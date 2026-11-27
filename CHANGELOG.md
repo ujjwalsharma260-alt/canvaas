@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0
+
+### Added
+- **RGB colour picker** - "Pick colour (RGB)…" buttons in Settings for canvas background and quick palette colour, with live RGB sliders and hex input.
+- **Shelves (categories)** - Left sidebar in the library: create, rename, delete shelves (e.g. Chemistry, Biology). Notebooks can be moved between shelves by deleting/recreating? (Notebooks are created in the selected shelf.)
+- **Notebook thumbnails** - Cards show a preview of the first page; refreshed when you press Back to library.
+- **PDF badge** - Notebook cards show "PDF" if the notebook contains imported PDF pages.
+- **Library background colour** - Colour button in the library header changes the bookshelf background (persisted).
+
 ## v0.4.0
 
 ### Added
