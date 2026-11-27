@@ -486,6 +486,14 @@ public partial class MainWindow : Window
             return;
         }
 
+        // If we're in library mode, position the menu at a fixed spot.
+        if (LibraryView is not null && LibraryView.Visibility == Visibility.Visible)
+        {
+            MainMenuFlyout.Margin = new Thickness(6, 6, 0, 0);
+            MainMenuFlyout.Visibility = Visibility.Visible;
+            return;
+        }
+
         PositionMainMenuFlyout();
         MainMenuFlyout.Visibility = Visibility.Visible;
     }
@@ -536,6 +544,12 @@ public partial class MainWindow : Window
     private void OpenSettingsPanel(string title)
     {
         if (SettingsOverlay is null) return;
+        // Auto-save current notebook before showing settings, if we have one.
+        if (_currentPath is not null && _dirty)
+        {
+            _dirty = true;
+            SaveToFile(_currentPath);
+        }
         if (SettingsTitle is not null) SettingsTitle.Text = title;
         SyncSettingsUI();
         SettingsOverlay.Visibility = Visibility.Visible;
@@ -6482,7 +6496,9 @@ public partial class MainWindow : Window
         entry.FileName = entry.Id + FileExtension;
         _libraryEntries.Insert(0, entry);
         SaveLibraryIndex();
-        OpenLibraryEntry(entry);
+        // Refresh the library view so the new notebook appears, but DO NOT open the canvas.
+        RefreshLibraryView();
+        // Keep the library visible; do not navigate to the canvas.
     }
 
     private void OpenLibraryEntry(LibraryEntry entry)

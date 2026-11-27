@@ -9,6 +9,20 @@
 - **PDF badge** - Notebook cards show "PDF" if the notebook contains imported PDF pages.
 - **Library background colour** - Colour button in the library header changes the bookshelf background (persisted).
 
+## v0.5.1
+
+### Fixed
+- **Menu flyout (☰) from library**: Added AppMenuButton in the library header; clicking it or the ☰ now opens Settings. Improved PositionMainMenuFlyout to handle library mode (fixed-position menu).
+- **New notebook from library**: Creating a new notebook no longer automatically opens the canvas; the library view stays active and the new notebook appears in the selected shelf.
+- **Auto-save consistency**: Auto-save now occurs when opening Settings (OpenSettingsPanel), returning to library (BackToLibrary_Click), and on window close (ConfirmDiscardChanges / SaveSettings).
+- **Shelf scrolling**: Added VerticalScrollBarVisibility="Auto" to the library notebook grid; shelves now support scrolling when there are many notebooks.
+
+### Changed
+- Library header now shows: AppMenuButton (☰), + New notebook, Background colour button, Settings (⚙), and "My notebooks" title.
+- LibraryNew_Click no longer navigates to canvas; it refreshes the library view.
+- OpenSettingsPanel auto-saves the current notebook before showing the overlay.
+- Window_Closing keep the existing save-prompt behaviour; BackToLibrary_Click and OpenSettingsPanel now auto-save silently.
+
 ## v0.4.0
 
 ### Added
