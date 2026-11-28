@@ -642,12 +642,22 @@
                             <TextBlock Text="&#x2022;&#x2022;&#x2022;" Foreground="#888888" FontSize="10"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <UniformGrid Columns="2">
-                            <Button x:Name="QuickColor2" Style="{StaticResource QuickColorSquare}" Background="#E53935" Tag="#E53935" Click="QuickColor_Click" ToolTip="Red"/>
-                            <Button x:Name="QuickColor1" Style="{StaticResource QuickColorSquare}" Background="#000000" Tag="#000000" Click="QuickColor_Click" ToolTip="Black"/>
-                            <Button x:Name="QuickColor3" Style="{StaticResource QuickColorSquare}" Background="#1E88E5" Tag="#1E88E5" Click="QuickColor_Click" ToolTip="Blue"/>
-                            <Button x:Name="QuickColor4" Style="{StaticResource QuickColorSquare}" Background="#43A047" Tag="#43A047" Click="QuickColor_Click" ToolTip="Green"/>
-                        </UniformGrid>
+                        <ItemsControl x:Name="QuickColorItems">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="2"/>
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource QuickColorSquare}"
+                                            Background="{Binding}" Tag="{Binding}"
+                                            Click="QuickColor_Click"
+                                            MouseRightButtonUp="QuickColor_RightClick"
+                                            ToolTip="Click: use this colour. Right-click: save the current pen colour here."/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </Border>
             </Canvas>
@@ -800,34 +810,25 @@
                                     <RadioButton x:Name="PaperCrumpled" Style="{StaticResource PaperThumb}" GroupName="Paper" Background="{StaticResource PreviewPaperCrumpled}" ToolTip="Crumpled" Click="PaperThumb_Click" Tag="Crumpled"/>
                                 </UniformGrid>
 
-                                <TextBlock Text="Background colour" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
-                                <UniformGrid Columns="9" Margin="0,0,0,16">
-                                    <RadioButton x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FFFFFF" ToolTip="White" Click="ColorSwatch_Click" Tag="#FFFFFF"/>
-                                    <RadioButton x:Name="ColorCream" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#FAF6E3" ToolTip="Cream" Click="ColorSwatch_Click" Tag="#FAF6E3"/>
-                                    <RadioButton x:Name="ColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#EEEEEE" ToolTip="Light grey" Click="ColorSwatch_Click" Tag="#EEEEEE"/>
-                                    <RadioButton x:Name="ColorSage" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE9D5" ToolTip="Sage" Click="ColorSwatch_Click" Tag="#DCE9D5"/>
-                                    <RadioButton x:Name="ColorSky" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#DCE4F2" ToolTip="Sky" Click="ColorSwatch_Click" Tag="#DCE4F2"/>
-                                    <RadioButton x:Name="ColorNavy" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#2C3E5C" ToolTip="Navy" Click="ColorSwatch_Click" Tag="#2C3E5C"/>
-                                    <RadioButton x:Name="ColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1E4D3A" ToolTip="Dark green" Click="ColorSwatch_Click" Tag="#1E4D3A"/>
-                                    <RadioButton x:Name="ColorPitch" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#000000" ToolTip="Pitch black" Click="ColorSwatch_Click" Tag="#000000"/>
-                                    <RadioButton x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" GroupName="BgColor" Background="#1A1A1A" ToolTip="Black" Click="ColorSwatch_Click" Tag="#1A1A1A"/>
-                                </UniformGrid>
-
                                 <TextBlock Text="Canvas colour" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
-                                <!-- Background colour section removed - Canvas colour section handles canvas colour changes -->
-
-                                <UniformGrid Columns="8" Margin="0,0,0,16">
-                                    <RadioButton x:Name="CanvasColorDefault" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#FFFFFF" ToolTip="Default white" Click="CanvasColorSwatch_Click" Tag="#FFFFFF"/>
-                                    <RadioButton x:Name="CanvasColorPaper" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#FAF6E3" ToolTip="Paper cream" Click="CanvasColorSwatch_Click" Tag="#FAF6E3"/>
-                                    <RadioButton x:Name="CanvasColorLightGray" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#EEEEEE" ToolTip="Light grey" Click="CanvasColorSwatch_Click" Tag="#EEEEEE"/>
-                                    <RadioButton x:Name="CanvasColorSage" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#DCE9D5" ToolTip="Sage" Click="CanvasColorSwatch_Click" Tag="#DCE9D5"/>
-                                    <RadioButton x:Name="CanvasColorSky" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#DCE4F2" ToolTip="Sky blue" Click="CanvasColorSwatch_Click" Tag="#DCE4F2"/>
-                                    <RadioButton x:Name="CanvasColorNavy" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#2C3E5C" ToolTip="Navy" Click="CanvasColorSwatch_Click" Tag="#2C3E5C"/>
-                                    <RadioButton x:Name="CanvasColorDarkGreen" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#1E4D3A" ToolTip="Dark green" Click="CanvasColorSwatch_Click" Tag="#1E4D3A"/>
-                                    <RadioButton x:Name="CanvasColorCustom" Style="{StaticResource ColorSwatch}" GroupName="CanvasColor" Background="#CCCCCC" ToolTip="Custom colour..." Click="CanvasColorSwatch_Click" Tag="#FFFFFF"/>
-                                    <TextBox x:Name="CanvasColorCustomHex" Text="{Binding Path=CanvasBackgroundColor, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}" Style="{StaticResource CustomTextBox}" MaxLength="7" TextChanged="CanvasColorCustomHex_TextChanged" ToolTip="Enter custom hex colour (e.g. #FF0000)" Margin="4,0,0,0"/>
-                                </UniformGrid>
-                                <Button Content="Pick colour (RGB)…" Margin="0,0,0,12" Padding="10,4" HorizontalAlignment="Left" Click="CanvasColorPick_Click"/>
+                                <TextBlock Text="Click a colour to use it. Right-click a colour to remove it." FontSize="12" Foreground="#777777" Margin="0,0,0,8"/>
+                                <ItemsControl x:Name="BackgroundColorsList" Margin="0,0,0,8">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Width="34" Height="34" Margin="0,0,8,8" Padding="0"
+                                                    Background="{Binding}" BorderBrush="#BBBBBB" BorderThickness="1"
+                                                    Tag="{Binding}" ToolTip="{Binding}"
+                                                    Click="BackgroundColorChip_Click"
+                                                    MouseRightButtonUp="BackgroundColorChip_RightClick"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="+ Add colour…" Margin="0,0,0,16" Padding="10,4" HorizontalAlignment="Left" Click="AddBackgroundColor_Click"/>
 
                                 <TextBlock Text="Templates" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
                                 <UniformGrid Columns="4" Margin="0,0,0,16">
@@ -1032,16 +1033,24 @@
                                           Checked="ShowQuickColorsCheck_Changed" Unchecked="ShowQuickColorsCheck_Changed"/>
 
                                 <TextBlock Text="Quick colour palette" FontWeight="SemiBold" FontSize="14" Foreground="#333333" Margin="0,0,0,8"/>
-                                <UniformGrid Columns="6" Margin="0,0,0,16">
-                                    <RadioButton x:Name="SettingsQuickColorNone" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="Transparent" ToolTip="None" Click="QuickColorSwatch_Click" Tag="#FFFFFF"/>
-                                    <RadioButton x:Name="SettingsQuickColor1" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#000000" ToolTip="Black" Click="QuickColorSwatch_Click" Tag="#000000"/>
-                                    <RadioButton x:Name="SettingsQuickColor2" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#E53935" ToolTip="Red" Click="QuickColorSwatch_Click" Tag="#E53935"/>
-                                    <RadioButton x:Name="SettingsQuickColor3" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#1E88E5" ToolTip="Blue" Click="QuickColorSwatch_Click" Tag="#1E88E5"/>
-                                    <RadioButton x:Name="SettingsQuickColor4" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#43A047" ToolTip="Green" Click="QuickColorSwatch_Click" Tag="#43A047"/>
-                                    <RadioButton x:Name="SettingsQuickColorCustom" Style="{StaticResource ColorSwatch}" GroupName="QuickColor" Background="#CCCCCC" ToolTip="Custom colour..." Click="QuickColorSwatch_Click" Tag="#FFFFFF"/>
-                                    <TextBox x:Name="SettingsQuickColorCustomHex" Style="{StaticResource CustomTextBox}" MaxLength="7" TextChanged="SettingsQuickColorCustomHex_TextChanged" ToolTip="Enter custom hex colour for index 0 (e.g. #FF0000)" Margin="4,0,0,0"/>
-                                </UniformGrid>
-                                <Button Content="Pick colour (RGB)…" Margin="0,0,0,12" Padding="10,4" HorizontalAlignment="Left" Click="QuickColorPick_Click"/>
+                                <TextBlock Text="Click a colour to use it. Right-click a colour to remove it." FontSize="12" Foreground="#777777" Margin="0,0,0,8"/>
+                                <ItemsControl x:Name="PaletteColorsList" Margin="0,0,0,8">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Width="34" Height="34" Margin="0,0,8,8" Padding="0"
+                                                    Background="{Binding}" BorderBrush="#BBBBBB" BorderThickness="1"
+                                                    Tag="{Binding}" ToolTip="{Binding}"
+                                                    Click="PaletteColorChip_Click"
+                                                    MouseRightButtonUp="PaletteColorChip_RightClick"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Button Content="+ Add colour…" Margin="0,0,0,16" Padding="10,4" HorizontalAlignment="Left" Click="AddPaletteColor_Click"/>
 
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -1181,6 +1190,8 @@
                         <Button Content="+ New shelf" Margin="0,0,0,4" Click="ShelfNew_Click"/>
                         <Button Content="Rename shelf" Margin="0,0,0,4" Click="ShelfRename_Click"/>
                         <Button Content="Delete shelf" Click="ShelfDelete_Click"/>
+                        <TextBlock x:Name="VersionLabel" Text="v0.5.2" FontSize="11" Foreground="#888888"
+                                   Margin="4,10,0,0"/>
                     </StackPanel>
                 </Grid>
             </Border>

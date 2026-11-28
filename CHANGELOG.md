@@ -1,13 +1,16 @@
 # Changelog
 
-## v0.5.0
+## v0.5.2
 
-### Added
-- **RGB colour picker** - "Pick colour (RGB)…" buttons in Settings for canvas background and quick palette colour, with live RGB sliders and hex input.
-- **Shelves (categories)** - Left sidebar in the library: create, rename, delete shelves (e.g. Chemistry, Biology). Notebooks can be moved between shelves by deleting/recreating? (Notebooks are created in the selected shelf.)
-- **Notebook thumbnails** - Cards show a preview of the first page; refreshed when you press Back to library.
-- **PDF badge** - Notebook cards show "PDF" if the notebook contains imported PDF pages.
-- **Library background colour** - Colour button in the library header changes the bookshelf background (persisted).
+### Fixed
+- **Preset colour palettes actually removed** - the fixed swatch rows in Settings are gone. Canvas colours and quick-palette colours are now plain lists you own: click a colour to use it, right-click a colour to delete it, and "+ Add colour…" opens the RGB picker to add a new one. Any number of colours is allowed (one minimum).
+- **Quick colour square follows your palette** - the floating square on the canvas now shows exactly the colours in your palette list (any count), instead of four hard-coded ones. Right-clicking a square still stores the current pen colour in that slot.
+- **Theme switching no longer overwrites your palette** - switching between light and dark pages used to replace your quick colours with built-in sets. It no longer touches them.
+- **Version label** - the library sidebar now shows the running version (e.g. `v0.5.2`) so it is obvious which build is open.
+
+### Changed
+- Removed the duplicate "Background colour" swatch row; "Canvas colour" is the single place to manage page background colours.
+- `Reset all settings` restores a single white canvas colour and the four default palette colours.
 
 ## v0.5.1
 
@@ -19,9 +22,18 @@
 
 ### Changed
 - Library header now shows: AppMenuButton (☰), + New notebook, Background colour button, Settings (⚙), and "My notebooks" title.
-- LibraryNew_Click no longer navigates to canvas; it refreshes the library view.
+- LibraryNew_Click no longer navigates to the canvas; it refreshes the library view.
 - OpenSettingsPanel auto-saves the current notebook before showing the overlay.
 - Window_Closing keep the existing save-prompt behaviour; BackToLibrary_Click and OpenSettingsPanel now auto-save silently.
+
+## v0.5.0
+
+### Added
+- **RGB colour picker** - "Pick colour (RGB)…" buttons in Settings for canvas background and quick palette colour, with live RGB sliders and hex input.
+- **Shelves (categories)** - Left sidebar in the library: create, rename, delete shelves (e.g. Chemistry, Biology).
+- **Notebook thumbnails** - Cards show a preview of the first page; refreshed when you press Back to library.
+- **PDF badge** - Notebook cards show "PDF" if the notebook contains imported PDF pages.
+- **Library background colour** - Colour button in the library header changes the bookshelf background (persisted).
 
 ## v0.4.0
 

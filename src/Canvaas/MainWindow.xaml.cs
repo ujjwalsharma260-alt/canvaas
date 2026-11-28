@@ -452,7 +452,6 @@ public partial class MainWindow : Window
         _currentPageIndex = 0;
 
         PopulateToolColorGrid();
-        WireQuickColorRightClick();
         LoadCurrentPageIntoCanvas();
 
         foreach (var tb in new[] { PenButton, HighlighterButton, CalligraphyButton })
@@ -681,68 +680,8 @@ public partial class MainWindow : Window
             if (QuickColorsSizeText is not null) QuickColorsSizeText.Text = ((int)Math.Round(v)).ToString();
         }
 
-        // Sync canvas background colour - preset colours only
-        // Preset options: Default White, Paper Cream, Light Grey, Sage, Sky Blue, Navy, Dark Green
-        // XAML names: CanvasColorDefault, CanvasColorPaper, CanvasColorLightGray, CanvasColorSage, CanvasColorSky, CanvasColorNavy, CanvasColorDarkGreen
-        if (CanvasColorDefault is not null) CanvasColorDefault.IsChecked = _canvasBackgroundColor == "#FFFFFF";
-        if (CanvasColorPaper is not null) CanvasColorPaper.IsChecked = _canvasBackgroundColor == "#FAF6E3";
-        if (CanvasColorLightGray is not null) CanvasColorLightGray.IsChecked = _canvasBackgroundColor == "#EEEEEE";
-        if (CanvasColorSage is not null) CanvasColorSage.IsChecked = _canvasBackgroundColor == "#DCE9D5";
-        if (CanvasColorSky is not null) CanvasColorSky.IsChecked = _canvasBackgroundColor == "#DCE4F2";
-        if (CanvasColorNavy is not null) CanvasColorNavy.IsChecked = _canvasBackgroundColor == "#2C3E5C";
-        if (CanvasColorDarkGreen is not null) CanvasColorDarkGreen.IsChecked = _canvasBackgroundColor == "#1E4D3A";
-
-        // Sync canvas background colour - preset colours only
-        // Preset options: Default White, Paper Cream, Light Grey, Sage, Sky Blue, Navy, Dark Green
-        // XAML names: CanvasColorDefault, CanvasColorPaper, CanvasColorLightGray, CanvasColorSage, CanvasColorSky, CanvasColorNavy, CanvasColorDarkGreen
-        if (CanvasColorDefault is not null) CanvasColorDefault.IsChecked = _canvasBackgroundColor == "#FFFFFF";
-        if (CanvasColorPaper is not null) CanvasColorPaper.IsChecked = _canvasBackgroundColor == "#FAF6E3";
-        if (CanvasColorLightGray is not null) CanvasColorLightGray.IsChecked = _canvasBackgroundColor == "#EEEEEE";
-        if (CanvasColorSage is not null) CanvasColorSage.IsChecked = _canvasBackgroundColor == "#DCE9D5";
-        if (CanvasColorSky is not null) CanvasColorSky.IsChecked = _canvasBackgroundColor == "#DCE4F2";
-        if (CanvasColorNavy is not null) CanvasColorNavy.IsChecked = _canvasBackgroundColor == "#2C3E5C";
-        if (CanvasColorDarkGreen is not null) CanvasColorDarkGreen.IsChecked = _canvasBackgroundColor == "#1E4D3A";
-
-        // Sync custom canvas colour from TextBox
-        if (CanvasColorCustomHex is not null && !string.IsNullOrWhiteSpace(CanvasColorCustomHex.Text))
-        {
-            string hex = CanvasColorCustomHex.Text.Trim();
-            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
-            {
-                _canvasBackgroundColor = hex;
-                if (CurrentPage is not null) CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
-                ApplyThemeToChrome();
-                UpdatePageBackground();
-                RebuildHollowRingCursor();
-                UpdateCursor();
-                MarkDirty();
-                StatusText.Text = $"Canvas colour: {hex}";
-            }
-        }
-
-        // Sync quick colour palette - preset colours only
-        // _paletteColors[0]=black, [1]=red, [2]=blue, [3]=green
-        // XAML names: SettingsQuickColorNone, SettingsQuickColor1, SettingsQuickColor2, SettingsQuickColor3, SettingsQuickColor4, SettingsQuickColorCustom
-        if (SettingsQuickColorNone is not null) SettingsQuickColorNone.IsChecked = _paletteColors?[0] != "#000000" && _paletteColors?[0] != "#E53935" && _paletteColors?[0] != "#1E88E5" && _paletteColors?[0] != "#43A047";
-        if (SettingsQuickColor1 is not null) SettingsQuickColor1.IsChecked = (_paletteColors?[0] ?? "#000000") == "#000000";
-        if (SettingsQuickColor2 is not null) SettingsQuickColor2.IsChecked = (_paletteColors?[1] ?? "#E53935") == "#E53935";
-        if (SettingsQuickColor3 is not null) SettingsQuickColor3.IsChecked = (_paletteColors?[2] ?? "#1E88E5") == "#1E88E5";
-        if (SettingsQuickColor4 is not null) SettingsQuickColor4.IsChecked = (_paletteColors?[3] ?? "#43A047") == "#43A047";
-        if (SettingsQuickColorCustom is not null) SettingsQuickColorCustom.IsChecked = (_paletteColors?[0] ?? "#000000") != "#000000" && (_paletteColors?[0] ?? "#000000") != "#E53935" && (_paletteColors?[0] ?? "#000000") != "#1E88E5" && (_paletteColors?[0] ?? "#000000") != "#43A047";
-
-        // Sync custom quick colour from TextBox (index 0)
-        if (SettingsQuickColorCustomHex is not null && !string.IsNullOrWhiteSpace(SettingsQuickColorCustomHex.Text))
-        {
-            string hex = SettingsQuickColorCustomHex.Text.Trim();
-            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
-            {
-                _paletteColors[0] = hex;
-                RememberToolColor(_tool);
-                ApplyPenAttributes();
-                UpdateThicknessPreview();
-                StatusText.Text = $"Pen colour: {hex}";
-            }
-        }
+        // Keep the user-defined colour lists in sync with the Settings panel.
+        RefreshColorLists();
 
         if (PdfPageSizeCombo is not null) PdfPageSizeCombo.SelectedIndex = Math.Clamp(_pdfPageSizeIndex, 0, 4);
         if (PdfOrientationCombo is not null) PdfOrientationCombo.SelectedIndex = Math.Clamp(_pdfOrientationIndex, 0, 1);
@@ -990,14 +929,21 @@ public partial class MainWindow : Window
         if (ColorSquareHost is null || ColorSquareRoot is null) return;
         ColorSquareHost.Visibility = _showQuickColorSquare ? Visibility.Visible : Visibility.Collapsed;
 
+        // The colour square is driven by the user's own palette list, so it can
+        // hold any number of colours (not just the old four presets).
+        if (QuickColorItems is not null && !ReferenceEquals(QuickColorItems.ItemsSource, _paletteColors))
+            QuickColorItems.ItemsSource = _paletteColors;
+
         double s = _quickColorSquareSize;
-        var btns = new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 };
-        foreach (var b in btns)
+        QuickColorItems?.UpdateLayout();
+        if (QuickColorItems is not null)
         {
-            if (b is null) continue;
-            b.Width = s;
-            b.Height = s;
-            b.Margin = new Thickness(Math.Max(2, s * 0.12));
+            foreach (var b in FindVisualChildren<Button>(QuickColorItems))
+            {
+                b.Width = s;
+                b.Height = s;
+                b.Margin = new Thickness(Math.Max(2, s * 0.12));
+            }
         }
         ColorSquareRoot.Padding = new Thickness(Math.Max(2, (int)(s * 0.10)));
         if (ColorSquareDragHandle is not null)
@@ -1015,6 +961,7 @@ public partial class MainWindow : Window
         CurrentPage.PatternThickness = 1.0;
         CurrentPage.PatternDotSize = 1.2;
         _canvasBackgroundColor = "#FFFFFF";
+        _backgroundColors = new ObservableCollection<string> { "#FFFFFF" };
         _paletteColors = new ObservableCollection<string> { "#000000", "#E53935", "#1E88E5", "#43A047" };
         RefreshShortcutUI();
         SyncSettingsUI();
@@ -1294,17 +1241,8 @@ public partial class MainWindow : Window
     {
         if (sender is Button b && b.Tag is string hex)
         {
-            // Use the customizable quick color hex array, falling back to defaults
-            var quickColors = _paletteColors?.ToArray() ?? new[] { "#000000", "#E53935", "#1E88E5", "#43A047" };
-            int colorIndex = -1;
-            switch (hex)
-            {
-                case "#000000": colorIndex = 0; break;
-                case "#E53935": colorIndex = 1; break;
-                case "#1E88E5": colorIndex = 2; break;
-                case "#43A047": colorIndex = 3; break;
-            }
-            var colour = ParseHexColor(colorIndex >= 0 && colorIndex < quickColors.Length ? quickColors[colorIndex] : hex, Colors.Black);
+            // The button's Tag is the colour itself, so custom colours just work.
+            var colour = ParseHexColor(hex, Colors.Black);
             bool hasSelection = (_selectedElements.Count > 0) ||
                 (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
             if (hasSelection) ApplyColourToSelection(colour);
@@ -2256,9 +2194,9 @@ public partial class MainWindow : Window
 
     private void HighlightToolbarColor()
     {
-        foreach (var b in new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 })
+        if (QuickColorItems is null) return;
+        foreach (var b in FindVisualChildren<Button>(QuickColorItems))
         {
-            if (b is null) continue;
             bool active = b.Tag is string hex && ParseHexColor(hex, Colors.Black) == _penColor;
             b.BorderThickness = new Thickness(active ? 2.5 : 1);
             b.BorderBrush = new SolidColorBrush(active
@@ -4224,111 +4162,110 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ColorSwatch_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton rb && rb.Tag is string hex)
-        {
-            CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
-            ApplyThemeToChrome();
-            UpdatePageBackground();
-            RebuildHollowRingCursor();
-            UpdateCursor();
-            MarkDirty();
-            StatusText.Text = $"Background: {rb.ToolTip}";
-        }
+    // ---- User-defined canvas colours ------------------------------------
 
-    } // closes ColorSwatch_Click method
-
-    private void CanvasColorSwatch_Click(object sender, RoutedEventArgs e)
+    private void ApplyCanvasColor(string hex)
     {
-        if (sender is RadioButton rb && rb.Tag is string hex)
-        {
-            CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
-            ApplyThemeToChrome();
-            UpdatePageBackground();
-            RebuildHollowRingCursor();
-            UpdateCursor();
-            MarkDirty();
-            _canvasBackgroundColor = hex;
-            SaveSettings();
-            StatusText.Text = $"Canvas colour: {rb.ToolTip}";
-        }
+        _canvasBackgroundColor = hex;
+        if (CurrentPage is not null) CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
+        ApplyThemeToChrome();
+        UpdatePageBackground();
+        RebuildHollowRingCursor();
+        UpdateCursor();
+        MarkDirty();
+        SaveSettings();
+        StatusText.Text = $"Canvas colour: {hex}";
     }
 
-    private void QuickColorSwatch_Click(object sender, RoutedEventArgs e)
+    private void BackgroundColorChip_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is RadioButton rb && rb.Tag is string hex)
-        {
-            var colour = ParseHexColor(hex, Colors.Black);
-            bool hasSelection = (_selectedElements.Count > 0) ||
-                (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
-            if (hasSelection) ApplyColourToSelection(colour);
-            else
-            {
-                _penColor = colour;
-                RememberToolColor(_tool);
-                ApplyPenAttributes();
-                UpdateThicknessPreview();
-                StatusText.Text = $"Pen colour: {hex}";
-            }
-        }
+        if (sender is Button b && b.Tag is string hex) ApplyCanvasColor(hex);
     }
 
-    private void CanvasColorPick_Click(object sender, RoutedEventArgs e)
+    private void BackgroundColorChip_RightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Button b || b.Tag is not string hex) return;
+        if (_backgroundColors.Count <= 1) return;   // always keep at least one
+        _backgroundColors.Remove(hex);
+        RefreshColorLists();
+        SaveSettings();
+        StatusText.Text = $"Removed canvas colour {hex}.";
+        e.Handled = true;
+    }
+
+    private void AddBackgroundColor_Click(object sender, RoutedEventArgs e)
     {
         var current = ParseHexColor(_canvasBackgroundColor, Colors.White);
         var dlg = new ColorPickerDialog(current) { Owner = this };
-        if (dlg.ShowDialog() == true)
+        if (dlg.ShowDialog() != true) return;
+        string hex = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
+        if (!_backgroundColors.Any(c => string.Equals(c, hex, StringComparison.OrdinalIgnoreCase)))
+            _backgroundColors.Add(hex);
+        RefreshColorLists();
+        ApplyCanvasColor(hex);
+    }
+
+    // ---- User-defined quick-palette colours -----------------------------
+
+    private void ApplyPaletteColor(string hex)
+    {
+        var colour = ParseHexColor(hex, Colors.Black);
+        bool hasSelection = (_selectedElements.Count > 0) ||
+            (InkArea is not null && InkArea.GetSelectedStrokes().Count > 0);
+        if (hasSelection) ApplyColourToSelection(colour);
+        else
         {
-            string hex = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
-            if (CanvasColorCustomHex is not null) CanvasColorCustomHex.Text = hex;
+            _penColor = colour;
+            RememberToolColor(_tool);
+            ApplyPenAttributes();
+            UpdateThicknessPreview();
+            StatusText.Text = $"Pen colour: {hex}";
         }
     }
 
-    private void CanvasColorCustomHex_TextChanged(object sender, TextChangedEventArgs e)
+    private void PaletteColorChip_Click(object sender, RoutedEventArgs e)
     {
-        if (CanvasColorCustomHex is not null && !string.IsNullOrWhiteSpace(CanvasColorCustomHex.Text))
-        {
-            string hex = CanvasColorCustomHex.Text.Trim();
-            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
-            {
-                _canvasBackgroundColor = hex;
-                if (CurrentPage is not null) CurrentPage.BackgroundColor = ParseHexColor(hex, Colors.White);
-                ApplyThemeToChrome();
-                UpdatePageBackground();
-                RebuildHollowRingCursor();
-                UpdateCursor();
-                MarkDirty();
-                StatusText.Text = $"Canvas colour: {hex}";
-            }
-        }
+        if (sender is Button b && b.Tag is string hex) ApplyPaletteColor(hex);
     }
 
-    private void QuickColorPick_Click(object sender, RoutedEventArgs e)
+    private void PaletteColorChip_RightClick(object sender, MouseButtonEventArgs e)
     {
-        Color current = Colors.Black;
-        try { current = ParseHexColor(_paletteColors[0], Colors.Black); } catch { }
-        var dlg = new ColorPickerDialog(current) { Owner = this };
-        if (dlg.ShowDialog() == true)
-        {
-            string hex = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
-            if (SettingsQuickColorCustomHex is not null) SettingsQuickColorCustomHex.Text = hex;
-        }
+        if (sender is not Button b || b.Tag is not string hex) return;
+        if (_paletteColors.Count <= 1) return;      // always keep at least one
+        _paletteColors.Remove(hex);
+        RefreshColorLists();
+        SaveSettings();
+        StatusText.Text = $"Removed palette colour {hex}.";
+        e.Handled = true;
     }
 
-    private void SettingsQuickColorCustomHex_TextChanged(object sender, TextChangedEventArgs e)
+    private void AddPaletteColor_Click(object sender, RoutedEventArgs e)
     {
-        if (SettingsQuickColorCustomHex is not null && !string.IsNullOrWhiteSpace(SettingsQuickColorCustomHex.Text))
+        var dlg = new ColorPickerDialog(_penColor) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        string hex = $"#{dlg.Result.R:X2}{dlg.Result.G:X2}{dlg.Result.B:X2}";
+        if (!_paletteColors.Any(c => string.Equals(c, hex, StringComparison.OrdinalIgnoreCase)))
+            _paletteColors.Add(hex);
+        RefreshColorLists();
+        ApplyPaletteColor(hex);
+    }
+
+    /// <summary>Pushes the user's colour lists into the Settings panel and the toolbar square.</summary>
+    private void RefreshColorLists()
+    {
+        if (BackgroundColorsList is not null) BackgroundColorsList.ItemsSource = _backgroundColors;
+        if (PaletteColorsList is not null) PaletteColorsList.ItemsSource = _paletteColors;
+        ApplyQuickColorsSettings();
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
         {
-            string hex = SettingsQuickColorCustomHex.Text.Trim();
-            if (hex.StartsWith("#") && (hex.Length == 4 || hex.Length == 7))
-            {
-                _paletteColors[0] = hex;
-                RememberToolColor(_tool);
-                ApplyPenAttributes();
-                UpdateThicknessPreview();
-                StatusText.Text = $"Pen colour: {hex}";
-            }
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var descendant in FindVisualChildren<T>(child)) yield return descendant;
         }
     }
 
@@ -4508,17 +4445,7 @@ public partial class MainWindow : Window
             RadioButton paperBtn = CurrentPage.Paper switch { PaperStyle.Crumpled => PaperCrumpled, _ => PaperWhite };
             paperBtn.IsChecked = true;
         }
-        string hex = $"#{CurrentPage.BackgroundColor.R:X2}{CurrentPage.BackgroundColor.G:X2}{CurrentPage.BackgroundColor.B:X2}";
-        // Use CanvasColor radio buttons for canvas background colour sync
-        RadioButton[] swatches = { CanvasColorDefault, CanvasColorPaper, CanvasColorLightGray, CanvasColorSage, CanvasColorSky, CanvasColorNavy, CanvasColorDarkGreen, CanvasColorCustom };
-        bool matched = false;
-        foreach (var rb in swatches)
-        {
-            if (rb is null) continue;
-            if (rb.Tag is string s && string.Equals(s, hex, StringComparison.OrdinalIgnoreCase))
-            { rb.IsChecked = true; matched = true; break; }
-        }
-        if (!matched && CanvasColorDefault is not null) CanvasColorDefault.IsChecked = true;
+        RefreshColorLists();
 
         if (TemplateBlank is not null && TemplateRuled is not null && TemplateGrid is not null && TemplateDot is not null)
         {
@@ -5167,25 +5094,9 @@ public partial class MainWindow : Window
     private void ApplyThemeToChrome()
     {
         bool dark = IsDarkColor(CurrentPage.BackgroundColor);
-        var oldSet = _quickIsDark ? _darkQuick : _lightQuick;
-        var newSet = dark ? _darkQuick : _lightQuick;
-        if (dark != _quickIsDark)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                if (ParseHexColor(oldSet[i], Colors.Black) == _penColor)
-                { _penColor = ParseHexColor(newSet[i], Colors.Black); RememberToolColor(_tool); break; }
-            }
-        }
+        // The palette is fully user-defined now, so switching light/dark must not
+        // overwrite the colours the user chose.
         _quickIsDark = dark;
-
-        var btns = new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 };
-        for (int i = 0; i < 4; i++)
-        {
-            if (btns[i] is null) continue;
-            btns[i].Tag = newSet[i];
-            btns[i].Background = new SolidColorBrush(ParseHexColor(newSet[i], Colors.Black));
-        }
 
         Color bg = CurrentPage.BackgroundColor;
         Color navBg = dark ? Blend(bg, Colors.White, 0.10) : Blend(bg, Colors.Black, 0.05);
@@ -5218,27 +5129,15 @@ public partial class MainWindow : Window
         ApplyPenAttributes();
     }
 
-    private void WireQuickColorRightClick()
-    {
-        foreach (var b in new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 })
-        {
-            b.MouseRightButtonUp += QuickColor_RightClick;
-            b.ToolTip = "Click: use this colour. Right-click: save the current pen colour here.";
-        }
-    }
-
     private void QuickColor_RightClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not Button b) return;
-        int idx = Array.IndexOf(new[] { QuickColor1, QuickColor2, QuickColor3, QuickColor4 }, b);
+        if (sender is not Button b || b.Tag is not string tag) return;
+        int idx = _paletteColors.IndexOf(tag);
         if (idx < 0) return;
         string hex = ColorToHex(_penColor);
-        var set = _quickIsDark ? _darkQuick : _lightQuick;
-        set[idx] = hex;
-        b.Tag = hex;
-        b.Background = new SolidColorBrush(_penColor);
-        HighlightToolbarColor();
+        _paletteColors[idx] = hex;
         SaveSettings();
+        HighlightToolbarColor();
         StatusText.Text = "Saved " + hex + " in this colour box.";
         e.Handled = true;
     }
@@ -6406,6 +6305,11 @@ public partial class MainWindow : Window
         // Keep CanvasArea visible so the Settings overlay can be shown from the library.
         if (CanvasArea is not null) CanvasArea.Visibility = Visibility.Visible;
         TitleBarText.Text = "Canvaas - My notebooks";
+        if (VersionLabel is not null)
+        {
+            var v = Assembly.GetExecutingAssembly().GetName().Version;
+            VersionLabel.Text = "v" + (v is null ? "0.5.2" : v.ToString(3));
+        }
     }
 
     private void HideLibrary()
